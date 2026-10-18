@@ -28,6 +28,7 @@ Hors périmètre pour l'instant :
 - Découpe ou fusion de lots : un lot reste un lot du début à la fin.
 - Connexion à un ERP, un DataWarehouse ou un outil BI.
 - Gestion des utilisateurs et des droits.
+- Retours de marchandise (voir section 9).
 - Interface web : plus tard (lot 7, optionnel).
 
 ## 3. Ce qu'on trace
@@ -63,14 +64,14 @@ Une station n'accepte un type de mouvement que si cette fonction figure dans `tr
 
 ## 5. Règles métier
 
-Ces règles seront appliquées dans les procédures stockées, pas seulement dans l'API.
+Ces règles seront appliquées dans la base de données (procédures stockées et contraintes), pas seulement dans l'API.
 
 1. **Ordre des statuts** : un lot ne saute pas d'étape. Il ne peut pas passer de `RECEIVED` à `PACKED`.
 2. **Quantité** : elle est toujours supérieure à 0 et ne peut pas augmenter d'une étape à l'autre. Elle peut baisser (le tri écarte des tomates), jamais monter.
 3. **Journal** : un mouvement n'est jamais modifié ni supprimé. Pour corriger, on ajoute un nouveau mouvement.
 4. **Fin de parcours** : un lot `SHIPPED` n'a plus de nouveau mouvement, mais il reste consultable avec tout son parcours. Aucun lot n'est supprimé, pour pouvoir y revenir en cas de réclamation.
 5. **Unicité** : le code d'un lot, d'une ferme et d'une station est unique.
-6. **Fonction de la station** : un mouvement n'est accepté que si la station a la fonction correspondante.
+6. **Fonction de la station** : un mouvement n'est accepté que si la station a la fonction correspondante. Cette règle est garantie par la base elle-même (clé étrangère).
 
 ## 6. Exemple de bout en bout
 
@@ -117,3 +118,18 @@ Validés par Mohamed le 2026-10-18.
 - À la création, un lot reçoit directement son premier mouvement `RECEPTION` et son statut `RECEIVED`.
 - Dans un mouvement, la quantité est celle constatée à cette étape. Dans le lot, c'est la dernière quantité connue.
 - Une station peut avoir une ou plusieurs fonctions, listées dans `trace.StationCapability`.
+
+## 9. Limites et évolutions possibles
+
+### Retours de marchandise
+
+Le système ne gère pas les retours de marchandise. `SHIPPED` reste la fin du parcours.
+
+Ce choix est volontaire : nous ne connaissons pas assez le métier ni la façon dont ces cas sont traités dans la réalité (que devient un lot retourné, qui décide, comment la quantité est comptée). Plutôt que d'inventer des règles, nous préférons ne pas les modéliser.
+
+Ce qu'on sait déjà :
+
+- **Retour total** : techniquement simple. Il faudrait un statut `RETURNED` et un type de mouvement `RETURN`, sans nouvelle table. Les règles qui suivent le retour restent à connaître.
+- **Retour partiel** : le modèle actuel ne peut pas le représenter. Un lot n'a qu'un statut et qu'une quantité, donc on ne peut pas dire qu'une partie est expédiée et l'autre retournée. Il faudrait pouvoir scinder un lot, ce qui est aussi hors périmètre.
+
+Un lot expédié reste consultable avec tout son parcours (règle 4), ce qui permet de le retrouver en cas de réclamation.
