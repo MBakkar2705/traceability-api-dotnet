@@ -24,7 +24,8 @@ Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
 
 ## Vérité
 - Ne jamais dire que ça marche sans l'avoir exécuté et observé.
-- Docs marquées « Prévu » tant que non testées, « Prouvé » seulement après tests observés.
+- L'avancement (« Prévu », « Prouvé », « Terminé ») vit dans le README et dans `docs/verification.md`. « Prouvé » seulement après tests exécutés et observés.
+- Les docs de conception (`docs/fonctionnel.md`, `docs/modele-de-donnees.md`) décrivent l'intention : elles n'ont pas de statut et ne changent que si une décision de conception change.
 - ADR seulement pour une vraie décision avec alternatives. Le corps d'un ADR est un
   enregistrement : seuls le statut et les notes changent.
 

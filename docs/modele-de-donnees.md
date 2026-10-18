@@ -1,6 +1,6 @@
 # Modèle de données
 
-Statut : **Prévu**. Rien n'est encore créé dans SQL Server. Ce document décrit le modèle proposé pour le lot 1. Il passera à « Prouvé » après les scripts exécutés et les tests observés.
+Ce document décrit le modèle de données du projet. L'avancement est dans le [README](../README.md) ; les preuves observées sont dans [verification.md](verification.md).
 
 Le contexte métier est dans [fonctionnel.md](fonctionnel.md).
 
@@ -26,7 +26,7 @@ Toutes les colonnes sont `NOT NULL` (validé). Légende : PK clé primaire, FK c
 | Colonne | Type | Contrainte | Rôle |
 |---|---|---|---|
 | `FarmId` | `INT` | PK, `IDENTITY` | Numéro technique, généré par SQL Server. |
-| `Code` | `NVARCHAR(20)` | UQ | Code lisible de la ferme (par exemple `F01`). |
+| `Code` | `NVARCHAR(20)` | UQ, CK non vide | Code lisible de la ferme (par exemple `F01`). |
 | `Name` | `NVARCHAR(100)` | | Nom de la ferme. |
 | `Region` | `NVARCHAR(100)` | | Région de la ferme. |
 
@@ -37,7 +37,7 @@ Une ligne par lot. Elle donne l'état actuel : statut et dernière quantité con
 | Colonne | Type | Contrainte | Rôle |
 |---|---|---|---|
 | `BatchId` | `INT` | PK, `IDENTITY` | Numéro technique, utilisé pour les liens entre tables. |
-| `BatchCode` | `NVARCHAR(30)` | UQ | Code lisible du lot (par exemple `LOT-2026-0001`). |
+| `BatchCode` | `NVARCHAR(30)` | UQ, CK non vide | Code lisible du lot (par exemple `LOT-2026-0001`). |
 | `FarmId` | `INT` | FK → `Farm.FarmId` | Ferme d'origine. |
 | `Variety` | `NVARCHAR(50)` | | Variété de tomate. |
 | `HarvestDate` | `DATE` | | Date de récolte. |
@@ -49,7 +49,7 @@ Une ligne par lot. Elle donne l'état actuel : statut et dernière quantité con
 | Colonne | Type | Contrainte | Rôle |
 |---|---|---|---|
 | `StationId` | `INT` | PK, `IDENTITY` | Numéro technique. |
-| `Code` | `NVARCHAR(20)` | UQ | Code lisible de la station (par exemple `SITE-01`). |
+| `Code` | `NVARCHAR(20)` | UQ, CK non vide | Code lisible de la station (par exemple `SITE-01`). |
 | `Name` | `NVARCHAR(100)` | | Nom de la station. |
 
 ### 2.4 `trace.StationCapability` : les fonctions d'une station
@@ -84,6 +84,8 @@ Le journal. On ajoute des lignes, on ne modifie ni n'efface jamais une ligne.
 - **`BIGINT` pour `MovementId`** : le journal est la table qui grossit le plus. Les autres tables utilisent `INT`.
 - **Clé étrangère sur deux colonnes pour la fonction de la station** : la règle « la station doit avoir la fonction » est garantie par la base elle-même, pas seulement par la procédure. Elle empêche aussi de supprimer une fonction déjà utilisée par des mouvements, ce qui protège l'historique.
 - **Statuts et types en `CHECK`** : la base refuse toute valeur hors liste.
+- **Codes non vides** : un `CHECK` (`LEN(TRIM(code)) > 0`) refuse un code vide ou fait seulement d'espaces. Il ne s'applique qu'aux trois codes : `Name`, `Region` et `Variety` peuvent encore être vides (choix du 2026-10-18, à revoir si besoin).
+- **Classement `French_CI_AS`** (celui de l'instance, insensible à la casse) : `F01` et `f01` sont traités comme le même code. Vérifié par un test, voir [verification.md](verification.md).
 - **`DECIMAL(10,2)` pour les quantités** : décimal exact, sans erreur d'arrondi (contrairement à `FLOAT`). Supérieur à 0.
 - **`DATETIME2` en UTC** : plus précis et plus étendu que `DATETIME`. L'UTC évite les ambiguïtés de fuseau et de changement d'heure.
 - **Schéma `trace`** : regroupe les objets du projet, séparés du schéma par défaut `dbo`.
@@ -95,6 +97,7 @@ La base garantit seule (clés, unicité, CHECK) :
 
 - Un lot a une ferme existante. Un mouvement a un lot et une station existants.
 - Les codes sont uniques.
+- Les codes ne sont ni vides ni faits seulement d'espaces.
 - Un mouvement n'est accepté que si la station a la fonction correspondante (clé étrangère sur deux colonnes vers `StationCapability`).
 - Les statuts et les types de mouvement sont dans la liste.
 - Les quantités sont supérieures à 0.
@@ -111,8 +114,10 @@ Le journal `Movement` n'est jamais modifié : les procédures n'ont pas de `UPDA
 
 ## 5. Limites connues
 
-- Les longueurs de texte sont indicatives.
-- Les formats de codes (`LOT-2026-0001`, `F01`, `SITE-01`) sont des exemples, à fixer avant les scripts.
+- Les longueurs de texte sont indicatives (voir les scripts).
+- Les formats de codes (`LOT-2026-0001`, `F01`, `SITE-01`) restent des exemples : la base n'impose que « unique » et « non vide », pas de format.
+- `Name`, `Region` et `Variety` acceptent une chaîne vide.
+- Le classement est insensible à la casse : `F01` et `f01` ne peuvent pas coexister.
 - Pas de découpe ni de fusion de lots.
 - Pas de gestion des retours de marchandise : les règles réelles du métier ne sont pas connues (voir [fonctionnel.md](fonctionnel.md), section 9).
 - Pas de gestion d'utilisateurs.
