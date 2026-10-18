@@ -1,6 +1,6 @@
 # Documentation fonctionnelle
 
-Statut : **Prévu**. Rien n'est encore créé ni testé. Ce document décrit ce que le système doit faire, pas ce qu'il fait déjà.
+Ce document décrit ce que le système doit faire, pas ce qu'il fait déjà. L'avancement est dans le [README](../README.md).
 
 ## 1. Objectif
 
@@ -101,8 +101,6 @@ Trois demandes qui seraient refusées :
 - Un `PACKING` à la station `SITE-01` : cette station n'a pas la fonction `PACKING` (règle 6).
 
 ## 7. Ce que l'API fera
-
-Statut : **Prévu**, rien n'est développé.
 
 - Créer et lister les fermes et les stations.
 - Déclarer les fonctions d'une station.
