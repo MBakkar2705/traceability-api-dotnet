@@ -5,7 +5,8 @@
   Deletes the database named in DbName and ALL its data
   (data file and log file are removed from disk). No backup is made.
 
-  Use it only to start again from scratch, then run 001, 002, 003 again.
+  Use it only to start again from scratch, then run 001, 002, 004 and 005 again
+  (003 only checks the schema; on TraceabilityDev, 007 fills it with volume data).
 
   - Only two names are allowed: TraceabilityDev and TraceabilityTest. Any other
     name is refused (never another database).
@@ -47,7 +48,7 @@ BEGIN TRY
     -- Otherwise DROP fails with "database in use" if another window is connected to it.
     ALTER DATABASE $(DbName) SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
     DROP DATABASE $(DbName);
-    PRINT N'Database $(DbName) dropped. Run 001, 002, 003 to rebuild.';
+    PRINT N'Database $(DbName) dropped. Run 001, 002, 004, 005 to rebuild.';
 END TRY
 BEGIN CATCH
     DECLARE @drop_error NVARCHAR(2000) = ERROR_MESSAGE();
