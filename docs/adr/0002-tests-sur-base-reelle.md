@@ -31,4 +31,5 @@ Négatives :
 
 ## Notes
 
-- 2026-10-18 : aucune base de test n'existe encore. Tout est « Prévu » tant que les tests n'ont pas été exécutés et observés.
+- 2026-10-18 : aucune base de test n'existe encore.
+- 2026-10-19 : la base `TraceabilityTest` existe, créée avec les mêmes scripts que la base de développement (le nom est donné par `:setvar DbName`). Les tests de structure (`003`, 17 sur 17) et les 38 tests des procédures (`006`) y ont été exécutés et observés (voir [verification.md](../verification.md), section 6). Écart avec la décision : `006` ne remet pas la base à zéro avant les tests, il supprime seulement ses propres lignes (codes `ZZ-…`). Aucun test n'est encore lancé depuis .NET ni depuis une intégration continue.
