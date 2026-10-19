@@ -28,6 +28,7 @@ Hors périmètre pour l'instant :
 - Découpe ou fusion de lots : un lot reste un lot du début à la fin.
 - Connexion à un ERP, un DataWarehouse ou un outil BI.
 - Gestion des utilisateurs et des droits.
+- Archivage ou purge des anciennes données : aucun lot ni mouvement n'est supprimé (règles 3 et 4), donc la base ne fait que grossir.
 - Retours de marchandise (voir section 9).
 - Interface web : plus tard (lot 7, optionnel).
 
@@ -131,3 +132,11 @@ Ce qu'on sait déjà :
 - **Retour partiel** : le modèle actuel ne peut pas le représenter. Un lot n'a qu'un statut et qu'une quantité, donc on ne peut pas dire qu'une partie est expédiée et l'autre retournée. Il faudrait pouvoir scinder un lot, ce qui est aussi hors périmètre.
 
 Un lot expédié reste consultable avec tout son parcours (règle 4), ce qui permet de le retrouver en cas de réclamation.
+
+### Corrections
+
+La règle 3 dit de corriger par un nouveau mouvement. Mais les procédures refusent un mouvement de correction : l'ordre des statuts (erreur 50301) et la quantité qui ne monte pas (erreur 50302) l'interdisent. Une faute de saisie ne peut donc pas être corrigée aujourd'hui. C'est une question à poser au métier (voir [procedures.md](procedures.md), section 5).
+
+### Heure des mouvements
+
+L'heure d'un mouvement n'est pas contrôlée : un mouvement peut avoir une heure antérieure au précédent ou située dans le futur. Le parcours est donné dans l'ordre d'enregistrement. Le métier réel dira si une règle est nécessaire.

@@ -8,7 +8,8 @@
           transaction that is ROLLED BACK at the end: no row is kept.
           IDENTITY numbers used by the tests are not given back (normal).
 
-  - Replayable at any time.
+  - Replayable at any time, on an empty database AND on a filled one (lot 2b): the
+    last query compares the number of rows of each table before and after the tests.
   - Contains no DROP, TRUNCATE or DELETE.
   - Run after 002_create_schema_and_tables.sql, with the same DbName.
   - Run in SSMS in SQLCMD mode (menu Query > SQLCMD Mode).
@@ -92,6 +93,15 @@ DECLARE @results TABLE
 );
 
 DECLARE @FarmId INT, @StationId INT, @BatchId INT;
+
+-- Number of rows of each table BEFORE the tests (a table variable survives ROLLBACK).
+DECLARE @before TABLE (table_name NVARCHAR(30), row_count BIGINT);
+INSERT @before (table_name, row_count)
+SELECT N'Farm', COUNT(*) FROM trace.Farm
+UNION ALL SELECT N'Station', COUNT(*) FROM trace.Station
+UNION ALL SELECT N'StationCapability', COUNT(*) FROM trace.StationCapability
+UNION ALL SELECT N'Batch', COUNT(*) FROM trace.Batch
+UNION ALL SELECT N'Movement', COUNT(*) FROM trace.Movement;
 
 BEGIN TRANSACTION;
 
@@ -364,10 +374,19 @@ SELECT COUNT(*) AS tests_total,
                 THEN 1 ELSE 0 END) AS tests_ok
 FROM @results;
 
--- Proof of the ROLLBACK: every table must be empty again.
-SELECT N'Farm' AS table_name, COUNT(*) AS row_count FROM trace.Farm
-UNION ALL SELECT N'Station', COUNT(*) FROM trace.Station
-UNION ALL SELECT N'StationCapability', COUNT(*) FROM trace.StationCapability
-UNION ALL SELECT N'Batch', COUNT(*) FROM trace.Batch
-UNION ALL SELECT N'Movement', COUNT(*) FROM trace.Movement;
+-- Proof of the ROLLBACK: every table must have the same number of rows as before
+-- the tests (0 on an empty database, the same number on a filled one).
+SELECT b.table_name,
+       b.row_count AS rows_before,
+       a.row_count AS rows_after,
+       CASE WHEN a.row_count = b.row_count THEN N'unchanged'
+            ELSE N'ATTENTION: changed' END AS outcome
+FROM @before AS b
+JOIN (SELECT N'Farm' AS table_name, COUNT(*) AS row_count FROM trace.Farm
+      UNION ALL SELECT N'Station', COUNT(*) FROM trace.Station
+      UNION ALL SELECT N'StationCapability', COUNT(*) FROM trace.StationCapability
+      UNION ALL SELECT N'Batch', COUNT(*) FROM trace.Batch
+      UNION ALL SELECT N'Movement', COUNT(*) FROM trace.Movement) AS a
+  ON a.table_name = b.table_name
+ORDER BY b.table_name;
 GO
