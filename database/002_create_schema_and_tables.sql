@@ -1,24 +1,27 @@
 /*
   002_create_schema_and_tables.sql
-  Creates the schema "trace" and the 5 tables of lot 1 in TraceabilityDev.
+  Creates the schema "trace" and the 5 tables of lot 1 in the database named in DbName.
   Model: docs/modele-de-donnees.md
 
   - NOT replayable on purpose: it fails if the schema or a table already exists.
   - All or nothing: everything runs in one transaction. On any error,
     nothing is created.
-  - Run 001_create_database.sql first.
+  - Run 001_create_database.sql first, with the same DbName.
+  - Run in SSMS in SQLCMD mode (menu Query > SQLCMD Mode).
   - Contains no DROP, TRUNCATE or DELETE.
 */
 
-USE TraceabilityDev;
+:setvar DbName TraceabilityDev
+
+USE $(DbName);
 GO
 
 SET XACT_ABORT ON;
 
--- Safety: stop if the connection is not on TraceabilityDev.
-IF DB_NAME() <> N'TraceabilityDev'
+-- Safety: stop if the connection is not on $(DbName).
+IF DB_NAME() <> N'$(DbName)'
 BEGIN
-    THROW 50001, N'Wrong database. Expected TraceabilityDev. Nothing was created.', 1;
+    THROW 50001, N'Wrong database. Expected $(DbName). Nothing was created.', 1;
 END;
 
 BEGIN TRANSACTION;

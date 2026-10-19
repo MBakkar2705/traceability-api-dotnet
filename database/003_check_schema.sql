@@ -1,6 +1,6 @@
 /*
   003_check_schema.sql
-  Checks the schema created by 002 in TraceabilityDev.
+  Checks the schema created by 002 in the database named in DbName.
 
   Part A: read-only inspection (columns and constraints).
   Part B: refusal tests. Each test tries ONE forbidden insert and checks that the
@@ -10,10 +10,13 @@
 
   - Replayable at any time.
   - Contains no DROP, TRUNCATE or DELETE.
-  - Run after 002_create_schema_and_tables.sql.
+  - Run after 002_create_schema_and_tables.sql, with the same DbName.
+  - Run in SSMS in SQLCMD mode (menu Query > SQLCMD Mode).
 */
 
-USE TraceabilityDev;
+:setvar DbName TraceabilityDev
+
+USE $(DbName);
 GO
 
 /* ===================== Part A: inspection (read only) ===================== */
@@ -73,9 +76,9 @@ GO
 SET NOCOUNT ON;
 SET XACT_ABORT OFF;  -- a refused insert must not cancel the whole transaction
 
-IF DB_NAME() <> N'TraceabilityDev'
+IF DB_NAME() <> N'$(DbName)'
 BEGIN
-    RAISERROR(N'Wrong database. Expected TraceabilityDev. Tests not run.', 16, 1);
+    RAISERROR(N'Wrong database. Expected $(DbName). Tests not run.', 16, 1);
     RETURN;
 END;
 
