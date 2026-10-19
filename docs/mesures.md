@@ -224,10 +224,43 @@ Décision : l'index est abandonné, avec `DROP INDEX IX_Batch_Status ON trace.Ba
 
 Non testé : forcer l'index dans la procédure (fragile, et cela modifierait une procédure du lot 2a) ; un index plus gros avec colonnes incluses sur `Status`.
 
+#### Index 3 : `IX_Batch_FarmId` sur `Batch (FarmId)`, essai abandonné (2026-10-19)
+
+Index simple, sans colonnes incluses, créé et supprimé dans une fenêtre SSMS jetable (non commité). Règle de décision fixée avant la mesure, acceptée par Mohamed : garder l'index si les pages lointaines baissent d'au moins un facteur 10 **et** que la page 1 reste sous environ 300 lectures ; sinon le supprimer.
+
+Mesure par `trace.ListBatches`, 50 lots par page, après `sp_recompile` (lectures logiques sur `Batch`) :
+
+| Cas | Avant | Après (procédure) | Index forcé |
+|---|---|---|---|
+| `F001` page 1 | 26 | 26 | non mesuré |
+| `F001` page 20 | 422 | 422 | non mesuré |
+| `F021` page 1 | 189 | 189 | 368 |
+| `F021` page 20 | 3 765 | 3 765 | 5 034 |
+
+Observé :
+- Après la création de l'index, les quatre mesures sont identiques : SQL Server n'utilise pas l'index dans la procédure.
+- Forcé (`WITH (INDEX (IX_Batch_FarmId))`, en `SELECT` direct, avec `OFFSET 0` puis `OFFSET 950`), l'index fait **pire** : 368 contre 189 pour la page 1, 5 034 contre 3 765 pour la page 20 de `F021`.
+- Sans index, la page 20 de `F021` coûte environ 20 fois la page 1 (3 765 contre 189 lectures) : l'hypothèse « plus la page est lointaine, plus de pages sont lues » est confirmée.
+- Les lectures sur `Farm` suivent 2 lectures par lot parcouru, sauts compris : 100 pour 50 lots (page 1), 2 000 pour 1 000 lots (page 20).
+
+Explication probable, **non prouvée** (les plans des requêtes forcées n'ont pas été examinés) : pour chaque lot trouvé, SQL Server doit retourner lire la ligne dans la table, et ces allers-retours coûtent plus cher que de parcourir directement la table dans l'ordre de `BatchId`.
+
+Hypothèse R3 de la section 3 (`Batch (FarmId)` donne quelques pages pour la page 1) : **non confirmée**, l'index n'est pas utilisé dans la procédure et, forcé, il fait pire.
+
+Décision : l'index est abandonné, avec `DROP INDEX IX_Batch_FarmId ON trace.Batch;`. Index restants sur `Batch`, vérifiés : `PK_Batch` et `UQ_Batch_BatchCode`. Non testé : un index avec colonnes incluses sur `FarmId` (SQL Server en avait suggéré un dans le plan de R5, avec `BatchCode`, `Variety`, `HarvestDate`, `QuantityKg` et `Status`).
+
+#### R6 : ce qui a été observé
+
+R6 (un plan réutilisé pour des valeurs très différentes) n'a pas été testée comme prévue. Observations partielles :
+- Après `sp_recompile` sur `trace.ListBatches`, un premier appel avec `RECEIVED` donne les mêmes 9 351 lectures qu'avant : la réutilisation d'un ancien plan n'explique pas le coût de `RECEIVED`.
+- Les plans de `F001` et de `F021` n'ont pas été comparés : on ne sait pas s'ils ont la même forme. Les lectures de `F001` (26) et de `F021` (189) sont cohérentes avec le même parcours dans l'ordre.
+
+Conclusion : R6 reste **non conclue**.
+
 ## 5. Limites de ces mesures
 
 - Données inventées, générées par des formules fixes : la répartition (statuts selon le numéro, fermes régulières) est plus régulière que dans une vraie exploitation.
 - Une seule machine, un seul niveau de cache : les temps sont indicatifs, les lectures logiques sont la mesure de référence. La mesure « avant » est une première exécution.
-- Plans non examinés : R3 `F001` et R4 `SHIPPED`. R6 n'est pas encore faite.
+- Plans non examinés : R3 `F001` et R4 `SHIPPED`, ainsi que ceux des requêtes forcées. R6 reste non conclue.
 - Le résultat s'énonce « mesuré sur 1 million de lots inventés », pas « valable en production ».
 - Les index ne sont mesurés que sur les recherches listées ci-dessus. Leur effet sur la vitesse des écritures (`CreateBatch`, `AddMovement`) n'est pas mesuré, sauf si une section ajoutée plus tard le dit.
