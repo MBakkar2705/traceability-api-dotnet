@@ -98,22 +98,53 @@ Aucune procédure du lot 2a ne cherche des mouvements par station ou par type de
 
 ## 4. Mesures
 
-À remplir au fil des mesures. Pour chaque recherche : avant, index ajouté, après, décision.
+### 4.1 Avant (aucun nouvel index), 2026-10-19
 
-| Recherche | Avant : lectures logiques | Avant : plan | Index ajouté | Après : lectures logiques | Après : plan | Hypothèse confirmée ? | Décision |
-|---|---|---|---|---|---|---|---|
-| R1. Lot par code | à mesurer | à mesurer | — | — | — | — | — |
-| R2. Parcours d'un lot | à mesurer | à mesurer | | | | | |
-| R3. Lots d'une grande ferme | à mesurer | à mesurer | | | | | |
-| R3. Lots d'une petite ferme | à mesurer | à mesurer | | | | | |
-| R4. Statut `SHIPPED` | à mesurer | à mesurer | | | | | |
-| R4. Statut `RECEIVED` | à mesurer | à mesurer | | | | | |
-| R5. Page 900 de 1 000 | à mesurer | à mesurer | — | — | — | — | — |
-| R6. Plan réutilisé | à observer | à observer | — | — | — | — | — |
+Conditions : script `database/009_measure_searches.sql` exécuté une seule fois dans SSMS sur 1 000 000 de lots, avec le plan d'exécution réel. C'est une **première exécution** : l'onglet Messages montre des lectures physiques (lecture sur disque), donc les temps sont gonflés par rapport à une exécution avec les données déjà en mémoire. Les lectures logiques sont la mesure de référence.
+
+Avant cette mesure, les procédures de `database/004` et `database/005` n'existaient pas dans `TraceabilityDev` (la requête sur `sys.procedures` a renvoyé 0 ligne). Elles y ont été créées avec 004 puis 005, sans toucher aux données.
+
+| Cas | Table (lectures logiques) | Plan observé | Temps écoulé |
+|---|---|---|---|
+| R1 : lot par code | `Batch` : 3 | *Seek* sur `UQ_Batch_BatchCode`, 1 ligne sur 1 | environ 1 ms |
+| R2 : mouvements d'un lot | `Movement` : **25 412** (5 analyses) ; `Station` : 8 | *Scan* de l'index cluster de `Movement` (96 % du coût), 4 lignes trouvées, plan parallèle ; pas d'étape de tri | 236 ms |
+| R3 : grande ferme `F001` | `Batch` : 26 ; `Farm` : 100 | plan non examiné | 6 ms |
+| R3 : petite ferme `F021` | `Batch` : 189 ; `Farm` : 100 | *Scan* de la clé primaire de `Batch` dans l'ordre, 50 lignes, puis `Top` ; jointure avec `Farm` par boucles imbriquées | environ 40 ms |
+| R4 : statut `SHIPPED` | `Batch` : 4 ; `Farm` : 100 | plan non examiné | moins de 1 ms |
+| R4 : statut `RECEIVED` | `Batch` : **9 351** ; `Farm` : 100 | *Scan* de la clé primaire de `Batch` dans l'ordre, 50 lignes sur 50, puis 50 *Seek* sur `Farm` | 625 ms |
+| R5 : page 900 de 1 000 | `Batch` : 9 351 ; `Farm` : **1 800 000** | *Scan* de `Batch` (1 000 000 de lignes) et de `Farm` (200), jointure, **tri de 900 048 lignes avec débordement dans `tempdb`** (10 523 pages écrites et relues), puis 1 000 lignes | 1 615 ms (1re exécution), 8 s (2e exécution, avec plan réel) |
+| R6 : plan réutilisé | non fait | | |
+
+Index absents proposés par SQL Server dans les plans (suggestions de SQL Server, pas des preuves) :
+- plan de R2 : `Movement (BatchId)`, impact annoncé 99,79 ; les colonnes incluses n'ont pas été lues en entier ;
+- plan de R5 : `Batch (FarmId)` avec `BatchCode`, `Variety`, `HarvestDate`, `QuantityKg`, `Status` en colonnes incluses, impact annoncé 40,146 ;
+- plan de R4 `RECEIVED` : aucune suggestion dans le texte du plan.
+
+Écart avec les hypothèses de la section 3 :
+
+| Hypothèse | Résultat |
+|---|---|
+| R1 | conforme : *Seek*, 3 lectures sur `Batch` |
+| R2 | conforme : *Scan* de toute la table. 25 412 lectures observées contre environ 24 950 prévues ; l'écart d'environ 2 % n'est pas expliqué |
+| R3 | conforme : 189 lectures pour `F021` (prévu environ 190), 26 pour `F001` (prévu environ 21). Le plan de `F001` n'a pas été examiné |
+| R4 `RECEIVED` | conforme : 9 351 lectures (prévu environ 9 380) |
+| R4 `SHIPPED` | direction juste, chiffre faux : 4 lectures observées alors que l'hypothèse disait moins d'une page. La cause n'a pas été examinée |
+| R5 | **incomplète** : les 9 351 lectures de `Batch` sont conformes, mais le plan n'est pas une lecture ordonnée avec arrêt : il joint, trie 900 048 lignes avec débordement dans `tempdb`, et la table `Farm` coûte 1 800 000 lectures, ce qui n'était pas prévu. Cause de ce chiffre : non établie |
+
+Les 100 lectures sur `Farm` de R3 et R4 correspondent aux 50 *Seek* observés dans le plan, à 2 lectures chacun. Cette explication ne vaut pas pour R5.
+
+### 4.2 Après chaque index
+
+À remplir, un index à la fois : index créé, lectures logiques après, plan après, hypothèse confirmée ou non, décision (garder ou abandonner).
+
+| Index | Recherche | Lectures avant | Lectures après | Plan après | Hypothèse confirmée ? | Décision |
+|---|---|---|---|---|---|---|
+| à définir | | | | | | |
 
 ## 5. Limites de ces mesures
 
 - Données inventées, générées par des formules fixes : la répartition (statuts selon le numéro, fermes régulières) est plus régulière que dans une vraie exploitation.
-- Une seule machine, un seul niveau de cache : les temps sont indicatifs, les lectures logiques sont la mesure de référence.
+- Une seule machine, un seul niveau de cache : les temps sont indicatifs, les lectures logiques sont la mesure de référence. La mesure « avant » est une première exécution.
+- Plans non examinés : R3 `F001` et R4 `SHIPPED`. R6 n'est pas encore faite.
 - Le résultat s'énonce « mesuré sur 1 million de lots inventés », pas « valable en production ».
 - Les index ne sont mesurés que sur les recherches listées ci-dessus. Leur effet sur la vitesse des écritures (`CreateBatch`, `AddMovement`) n'est pas mesuré, sauf si une section ajoutée plus tard le dit.
