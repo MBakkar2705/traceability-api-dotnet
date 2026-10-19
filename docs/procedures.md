@@ -139,7 +139,16 @@ Les procédures s'ajoutent aux contraintes du lot 1, elles ne les remplacent pas
 
 ## 4. Les erreurs
 
-Les numéros de 50000 à 50099 sont réservés aux gardes des scripts (par exemple 50001 « Wrong database » dans `002`). Les scripts d'inspection (`003`, `900`) gardent `RAISERROR`, choix du lot 1.
+Les numéros de 50000 à 50099 sont réservés aux gardes des scripts. Les scripts d'inspection (`003`, `900`) gardent `RAISERROR`, choix du lot 1. Gardes utilisées :
+
+| N° | Sens | Script |
+|---|---|---|
+| 50001 | Mauvaise base de données | `002`, `007`, `008`, `009`, `010` |
+| 50002 | `@TargetLots` hors de 1 à 1 000 000 | `007` |
+| 50003 | Contenu inattendu : `007` refuse une base qui contient autre chose qu'un début de son jeu de données ; `008` refuse une base sans lot ; `009` exige le jeu complet de 1 000 000 de lots | `007`, `008`, `009` |
+| 50004 | Fermes ou stations de référence différentes de celles attendues | `007` |
+| 50005 | Espace disque libre sous la limite `@MinFreeGB` | `007` |
+| 50006 | Procédures `GetBatch` ou `ListBatches` introuvables (lancer `004` et `005`) | `009` |
 
 | N° | Famille | Sens | Message (anglais, exemple) | Levée par |
 |---|---|---|---|---|
@@ -172,4 +181,5 @@ Les familles permettront à l'API de répondre sans connaître chaque règle : 5
 - **`GetBatch` lit le lot puis son parcours en deux requêtes**, sans verrou : si un mouvement est ajouté entre les deux, le parcours peut contenir un mouvement que le lot ne reflète pas encore.
 - **`AddMovement` appelée dans une transaction de l'appelant** : son `COMMIT` ne valide rien, le verrou et la modification restent jusqu'au `COMMIT` de l'appelant (observé pendant la preuve de l'ADR 0003). En cas d'erreur, la procédure exécute `ROLLBACK` : d'après le code, cela annule aussi le travail de l'appelant (non testé).
 - **Pas de modification ni de suppression** de fermes et de stations.
-- **`ListBatches`** ne donne pas le nombre total de lots. Une page éloignée du début sera probablement plus lente à produire : à mesurer au lot 2b.
+- **`ListBatches`** ne donne pas le nombre total de lots.
+- **`ListBatches` : les pages éloignées coûtent cher** (mesuré au lot 2b, sur 1 000 000 de lots inventés, détail dans [mesures.md](mesures.md)). Sans filtre, la page 900 de 1 000 lots lit 9 351 pages de `Batch`, trie 900 048 lignes (avec débordement dans `tempdb`) et lit 1 800 000 fois `Farm`, en 1,6 à 8 secondes selon l'exécution. Avec une ferme de 2 777 lots, la page 20 de 50 lots coûte 3 765 lectures, contre 189 pour la page 1. `RECEIVED`, dont les lots sont les derniers dans l'ordre de `BatchId` dans nos données, coûte 9 351 lectures dès la page 1. Aucun des index essayés (`Batch (Status)`, `Batch (FarmId)`) n'améliore ces cas sans modifier la procédure. Pistes non essayées : forcer un index dans la procédure, un index avec colonnes incluses, une pagination qui ne passe pas par `OFFSET`.

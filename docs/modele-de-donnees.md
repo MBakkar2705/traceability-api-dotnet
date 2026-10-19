@@ -78,6 +78,8 @@ Le journal. On ajoute des lignes, on ne modifie ni n'efface jamais une ligne.
 
 `StationId` et `MovementType` forment ensemble une clé étrangère sur deux colonnes vers la clé primaire de `StationCapability`. La base accepte donc un mouvement seulement si la station a cette fonction.
 
+Un index non unique, `IX_Movement_BatchId` (sur `BatchId`), sert à retrouver les mouvements d'un lot. Il est créé par `database/010_create_indexes.sql`, pas par `002`.
+
 ## 3. Choix de conception
 
 - **Deux identifiants par objet** : un numéro technique (`IDENTITY`) pour les liens entre tables, un code lisible unique pour les humains et l'API. Un code métier peut changer de format, un numéro technique ne change pas.
@@ -89,7 +91,7 @@ Le journal. On ajoute des lignes, on ne modifie ni n'efface jamais une ligne.
 - **`DECIMAL(10,2)` pour les quantités** : décimal exact, sans erreur d'arrondi (contrairement à `FLOAT`). Supérieur à 0.
 - **`DATETIME2` en UTC** : plus précis et plus étendu que `DATETIME`. L'UTC évite les ambiguïtés de fuseau et de changement d'heure.
 - **Schéma `trace`** : regroupe les objets du projet, séparés du schéma par défaut `dbo`.
-- **Pas d'index supplémentaires au départ** : les clés primaires et les contraintes d'unicité créent déjà des index. Les autres index viendront au lot 2b, après mesure avec les plans d'exécution. Une clé étrangère ne crée pas d'index toute seule.
+- **Un seul index supplémentaire, ajouté après mesure** : les clés primaires et les contraintes d'unicité créent déjà des index, et une clé étrangère ne crée pas d'index toute seule. Au lot 2b, sur 1 000 000 de lots inventés, `IX_Movement_BatchId` (sur `Movement (BatchId)`) a été ajouté : le parcours d'un lot passe de 25 412 à 15 lectures logiques. Deux autres index ont été essayés puis abandonnés, `Batch (Status)` et `Batch (FarmId)`, parce que SQL Server ne s'en servait pas ou qu'ils faisaient pire (voir [mesures.md](mesures.md)). Index simple plutôt que couvrant : voir l'[ADR 0004](adr/0004-index-simple-sur-mouvement-par-lot.md).
 
 ## 4. Ce que garantit la base, ce que garantira la procédure
 
@@ -121,3 +123,4 @@ Le journal `Movement` n'est jamais modifié : les procédures n'ont pas de `UPDA
 - Pas de découpe ni de fusion de lots.
 - Pas de gestion des retours de marchandise : les règles réelles du métier ne sont pas connues (voir [fonctionnel.md](fonctionnel.md), section 9).
 - Pas de gestion d'utilisateurs.
+- Les index sont mesurés sur des données inventées et une seule machine, et leur coût en écriture n'est pas mesuré (voir [mesures.md](mesures.md), section 5).
