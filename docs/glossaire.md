@@ -40,6 +40,22 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Authentification Windows** : se connecter à SQL Server avec son compte Windows, sans mot de passe. Utilisée en local.
 
+**`THROW`** : lève une erreur avec un numéro et un message choisis, et arrête la procédure. Ici : `THROW 50301, ...` quand un mouvement saute une étape.
+
+**Session** : une connexion ouverte à SQL Server, identifiée par un numéro (`@@SPID`). Ici : deux fenêtres SSMS sont deux sessions (56 et 55 dans l'essai du verrou).
+
+**Verrou** : une réservation posée sur des lignes pendant qu'une transaction s'en sert. Les autres sessions qui veulent les mêmes lignes attendent. Ici : `AddMovement` réserve la ligne du lot.
+
+**`UPDLOCK`** : un verrou « je lis cette ligne pour la modifier ». Une autre session qui veut faire pareil attend ; une simple lecture n'attend pas (observé). Ici : posé par `AddMovement` (voir ADR 0003).
+
+**Blocage mutuel (deadlock)** : deux sessions qui s'attendent l'une l'autre sans fin ; SQL Server en arrête une avec l'erreur 1205. Ici : pas observé, à surveiller (voir ADR 0003).
+
+**Mode SQLCMD et `:setvar`** : un mode de SSMS (menu Requête > Mode SQLCMD, réglé fenêtre par fenêtre) où `:setvar DbName TraceabilityTest` définit une variable, remplacée dans le script par `$(DbName)`. Ici : choisir la base de développement ou de test.
+
+**Garde `NOEXEC`** : `SET NOEXEC ON` fait ignorer le reste du script. Ici : utilisé quand la base n'est pas la bonne, pour que rien ne soit exécuté.
+
+**Pagination (`OFFSET` / `FETCH`)** : renvoyer les lignes par pages (la page 2 de 50 lignes, par exemple). Ici : `ListBatches`.
+
 ## API et tests
 
 **API REST** : un programme qui répond à des requêtes web (par exemple « donne-moi le lot X ») et renvoie des données. Dans ce projet : une API ASP.NET Core.
@@ -51,6 +67,8 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 **Entity Framework Core (EF Core)** : un outil qui génère le SQL à partir du code C#. Non retenu pour les règles métier de ce projet (voir ADR 0001).
 
 **Test d'intégration** : un test qui vérifie plusieurs éléments ensemble, ici la procédure et une vraie base SQL Server (voir ADR 0002).
+
+**Test de refus et test témoin** : un test de refus vérifie qu'un appel interdit est refusé (bon numéro d'erreur) sans rien changer. Un test témoin vérifie qu'un appel valide passe et produit l'effet attendu. Ici : `006_check_procedures.sql`.
 
 ## Organisation
 

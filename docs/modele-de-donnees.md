@@ -89,7 +89,7 @@ Le journal. On ajoute des lignes, on ne modifie ni n'efface jamais une ligne.
 - **`DECIMAL(10,2)` pour les quantités** : décimal exact, sans erreur d'arrondi (contrairement à `FLOAT`). Supérieur à 0.
 - **`DATETIME2` en UTC** : plus précis et plus étendu que `DATETIME`. L'UTC évite les ambiguïtés de fuseau et de changement d'heure.
 - **Schéma `trace`** : regroupe les objets du projet, séparés du schéma par défaut `dbo`.
-- **Pas d'index supplémentaires au départ** : les clés primaires et les contraintes d'unicité créent déjà des index. Les autres index viendront au lot 2, après mesure avec les plans d'exécution. Une clé étrangère ne crée pas d'index toute seule.
+- **Pas d'index supplémentaires au départ** : les clés primaires et les contraintes d'unicité créent déjà des index. Les autres index viendront au lot 2b, après mesure avec les plans d'exécution. Une clé étrangère ne crée pas d'index toute seule.
 
 ## 4. Ce que garantit la base, ce que garantira la procédure
 
