@@ -34,9 +34,23 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Procédure stockée** : un petit programme enregistré dans la base, qu'on appelle par son nom. Dans ce projet : elle porte les règles métier (voir ADR 0001).
 
-**Index** : comme l'index d'un livre, il aide SQL Server à retrouver des lignes plus vite. Les clés primaires et les contraintes `UNIQUE` en créent déjà. Dans ce projet : on en ajoute d'autres seulement après mesure.
+**Index** : comme l'index d'un livre, il aide SQL Server à retrouver des lignes plus vite. Les clés primaires et les contraintes `UNIQUE` en créent déjà. Dans ce projet : on en ajoute d'autres seulement après mesure (un seul retenu au lot 2b : `IX_Movement_BatchId`).
 
 **Plan d'exécution** : la façon dont SQL Server compte exécuter une requête (quels index, dans quel ordre). Dans ce projet : on le lit pour comprendre pourquoi une requête est lente.
+
+**Page** : l'unité de lecture de SQL Server, un bloc de 8 Ko. Une table ou un index est un ensemble de pages. Ici : la table `Batch` fait environ 10 400 pages pour un million de lots.
+
+**Lecture logique** : une page lue en mémoire pour répondre à une requête. C'est la mesure principale du lot 2b : elle ne change pas d'une exécution à l'autre, contrairement au temps. Ici : `GetBatch` lisait 25 412 pages de `Movement` sans index.
+
+**Scan et Seek** : un *Scan* parcourt une grande partie d'une table ou d'un index ; un *Seek* descend directement aux lignes cherchées. Dans SSMS en français : « Analyse » pour *Scan*, « Recherche » pour *Seek*. Ici : le parcours d'un lot passe d'un *Scan* de `Movement` à un *Seek* sur `IX_Movement_BatchId`.
+
+**Index cluster et non cluster** : l'index cluster est la table elle-même, rangée dans l'ordre de la clé primaire (un seul par table). Un index non cluster est une structure séparée, à côté, qui renvoie vers les lignes par leur clé. Ici : `PK_Movement` est cluster, `IX_Movement_BatchId` est non cluster.
+
+**Key Lookup** : pour chaque ligne trouvée par un index non cluster, SQL Server retourne lire la ligne dans la table pour récupérer les colonnes que l'index ne contient pas. Ici : 4 *Key Lookup* pour les 4 mouvements d'un lot.
+
+**Index couvrant (colonnes incluses)** : un index qui contient aussi les colonnes demandées (`INCLUDE`), donc sans *Key Lookup*, mais plus gros. Ici : essayé sur `Movement` (3 lectures au lieu de 15, mais 184,88 Mo au lieu de 56,72 Mo) et écarté (voir ADR 0004).
+
+**Index forcé (`WITH (INDEX (...))`)** : on impose un index précis à SQL Server au lieu de le laisser choisir. Ici : utilisé seulement pour comprendre une mesure, jamais dans les procédures.
 
 **Authentification Windows** : se connecter à SQL Server avec son compte Windows, sans mot de passe. Utilisée en local.
 
