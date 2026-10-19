@@ -2,7 +2,8 @@
   009_measure_searches.sql
   Measures the searches of the API on TraceabilityDev. READ ONLY: it changes nothing.
 
-  - Runs ONLY on TraceabilityDev, with the full set of 1000000 batches (007 + 008).
+  - Runs ONLY on TraceabilityDev, with the full set of 1000000 batches (007 + 008)
+    and the procedures of 004 and 005 (the script stops with an error if they are missing).
     The name is written in the script, so SQLCMD mode is not needed.
   - Replayable at any time. Contains no INSERT, UPDATE, DROP, TRUNCATE or DELETE.
   - It calls the real procedures of lot 2a (trace.GetBatch, trace.ListBatches),
@@ -37,6 +38,12 @@ END;
 IF (SELECT COUNT(*) FROM trace.Batch) <> 1000000
 BEGIN
     THROW 50003, N'The full set of 1000000 batches is needed. Run 007 with 1000000 and check with 008. Nothing was done.', 1;
+END;
+
+IF OBJECT_ID(N'trace.GetBatch', N'P') IS NULL
+   OR OBJECT_ID(N'trace.ListBatches', N'P') IS NULL
+BEGIN
+    THROW 50006, N'Procedures not found. Run 004 and 005 first. Nothing was done.', 1;
 END;
 GO
 
