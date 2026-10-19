@@ -135,11 +135,35 @@ Les 100 lectures sur `Farm` de R3 et R4 correspondent aux 50 *Seek* observés da
 
 ### 4.2 Après chaque index
 
-À remplir, un index à la fois : index créé, lectures logiques après, plan après, hypothèse confirmée ou non, décision (garder ou abandonner).
+Un index à la fois : index créé, mesure « après » avec le même script, hypothèse confirmée ou non, décision.
 
-| Index | Recherche | Lectures avant | Lectures après | Plan après | Hypothèse confirmée ? | Décision |
-|---|---|---|---|---|---|---|
-| à définir | | | | | | |
+#### Index 1 : `IX_Movement_BatchId` sur `Movement (BatchId)`, sans colonnes incluses (2026-10-19)
+
+Créé par `database/010_create_indexes.sql`. Mesuré avec le bloc R2 de `database/009_measure_searches.sql` (plan réel actif), puis la partie C de `database/008_check_volume_data.sql`.
+
+| Mesure | Avant | Après |
+|---|---|---|
+| `Movement`, lectures logiques (R2) | 25 412 (5 analyses) | **15** (1 analyse) |
+| Plan de la requête sur `Movement` | *Scan* de l'index cluster (96 % du coût), plan parallèle, pas de tri | *Seek* sur `IX_Movement_BatchId` (23 %), puis *Key Lookup* sur la clé primaire (52 %), 4 lignes ; plan non parallèle ; **pas d'étape de tri** |
+| `Batch`, `Farm`, `Station` (R1 et le reste de `GetBatch`) | 3 ; 2 ; 8 | 3 ; 2 ; 8 (inchangé) |
+| Taille de l'index | n/a | 56,72 Mo utilisés (environ 7 260 pages), soit environ 29 % de la taille de la clé primaire de `Movement` (194,92 Mo) |
+| Taille utilisée de la base (somme des index et tables) | 334,98 Mo | 391,70 Mo (+17 %) |
+
+Les 28 contrôles de `008` restent à 28 sur 28 après la création de l'index.
+
+Hypothèse R2 :
+- *Seek* sur le nouvel index : **confirmée**.
+- Pas d'étape de tri, l'ordre venant de l'index : **confirmée** (observée dans le plan).
+- « Quelques pages (unités) » : **à nuancer** : 15 lectures observées, au-dessus de « unités ».
+- Variante couvrante : non encore testée. Le plan montre un *Key Lookup* (52 % du coût, 4 lectures dans la table, une par mouvement trouvé) que seule la variante couvrante supprimerait.
+
+Non mesuré : le coût de l'index sur les écritures (`CreateBatch`, `AddMovement`). Les temps de l'exécution « après » ne sont pas comparés à ceux d'avant (compilation et plan affiché inclus).
+
+Décision (provisoire) : l'index est gardé. À comparer ensuite avec la variante couvrante, avant toute autre conclusion.
+
+| Index | Recherche | Lectures avant | Lectures après | Plan après | Taille | Hypothèse confirmée ? | Décision |
+|---|---|---|---|---|---|---|---|
+| `IX_Movement_BatchId` | R2 | 25 412 | 15 | *Seek* + *Key Lookup*, sans tri | 56,72 Mo | oui, avec la nuance sur « unités » | gardé, variante couvrante à comparer |
 
 ## 5. Limites de ces mesures
 
