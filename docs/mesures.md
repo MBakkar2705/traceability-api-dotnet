@@ -165,6 +165,31 @@ Décision (provisoire) : l'index est gardé. À comparer ensuite avec la variant
 |---|---|---|---|---|---|---|---|
 | `IX_Movement_BatchId` | R2 | 25 412 | 15 | *Seek* + *Key Lookup*, sans tri | 56,72 Mo | oui, avec la nuance sur « unités » | gardé, variante couvrante à comparer |
 
+#### Variante couvrante de l'index 1 (comparaison, 2026-10-19)
+
+Pour décider entre un index simple et un index « couvrant » (qui contient aussi les colonnes demandées), la variante couvrante a été créée à côté de l'index simple, dans une fenêtre SSMS jetable, non sauvegardée :
+
+```sql
+CREATE NONCLUSTERED INDEX IX_Movement_BatchId_Covering
+    ON trace.Movement (BatchId)
+    INCLUDE (MovementType, StationId, QuantityKg, OccurredAt);
+```
+
+Avec les deux index présents, le bloc R2 de `009` a été relancé. L'infobulle de l'opérateur « Recherche d'index » du plan donne comme objet `[Movement].[IX_Movement_BatchId_Covering]` : SQL Server a utilisé la variante couvrante, et le *Key Lookup* a disparu.
+
+| | Index simple | Variante couvrante |
+|---|---|---|
+| `Movement`, lectures logiques (R2) | 15 | 3 |
+| *Key Lookup* dans le plan | oui (52 % du coût) | non |
+| Taille | 56,72 Mo (7 260 pages) | 184,88 Mo (23 664 pages) |
+| Taille de la clé primaire de `Movement`, pour comparaison | 194,92 Mo | 194,92 Mo |
+
+Écart : 12 lectures de moins avec la variante couvrante, pour 128,16 Mo de plus (3,3 fois la taille de l'index simple).
+
+Décision : on garde l'index simple et on abandonne la variante couvrante. Elle a été supprimée avec `DROP INDEX IX_Movement_BatchId_Covering ON trace.Movement;` ; la liste des index restants sur `Movement` a été vérifiée : `IX_Movement_BatchId` et `PK_Movement`. Raisons et alternatives : [ADR 0004](adr/0004-index-simple-sur-mouvement-par-lot.md).
+
+Non mesuré : le coût en écriture des deux variantes (`AddMovement`, `CreateBatch`). Le choix repose sur la taille et sur les lectures de R2 seulement.
+
 ## 5. Limites de ces mesures
 
 - Données inventées, générées par des formules fixes : la répartition (statuts selon le numéro, fermes régulières) est plus régulière que dans une vraie exploitation.
