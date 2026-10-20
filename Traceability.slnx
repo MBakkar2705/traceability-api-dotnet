@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Traceability.Api/Traceability.Api.csproj" />
+    <Project Path="src/Traceability.Data/Traceability.Data.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Traceability.IntegrationTests/Traceability.IntegrationTests.csproj" />
+    <Project Path="tests/Traceability.UnitTests/Traceability.UnitTests.csproj" />
+  </Folder>
+</Solution>
