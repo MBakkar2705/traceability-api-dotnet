@@ -1,6 +1,6 @@
-# Vérification (lots 1, 2a, 2b et 3a)
+# Vérification (lots 1, 2a, 2b, 3a et 3b)
 
-Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
+Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8) et l'API des fermes et des stations (lot 3b, section 9). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
 
 Lot 1 : observé dans SQL Server (instance locale, base `TraceabilityDev`) le 2026-10-18, avec les scripts du dossier `database/`.
 
@@ -237,3 +237,76 @@ Observé dans SQL Server (instance locale 17.0) le 2026-10-20, sur la base `Trac
 - Les tests à l'œil : avant chacun des tests 32, 33 et 38 de `006` et des tests de contenu de `012`, le script affiche dans la grille une ligne « Test N » qui dit ce qu'il faut voir, puis les tableaux de la procédure. Les tableaux s'empilent dans l'onglet Résultats : agrandir le volet et faire défiler.
 - Pour la mesure : `009_measure_searches.sql` sur `TraceabilityDev` (1 000 000 de lots), plan d'exécution réel actif (Ctrl+M), puis copier le contenu de l'onglet Messages.
 - Si SSMS affiche des erreurs rouges « Impossible de trouver la procédure stockée » alors que les procédures existent, actualiser le cache de l'IntelliSense (Ctrl+Maj+R) : le compteur d'erreurs est retombé à 0, observé aux lots 2a et 3a.
+
+## 9. Lot 3b : API pour les fermes et les stations
+
+Observé le 2026-10-20 sous Windows 11, avec le SDK .NET 10.0.402 (exécution 10.0.13), SQL Server 2025 (instance locale 17.0) et xUnit 2.9.3. Les tests d'intégration tournent sur la base `TraceabilityTest`. Les essais à la main (section 9.2), en lecture seule, ont été faits sur `TraceabilityDev`. Les routes sont décrites dans le [README](../README.md), les erreurs des procédures dans [procedures.md](procedures.md). Les données de test sont inventées.
+
+### 9.1 Ce qui a été construit
+
+| Projet | Rôle |
+|---|---|
+| `src/Traceability.Data` | `TraceabilityDb` : appelle les 6 procédures des fermes et des stations en ADO.NET (voir [ADR 0005](adr/0005-ado-net-sans-dapper.md)). |
+| `src/Traceability.Api` | 2 contrôleurs (6 routes), forme des codes, traduction des erreurs SQL en réponses HTTP, Swagger UI en développement. |
+| `tests/Traceability.UnitTests` | 49 cas sans base (U1 à U8). |
+| `tests/Traceability.IntegrationTests` | 30 cas sur `TraceabilityTest` : 25 par HTTP sur l'API lancée dans le test, 3 de garde-fous et de nettoyage (I1 à I3) et 2 sur `Data`. |
+
+Les 30 cas d'intégration regroupent les 19 tests prévus au plan, 2 tests ajoutés (code de station mal formé, type de mouvement absent) et les lignes de données des tests à plusieurs cas (page invalide).
+
+Paquets principaux : `Microsoft.Data.SqlClient` 7.1.1, `System.Security.Cryptography.Pkcs` 10.0.13 (version imposée, voir 9.2), `Swashbuckle.AspNetCore.SwaggerUI` 10.3.1, `Microsoft.AspNetCore.OpenApi` 10.0.13, `Microsoft.AspNetCore.Mvc.Testing` 10.0.13.
+
+### 9.2 Ce qui est prouvé
+
+- **Compilation** : `dotnet build Traceability.slnx` réussit pour les 4 projets, sans avertissement.
+- **Avertissements de sécurité** : l'installation de `Microsoft.Data.SqlClient` 7.1.1 a affiché NU1902 (gravité moyenne) et NU1903 (gravité élevée). Ils visent `System.Security.Cryptography.Pkcs` 9.0.18, tiré par SqlClient : deux avis Microsoft du 2026-10-13, de type déni de service, corrigés en 9.0.21 et en 10.0.13. Avec la version 10.0.13 imposée dans `Traceability.Data`, les avertissements ont disparu (observé). On ne sait pas si SqlClient appelle les fonctions concernées.
+- **HTTPS** : le certificat de développement a été approuvé (`dotnet dev-certs https --trust`, fenêtre de confirmation acceptée). L'API, lancée avec `dotnet run --project src/Traceability.Api --launch-profile https`, répond sur `https://localhost:7080` sans avertissement de certificat dans le navigateur.
+- **Navigateur** : `dotnet run` n'a pas ouvert le navigateur, malgré `launchBrowser: true` dans le profil. La documentation de `dotnet run` indique qu'il garde cette valeur sans ouvrir de navigateur : c'est `dotnet watch` ou Visual Studio qui l'utilisent.
+- **Connexion depuis .NET** (fichier jetable hors dépôt, lisant `ConnectionStrings__Default`) : sans `TrustServerCertificate`, `SqlException` numéro -2146893019, « la chaîne de certificats a été fournie par une autorité qui n'est pas approuvée » (ce numéro vient de Windows, pas de SQL Server) ; avec `TrustServerCertificate=True`, « Connexion OK, base : TraceabilityDev ».
+- **Essais à la main sur `TraceabilityDev`, en lecture seule** :
+  - `GET /farms` : 200, 20 fermes de `F001` à `F020`, `totalCount` 200, `pageNumber` 1, `pageSize` 20 (navigateur, puis « Try it out » de Swagger UI).
+  - `GET /stations/ZZ-UNKNOWN` : 404, `application/problem+json`, `errorCode` 50102, `detail` « Station 'ZZ-UNKNOWN' was not found. » (`curl`).
+  - `GET /farms?pageNumber=abc` : 400 par ASP.NET Core, avec `errors.pageNumber`.
+  - `GET /stations/AB%20CD` : 400 par l'API. Au premier essai, le corps n'avait ni `type` ni `traceId`, contrairement aux autres erreurs ; après correction (les erreurs de forme passent par le `ModelState` du contrôleur), le corps a `type`, `title`, `status`, `errors` et `traceId`.
+  - `GET /stations/SITE-01` (Swagger UI) : 200, `name` « Reception and sorting site 01 », `capabilities` `["RECEPTION", "SORTING"]` : les deux tableaux de `GetStation` forment un seul objet, les fonctions sont en majuscules et dans l'ordre du cycle de vie.
+  - Swagger UI liste les 6 routes et 8 schémas.
+- **Tests unitaires** : 49 cas réussis, 0 échec. U1 : les 16 numéros d'erreur des procédures, par famille (404, 409, 422, 400). U2 : un numéro inconnu donne 500 sans le texte SQL. U3 et U4 : l'unicité (2627) selon le nom de la contrainte, et une contrainte inconnue donne 500. U5 : `NOT NULL` (515) donne 400. U6 : la forme des codes. U7 : les champs absents. U8 : la page par défaut, lue par réflexion sur les contrôleurs.
+- **Tests d'intégration** : 30 cas réussis, 0 échec.
+  - Garde-fous : l'API de test se connecte à `TraceabilityTest` alors que `ConnectionStrings__Default` pointait vers `TraceabilityDev` (I1) ; le contrôle refuse la base `master` (I2, par un `SELECT`, aucun `DELETE` envoyé) ; le nettoyage vide les 5 tables, y compris des lignes insérées exprès (I3).
+  - Numéros d'erreur lus dans `SqlException.Number` et arrivés jusqu'au client par HTTP : 50102, 50200, 50201, 50203, 50400, 50402 et 50404.
+  - Les deux erreurs SQL que l'API et les procédures évitent d'habitude, provoquées exprès : un `INSERT` direct en double donne l'erreur 2627 avec `UQ_Farm_Code` dans le message, et la traduction du vrai message donne 409 et 50200 ; `CreateFarm` appelée avec un nom `NULL` donne l'erreur 515, traduite en 400.
+  - Fermes : création 201 sans identifiant technique ni `Location` ; liste dans l'ordre de création avec `totalCount` et page 1 de 20 par défaut ; page invalide (0, -1, taille 0, taille 1001) : 400 et 50404 ; page au-delà de la fin : 200, aucune ligne, même `totalCount`.
+  - Stations : création 201 avec `Location` finissant par `/stations/{code}` ; fonction ajoutée : 201, corps vide, `Location` ; type de mouvement en minuscules accepté et relu en majuscules ; fonctions relues en `RECEPTION`, `SORTING`, `PACKING` quel que soit l'ordre d'ajout ; station neuve : liste vide ; liste et pages invalides (page 0, taille 1001).
+  - Erreurs de forme (400, sans `errorCode`) : champs obligatoires absents, nombre illisible dans l'adresse, code de station mal formé, `movementType` absent.
+- **Un test peut échouer** : la ligne de `SqlErrorTranslator.cs` qui traduit la famille 502xx a été changée de 409 à 400 (modification non commitée). Résultat : 4 échecs unitaires (U1, numéros 50200 à 50203) et 3 échecs d'intégration (F2, S2 et S4, « Expected: Conflict, Actual: BadRequest »), 45 et 27 cas réussis. La ligne a été rétablie : l'empreinte SHA-256 du fichier est identique à l'originale, puis les 79 cas (49 + 30) réussissent.
+
+### 9.3 Ce qui n'est pas prouvé
+
+- **Les routes des lots** (lot 3c) : les erreurs 50100, 50101, 50300 à 50303, 50401 et 50403 n'ont jamais traversé l'API. La règle « 503xx donne 422 » n'est testée qu'en unitaire.
+- **Deux requêtes qui créent le même code au même moment** : l'erreur 2627 n'est prouvée que par un `INSERT` direct, car les procédures vérifient le code avant d'insérer.
+- **L'erreur 500** : elle n'est testée qu'en unitaire (U2). Aucune panne SQL n'a traversé l'API, et l'écriture de la vraie erreur dans le journal du serveur n'a pas été observée.
+- **Longueurs** : un code trop long est refusé par l'API (testé en unitaire), mais pas par un test HTTP. La longueur du nom et de la région (100) n'est contrôlée ni par l'API ni par un test : le comportement avec un texte plus long n'est pas observé.
+- **Cas non testés par HTTP** : une page au-delà de la fin pour les stations ; les tailles de page 1 et 1 000 ; la casse des codes.
+- **Swagger UI** : il ne documente ni les erreurs possibles ni des descriptions des routes (prévu au lot 3c), et affiche « integer | string ($int32) » comme type de `pageNumber` et `pageSize`, sans que j'en aie cherché la cause.
+- **CORS** : non configuré, aucun frontend n'a été essayé.
+- **En-tête `Location`** : seul son suffixe `/stations/{code}` est testé, pas sa forme complète (absolue ou relative).
+- **Configuration** : la chaîne de connexion est lue à la première utilisation. Si `ConnectionStrings__Default` manque, l'erreur n'apparaît qu'à la première requête qui touche la base : non essayé.
+- **Vitesse et charge** : rien n'est mesuré côté API, ni pour `ListFarms` et `ListStations` sur un grand volume.
+- **Système** : .NET 10 sur Windows 11 22H2, version qui n'est pas dans la liste officielle de .NET 10 ; seul ce qui a été observé ce jour est prouvé.
+- **Les tests** : ils n'ont été vus échouer que pour un seul défaut (la famille 502xx). Un test peut ne pas détecter un autre défaut.
+- **Deux garde-fous n'ont jamais été déclenchés** : celui que le lot SQL de nettoyage répète lui-même (erreur 50099, avant tout `DELETE`), et le refus de démarrer de la fixture quand l'API de test ne pointe pas vers `TraceabilityTest`. Seul le contrôle `SELECT DB_NAME()` du code C# est testé contre une autre base (I2, sur `master`).
+- **`TraceabilityTest` a été vidée** par le nettoyage des tests d'intégration : les lignes de `006` (`ZZ-…`) et de `012` (`ZY-…`) n'y sont plus. Il faut relancer `006` et `012` pour les retrouver (non fait).
+
+### 9.4 Rejouer la vérification
+
+- Prérequis : le README, section « API (lot 3b) » (certificat, variables d'environnement, deux bases).
+- `dotnet build Traceability.slnx`, puis `dotnet test Traceability.slnx` : résumé attendu `total : 79; échec : 0; réussi : 79`. **Attention** : les tests d'intégration exécutent 5 `DELETE` sans `WHERE` sur `TraceabilityTest` (jamais sur `TraceabilityDev`).
+- Essais à la main, avec l'API lancée (`dotnet run --project src/Traceability.Api --launch-profile https`), dans une autre fenêtre PowerShell :
+
+  ```powershell
+  curl.exe -i --ssl-no-revoke https://localhost:7080/stations/ZZ-UNKNOWN
+  curl.exe -i --ssl-no-revoke "https://localhost:7080/farms?pageNumber=abc"
+  curl.exe -i --ssl-no-revoke "https://localhost:7080/stations/AB%20CD"
+  ```
+
+  Résultats observés : 404 avec `errorCode` 50102, puis deux 400 avec un champ `errors` et sans `errorCode`.
+- Pour voir un test échouer : dans `src/Traceability.Api/Errors/SqlErrorTranslator.cs`, passer le 409 de la famille 502xx à 400, lancer `dotnet test Traceability.slnx` (4 échecs unitaires, 3 d'intégration), puis rétablir la ligne.
