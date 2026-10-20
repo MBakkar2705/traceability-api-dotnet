@@ -12,7 +12,10 @@
   - A refusal test is OK if: the error number is the expected one, the data is
     unchanged (dbo.TestFingerprint), and no transaction is left open.
     A control test is OK if the valid case is accepted AND has the expected effect.
-  - Test 30 (GetBatch) returns two result sets: their content is checked BY EYE.
+  - Tests 30, 32, 33 and 38 (GetBatch, ListBatches) return two result sets: the script
+    checks their number and shape (WITH RESULT SETS), their content is checked BY EYE.
+    Tests 32, 33 and 38 show what to expect in the grid, before the results (changed
+    when ListBatches got its total).
   - Creates one helper function in TraceabilityTest only: dbo.TestFingerprint().
 */
 
@@ -90,11 +93,6 @@ DECLARE @before NVARCHAR(200);
 -- Tables that receive what the procedures return.
 DECLARE @farmOut    TABLE (FarmId INT, Code NVARCHAR(20), Name NVARCHAR(100), Region NVARCHAR(100));
 DECLARE @stationOut TABLE (StationId INT, Code NVARCHAR(20), Name NVARCHAR(100));
-DECLARE @list32  TABLE (seq INT IDENTITY(1,1), BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50), HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20));
-DECLARE @list33  TABLE (seq INT IDENTITY(1,1), BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50), HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20));
-DECLARE @list38a TABLE (seq INT IDENTITY(1,1), BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50), HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20));
-DECLARE @list38b TABLE (seq INT IDENTITY(1,1), BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50), HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20));
-DECLARE @list38c TABLE (seq INT IDENTITY(1,1), BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50), HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20));
 
 -- Setup: starting data inserted DIRECTLY in the tables (not through the procedures),
 -- so a defect in a procedure cannot spoil the tests of another one.
@@ -823,46 +821,56 @@ END CATCH;
 
 /* ---------- ListBatches (tests 32 to 38) ---------- */
 
--- 32. ListBatches: filter by status
+-- 32. ListBatches: filter by status (shape checked by the script, content BY EYE)
+SELECT N'Test 32: ListBatches, status SORTED, page 1, page size 1000. Check by eye the 2 result sets just below.' AS check_by_eye,
+       N'1) only SORTED rows: ZZ-B-SORT is in the list, ZZ-B-RECV is not' AS result_set_1,
+       CONCAT(N'2) one row: TotalCount = ', (SELECT COUNT(*) FROM trace.Batch WHERE Status = N'SORTED')) AS result_set_2;
 BEGIN TRY
-    INSERT @list32 (BatchCode, FarmCode, Variety, HarvestDate, QuantityKg, Status) EXEC trace.ListBatches
+    EXEC trace.ListBatches
          @Status = N'SORTED', @FarmCode = NULL, @PageNumber = 1,
-         @PageSize = 1000;
+         @PageSize = 1000
+    WITH RESULT SETS
+    (
+        (BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50),
+         HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20)),
+        (TotalCount INT)
+    );
     INSERT @results (test_name, expected, outcome, detail)
-    VALUES (N'ListBatches: filter by status', N'(accepted)',
-            CASE WHEN (SELECT COUNT(*) FROM @list32 WHERE Status <> N'SORTED') = 0
-                 AND (SELECT COUNT(*) FROM @list32 WHERE BatchCode = N'ZZ-B-SORT') = 1
-                 AND (SELECT COUNT(*) FROM @list32 WHERE BatchCode = N'ZZ-B-RECV') = 0
-                 THEN N'Accepted as expected'
-                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
-            N'Only SORTED batches are returned: ZZ-B-SORT is there, ZZ-B-RECV is not');
+    VALUES (N'ListBatches: filter by status (content checked by eye)', N'(accepted)',
+            N'To check by eye (see the 2 result sets above)',
+            N'The script checked the number and the shape of the result sets, not the values');
 END TRY
 BEGIN CATCH
     INSERT @results (test_name, expected, outcome, detail)
-    VALUES (N'ListBatches: filter by status', N'(accepted)',
-            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+    VALUES (N'ListBatches: filter by status (content checked by eye)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused or wrong shape, error ', ERROR_NUMBER()),
             LEFT(ERROR_MESSAGE(), 200));
     IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
 END CATCH;
 
--- 33. ListBatches: filter by farm
+-- 33. ListBatches: filter by farm (shape checked by the script, content BY EYE)
+SELECT N'Test 33: ListBatches, farm ZZ-F02, page 1, page size 1000. Check by eye the 2 result sets just below.' AS check_by_eye,
+       N'1) exactly 2 rows, both with FarmCode ZZ-F02: ZZ-B-F2A and ZZ-B-F2B' AS result_set_1,
+       N'2) one row: TotalCount = 2' AS result_set_2;
 BEGIN TRY
-    INSERT @list33 (BatchCode, FarmCode, Variety, HarvestDate, QuantityKg, Status) EXEC trace.ListBatches
+    EXEC trace.ListBatches
          @Status = NULL, @FarmCode = N'ZZ-F02', @PageNumber = 1,
-         @PageSize = 1000;
+         @PageSize = 1000
+    WITH RESULT SETS
+    (
+        (BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50),
+         HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20)),
+        (TotalCount INT)
+    );
     INSERT @results (test_name, expected, outcome, detail)
-    VALUES (N'ListBatches: filter by farm', N'(accepted)',
-            CASE WHEN (SELECT COUNT(*) FROM @list33) = 2
-                 AND (SELECT COUNT(*) FROM @list33
-                      WHERE FarmCode = N'ZZ-F02' AND BatchCode IN (N'ZZ-B-F2A', N'ZZ-B-F2B')) = 2
-                 THEN N'Accepted as expected'
-                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
-            N'Exactly the 2 batches of farm ZZ-F02');
+    VALUES (N'ListBatches: filter by farm (content checked by eye)', N'(accepted)',
+            N'To check by eye (see the 2 result sets above)',
+            N'The script checked the number and the shape of the result sets, not the values');
 END TRY
 BEGIN CATCH
     INSERT @results (test_name, expected, outcome, detail)
-    VALUES (N'ListBatches: filter by farm', N'(accepted)',
-            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+    VALUES (N'ListBatches: filter by farm (content checked by eye)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused or wrong shape, error ', ERROR_NUMBER()),
             LEFT(ERROR_MESSAGE(), 200));
     IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
 END CATCH;
@@ -951,30 +959,47 @@ BEGIN CATCH
     IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
 END CATCH;
 
--- 38. ListBatches: pages follow each other
+-- 38. ListBatches: pages follow each other (shape checked by the script, content BY EYE)
+SELECT N'Test 38: ListBatches, farm ZZ-F03, page size 2, pages 1, 2 and 3. Check by eye the 6 result sets just below (2 per page).' AS check_by_eye,
+       N'rows: page 1 = ZZ-P1, ZZ-P2 / page 2 = ZZ-P3, ZZ-P4 / page 3 = ZZ-P5 (no gap, no duplicate)' AS rows_expected,
+       N'totals: each page is followed by one row, TotalCount = 5' AS totals_expected;
 BEGIN TRY
-    INSERT @list38a (BatchCode, FarmCode, Variety, HarvestDate, QuantityKg, Status) EXEC trace.ListBatches
+    EXEC trace.ListBatches
          @Status = NULL, @FarmCode = N'ZZ-F03', @PageNumber = 1,
-         @PageSize = 2;
-    INSERT @list38b (BatchCode, FarmCode, Variety, HarvestDate, QuantityKg, Status) EXEC trace.ListBatches
+         @PageSize = 2
+    WITH RESULT SETS
+    (
+        (BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50),
+         HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20)),
+        (TotalCount INT)
+    );
+    EXEC trace.ListBatches
          @Status = NULL, @FarmCode = N'ZZ-F03', @PageNumber = 2,
-         @PageSize = 2;
-    INSERT @list38c (BatchCode, FarmCode, Variety, HarvestDate, QuantityKg, Status) EXEC trace.ListBatches
+         @PageSize = 2
+    WITH RESULT SETS
+    (
+        (BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50),
+         HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20)),
+        (TotalCount INT)
+    );
+    EXEC trace.ListBatches
          @Status = NULL, @FarmCode = N'ZZ-F03', @PageNumber = 3,
-         @PageSize = 2;
+         @PageSize = 2
+    WITH RESULT SETS
+    (
+        (BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50),
+         HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20)),
+        (TotalCount INT)
+    );
     INSERT @results (test_name, expected, outcome, detail)
-    VALUES (N'ListBatches: pages follow each other', N'(accepted)',
-            CASE WHEN (SELECT STRING_AGG(BatchCode, N',') WITHIN GROUP (ORDER BY seq) FROM @list38a) = N'ZZ-P1,ZZ-P2'
-                 AND (SELECT STRING_AGG(BatchCode, N',') WITHIN GROUP (ORDER BY seq) FROM @list38b) = N'ZZ-P3,ZZ-P4'
-                 AND (SELECT STRING_AGG(BatchCode, N',') WITHIN GROUP (ORDER BY seq) FROM @list38c) = N'ZZ-P5'
-                 THEN N'Accepted as expected'
-                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
-            N'Farm ZZ-F03, page size 2: page 1 = P1,P2; page 2 = P3,P4; page 3 = P5');
+    VALUES (N'ListBatches: pages follow each other (content checked by eye)', N'(accepted)',
+            N'To check by eye (see the 6 result sets above)',
+            N'The script checked the number and the shape of the result sets, not the values');
 END TRY
 BEGIN CATCH
     INSERT @results (test_name, expected, outcome, detail)
-    VALUES (N'ListBatches: pages follow each other', N'(accepted)',
-            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+    VALUES (N'ListBatches: pages follow each other (content checked by eye)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused or wrong shape, error ', ERROR_NUMBER()),
             LEFT(ERROR_MESSAGE(), 200));
     IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
 END CATCH;

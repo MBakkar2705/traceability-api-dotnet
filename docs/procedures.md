@@ -1,6 +1,6 @@
 # Procédures stockées
 
-Ce document décrit ce que les 7 procédures du schéma `trace` doivent faire : leurs paramètres, leurs contrôles et leurs erreurs. C'est le contrat sur lequel s'appuieront les scripts, les tests et, plus tard, l'API.
+Ce document décrit ce que les 10 procédures du schéma `trace` doivent faire : leurs paramètres, leurs contrôles et leurs erreurs. C'est le contrat sur lequel s'appuieront les scripts, les tests et, plus tard, l'API.
 
 Les règles métier sont dans [fonctionnel.md](fonctionnel.md), le modèle dans [modele-de-donnees.md](modele-de-donnees.md). L'avancement est dans le [README](../README.md) ; les preuves observées sont dans [verification.md](verification.md).
 
@@ -15,7 +15,7 @@ Les règles métier sont dans [fonctionnel.md](fonctionnel.md), le modèle dans 
 - **Valeur `NULL`** : un code `NULL` compte comme un code vide (50400), une quantité `NULL` comme une quantité invalide (50401). Les autres paramètres obligatoires à `NULL` ne sont pas contrôlés par les procédures : ils sont refusés par les contraintes `NOT NULL` du lot 1, avec l'erreur SQL Server habituelle.
 - **Appels par nom de paramètre** (`@BatchCode = ...`).
 
-## 2. Les 7 procédures
+## 2. Les 10 procédures
 
 | Procédure | Rôle |
 |---|---|
@@ -25,9 +25,12 @@ Les règles métier sont dans [fonctionnel.md](fonctionnel.md), le modèle dans 
 | `trace.CreateBatch` | Crée un lot et son premier mouvement `RECEPTION`. |
 | `trace.AddMovement` | Ajoute le mouvement suivant d'un lot et met le lot à jour. |
 | `trace.GetBatch` | Donne un lot avec son parcours. |
-| `trace.ListBatches` | Liste les lots, par statut et/ou par ferme, une page à la fois. |
+| `trace.ListBatches` | Liste les lots, par statut et/ou par ferme, une page à la fois, avec leur nombre total. |
+| `trace.ListFarms` | Liste les fermes, une page à la fois, avec leur nombre total. |
+| `trace.ListStations` | Liste les stations, une page à la fois, avec leur nombre total. |
+| `trace.GetStation` | Donne une station avec ses fonctions. |
 
-Pas de procédure pour lister les fermes et les stations : elles viendront avec l'API (lot 3), si elle en a besoin.
+Les trois dernières (`ListFarms`, `ListStations`, `GetStation`) ont été ajoutées au lot 3a (script `011`), pour que l'API puisse lister les fermes et les stations et lire une station avec ses fonctions.
 
 ### 2.1 `trace.CreateFarm`
 
@@ -131,7 +134,47 @@ Contrôles, dans cet ordre :
 2. ferme existante (si elle est donnée) : sinon 50101 ;
 3. numéro de page à partir de 1 et taille de page de 1 à 1 000 : sinon 50404.
 
-Résultat : une page de lots, triés par numéro de lot (`BatchId`), avec `BatchCode`, `FarmCode`, `Variety`, `HarvestDate`, `QuantityKg`, `Status`. Un seul tableau, sans le nombre total de lots.
+Résultat, en deux tableaux :
+
+1. une page de lots, triés par numéro de lot (`BatchId`) : `BatchCode`, `FarmCode`, `Variety`, `HarvestDate`, `QuantityKg`, `Status` ;
+2. le nombre total de lots qui correspondent aux filtres : une ligne, une colonne, `TotalCount`.
+
+Le total est lu par une requête séparée de la page, sans verrou, avec les mêmes filtres (statut et ferme). Il a été ajouté au lot 3a, pour que les trois listes aient la même forme.
+
+### 2.8 `trace.ListFarms`
+
+Paramètres : `@PageNumber INT`, `@PageSize INT`.
+
+Contrôle : numéro de page à partir de 1 et taille de page de 1 à 1 000 (un paramètre `NULL` est invalide) : sinon 50404.
+
+Résultat, en deux tableaux :
+
+1. une page de fermes, par ordre de création (`FarmId`) : `Code`, `Name`, `Region` ;
+2. le nombre total de fermes : une ligne, une colonne, `TotalCount`.
+
+Une page au-delà de la fin donne un premier tableau vide ; le total ne change pas. Le total est lu par une requête séparée de la page, sans verrou (voir section 5).
+
+### 2.9 `trace.ListStations`
+
+Paramètres : `@PageNumber INT`, `@PageSize INT`.
+
+Contrôle : le même que `ListFarms` (50404).
+
+Résultat, en deux tableaux :
+
+1. une page de stations, par ordre de création (`StationId`) : `Code`, `Name` ;
+2. le nombre total de stations : une ligne, une colonne, `TotalCount`.
+
+### 2.10 `trace.GetStation`
+
+Paramètre : `@StationCode NVARCHAR(20)`.
+
+Erreur : station inexistante, 50102. Un code `NULL` ne trouve aucune station : même erreur.
+
+Résultat, en deux tableaux :
+
+1. la station : `Code`, `Name` ;
+2. ses fonctions : `MovementType`, dans l'ordre du cycle de vie (`RECEPTION`, `SORTING`, `PACKING`, `SHIPMENT`). Ce tableau est vide si la station n'a encore aucune fonction.
 
 ## 3. Ce qui reste protégé par les contraintes
 
@@ -154,7 +197,7 @@ Les numéros de 50000 à 50099 sont réservés aux gardes des scripts. Les scrip
 |---|---|---|---|---|
 | 50100 | Introuvable | Lot | `Batch 'LOT-1' was not found.` | `AddMovement`, `GetBatch` |
 | 50101 | Introuvable | Ferme | `Farm 'F99' was not found.` | `CreateBatch`, `ListBatches` |
-| 50102 | Introuvable | Station | `Station 'X' was not found.` | `AddStationCapability`, `CreateBatch`, `AddMovement` |
+| 50102 | Introuvable | Station | `Station 'X' was not found.` | `AddStationCapability`, `CreateBatch`, `AddMovement`, `GetStation` |
 | 50200 | Existe déjà | Code de ferme | `Farm code 'F01' already exists.` | `CreateFarm` |
 | 50201 | Existe déjà | Code de station | `Station code 'SITE-01' already exists.` | `CreateStation` |
 | 50202 | Existe déjà | Code de lot | `Batch code 'LOT-1' already exists.` | `CreateBatch` |
@@ -167,7 +210,7 @@ Les numéros de 50000 à 50099 sont réservés aux gardes des scripts. Les scrip
 | 50401 | Valeur invalide | Quantité à 0 ou négative | `The quantity must be greater than 0.` | `CreateBatch`, `AddMovement` |
 | 50402 | Valeur invalide | Type de mouvement inconnu | `Unknown movement type 'LOST'.` | `AddStationCapability`, `AddMovement` |
 | 50403 | Valeur invalide | Statut inconnu | `Unknown status 'LOST'.` | `ListBatches` |
-| 50404 | Valeur invalide | Page ou taille de page invalide | `Invalid page number or page size.` | `ListBatches` |
+| 50404 | Valeur invalide | Page ou taille de page invalide | `Invalid page number or page size.` | `ListBatches`, `ListFarms`, `ListStations` |
 
 Les familles permettront à l'API de répondre sans connaître chaque règle : 501xx introuvable, 502xx existe déjà, 503xx règle métier violée, 504xx valeur invalide.
 
@@ -181,5 +224,7 @@ Les familles permettront à l'API de répondre sans connaître chaque règle : 5
 - **`GetBatch` lit le lot puis son parcours en deux requêtes**, sans verrou : si un mouvement est ajouté entre les deux, le parcours peut contenir un mouvement que le lot ne reflète pas encore.
 - **`AddMovement` appelée dans une transaction de l'appelant** : son `COMMIT` ne valide rien, le verrou et la modification restent jusqu'au `COMMIT` de l'appelant (observé pendant la preuve de l'ADR 0003). En cas d'erreur, la procédure exécute `ROLLBACK` : d'après le code, cela annule aussi le travail de l'appelant (non testé).
 - **Pas de modification ni de suppression** de fermes et de stations.
-- **`ListBatches`** ne donne pas le nombre total de lots.
+- **`ListFarms`, `ListStations`, `ListBatches` et `GetStation` lisent en deux requêtes, sans verrou** (la page puis le total, la station puis ses fonctions) : si une ligne est ajoutée entre les deux lectures, les deux tableaux peuvent ne pas correspondre. Même principe que `GetBatch`.
+- **`ListFarms` et `ListStations` ne sont pas mesurées** sur un grand volume : `TraceabilityDev` ne compte que 200 fermes et 30 stations. Le coût de leur tri et de leur total n'est pas connu.
+- **Le total de `ListBatches` coûte cher** (mesuré au lot 3a, sur 1 000 000 de lots inventés, détail dans [mesures.md](mesures.md), section 4.3) : 10 574 lectures de `Batch` à chaque appel, quel que soit le filtre, soit environ 37 fois la page d'une petite ferme (289 lectures) et environ 112 % de plus que la page de `RECEIVED`. Le plan du total n'a pas été examiné. Il est gardé pour que les trois listes aient la même forme ; son optimisation est prévue dans un lot à part.
 - **`ListBatches` : les pages éloignées coûtent cher** (mesuré au lot 2b, sur 1 000 000 de lots inventés, détail dans [mesures.md](mesures.md)). Sans filtre, la page 900 de 1 000 lots lit 9 351 pages de `Batch`, trie 900 048 lignes (avec débordement dans `tempdb`) et lit 1 800 000 fois `Farm`, en 1,6 à 8 secondes selon l'exécution. Avec une ferme de 2 777 lots, la page 20 de 50 lots coûte 3 765 lectures, contre 189 pour la page 1. `RECEIVED`, dont les lots sont les derniers dans l'ordre de `BatchId` dans nos données, coûte 9 351 lectures dès la page 1. Aucun des index essayés (`Batch (Status)`, `Batch (FarmId)`) n'améliore ces cas sans modifier la procédure. Pistes non essayées : forcer un index dans la procédure, un index avec colonnes incluses, une pagination qui ne passe pas par `OFFSET`.

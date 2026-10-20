@@ -290,8 +290,10 @@ GO
 
 /* ------------------------------------------------------------------ */
 /* trace.ListBatches                                                  */
-/* One page of batches, by batch number. Both filters are optional    */
-/* (NULL = no filter).                                                */
+/* Result 1: one page of batches, by batch number. Both filters       */
+/* are optional (NULL = no filter).                                   */
+/* Result 2: the total number of batches that match the filters       */
+/* (one row, one column), read by a separate query, without a lock.   */
 /* ------------------------------------------------------------------ */
 CREATE OR ALTER PROCEDURE trace.ListBatches
     @Status     NVARCHAR(20) = NULL,
@@ -343,6 +345,12 @@ BEGIN
     ORDER BY b.BatchId
     OFFSET (CAST(@PageNumber AS BIGINT) - 1) * @PageSize ROWS
     FETCH NEXT @PageSize ROWS ONLY;
+
+    -- The total uses the same filters as the page.
+    SELECT COUNT(*) AS TotalCount
+    FROM trace.Batch AS b
+    WHERE (@Status IS NULL OR b.Status = @Status)
+      AND (@FarmId IS NULL OR b.FarmId = @FarmId);
 END;
 GO
 

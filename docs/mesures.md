@@ -1,10 +1,12 @@
-# Mesures de recherche et index (lot 2b)
+# Mesures de recherche et index (lots 2b et 3a)
 
 Ce document garde la trace des **hypothèses** posées avant de mesurer, puis des **mesures** avant et après chaque index.
 
 Règle de travail : les hypothèses (section 3) sont écrites et enregistrées dans Git **avant** la moindre mesure. L'historique Git montre cet ordre. Aucune hypothèse n'est modifiée après coup : si une mesure la contredit, on l'écrit dans la section 4, on ne réécrit pas la section 3.
 
 Date des hypothèses : 2026-10-19.
+
+Exception : la section 4.3 (le total de `ListBatches`, lot 3a, 2026-10-20) a été mesurée sans hypothèse chiffrée écrite et enregistrée avant. C'est un écart avec la règle ci-dessus : la mesure voulait chiffrer un coût, pas tester une hypothèse.
 
 ## 1. Ce qui a été observé sur les données (fait, pas hypothèse)
 
@@ -257,6 +259,30 @@ R6 (un plan réutilisé pour des valeurs très différentes) n'a pas été test�
 
 Conclusion : R6 reste **non conclue**.
 
+### 4.3 Le total de `ListBatches` (lot 3a), 2026-10-20
+
+Conditions : script `database/009_measure_searches.sql` exécuté une seule fois dans SSMS sur `TraceabilityDev` (1 000 000 de lots, `IX_Movement_BatchId` présent), avec le plan d'exécution réel (Ctrl+M). Depuis le lot 3a, `ListBatches` renvoie deux tableaux (la page, puis `TotalCount` avec les mêmes filtres) : chaque appel affiche donc deux séries de lectures. Les lectures physiques sont nulles, sauf une lecture anticipée de 537 pages pour la ferme `F001` : les temps ci-dessous sont indicatifs. `009` n'a pas été modifié.
+
+| Cas | Page : `Batch` | Page : `Farm` | Total : `Batch` | Temps de la page | Temps du total | Temps de l'appel |
+|---|---|---|---|---|---|---|
+| R3 : grande ferme `F001` | 26 | 100 | 10 574 | 174 ms | 203 ms | 391 ms |
+| R3 : petite ferme `F021` | 189 | 100 | 10 574 | 189 ms | 164 ms | 354 ms |
+| R4 : statut `SHIPPED` | 4 | 100 | 10 574 | 62 ms | 243 ms | 306 ms |
+| R4 : statut `RECEIVED` | 9 351 | 100 | 10 574 | 521 ms | 222 ms | 744 ms |
+| R5 : page 900 de 1 000, sans filtre | 9 351 | 1 800 000 | 10 574 | 1 659 ms | 276 ms | 1 936 ms |
+
+Ce qui est observé :
+- Les lectures de la **page** sont celles du lot 2b : 26, 189, 4 et 9 351 sur `Batch`, 100 sur `Farm`, et 1 800 000 sur `Farm` pour la page 900.
+- Le **total** lit 10 574 pages de `Batch`, en 5 analyses, dans les 5 cas : le filtre (ferme ou statut) ne change pas le nombre de lectures.
+- Par rapport à la page : pour `F021`, 10 574 lectures contre 289 (189 sur `Batch` et 100 sur `Farm`), soit environ 37 fois ; pour `RECEIVED`, environ 112 % de plus que les 9 451 lectures de la page ; pour la page 900, environ 0,6 % de plus que ses 1 809 351 lectures.
+
+Ce qui n'est pas établi :
+- Pourquoi le total lit 10 574 pages. La table `Batch` occupe environ 10 424 pages de 8 Ko (81,44 Mo, voir [verification.md](verification.md), section 7.2) : l'explication la plus simple est une lecture de toute la table, mais le plan du total n'a pas été examiné, donc ce n'est pas prouvé.
+- Si le plan est parallèle : les 5 analyses ressemblent à celles de R2 avant l'index, et le temps UC dépasse parfois le temps écoulé, mais cela n'est pas vérifié.
+- Pourquoi les temps de la page diffèrent de ceux de la section 4.1 (par exemple 189 ms pour `F021` contre environ 40 ms). Les lectures sont les mêmes ; le cache et la première exécution ne sont pas comparables d'une mesure à l'autre.
+
+Décision : le total est gardé tel quel dans `ListBatches`, pour que les trois listes aient la même forme. Son optimisation (index, autre manière de compter) est prévue dans un lot à part, avec la méthode des sections 3 et 4 : hypothèses écrites avant, mesures avant et après.
+
 ## 5. Limites de ces mesures
 
 - Données inventées, générées par des formules fixes : la répartition (statuts selon le numéro, fermes régulières) est plus régulière que dans une vraie exploitation.
@@ -264,3 +290,4 @@ Conclusion : R6 reste **non conclue**.
 - Plans non examinés : R3 `F001` et R4 `SHIPPED`, ainsi que ceux des requêtes forcées. R6 reste non conclue.
 - Le résultat s'énonce « mesuré sur 1 million de lots inventés », pas « valable en production ».
 - Les index ne sont mesurés que sur les recherches listées ci-dessus. Leur effet sur la vitesse des écritures (`CreateBatch`, `AddMovement`) n'est pas mesuré, sauf si une section ajoutée plus tard le dit.
+- Le total de `ListBatches` (section 4.3) n'a été mesuré qu'une fois, sans hypothèse écrite avant, sans examiner son plan, et aucun index n'a été essayé pour lui.

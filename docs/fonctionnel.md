@@ -105,6 +105,7 @@ Trois demandes qui seraient refusées :
 
 - Créer et lister les fermes et les stations.
 - Déclarer les fonctions d'une station.
+- Consulter une station avec ses fonctions.
 - Enregistrer la réception d'un lot (création du lot et de son premier mouvement).
 - Enregistrer le mouvement suivant d'un lot.
 - Consulter un lot avec tout son parcours, dans l'ordre.
