@@ -14,7 +14,14 @@ Il donne une base, pas de l'expérience. Le README dit ce que le projet ne prouv
 - Un lot = une branche = une PR. Une seule étape à la fois, commandes PowerShell précises.
 
 ## Commandes
-À compléter quand le projet .NET existera (dotnet build / dotnet test).
+Depuis la racine du dépôt, dans PowerShell (la solution est `Traceability.slnx`) :
+- Compiler : `dotnet build Traceability.slnx`
+- Tests unitaires, sans base : `dotnet test tests/Traceability.UnitTests`
+- Tests d'intégration : `dotnet test tests/Traceability.IntegrationTests`. Attention : au début de chaque exécution, ils vident les 5 tables de `TraceabilityTest` (5 `DELETE` sans `WHERE`, précédés d'un contrôle du nom de la base). Ils lisent `ConnectionStrings__Test`.
+- Tous les tests : `dotnet test Traceability.slnx`
+- Lancer l'API : `dotnet run --project src/Traceability.Api --launch-profile https`, puis ouvrir `https://localhost:7080/swagger` à la main (`dotnet run` n'ouvre pas le navigateur). Elle lit `ConnectionStrings__Default`. Arrêt : Ctrl+C.
+- Certificat de développement HTTPS, une fois, lancé par Mohamed : `dotnet dev-certs https --trust`.
+- Variables d'environnement, définies par Mohamed au niveau de son compte Windows : `ConnectionStrings__Default` (base `TraceabilityDev`) et `ConnectionStrings__Test` (base `TraceabilityTest`). Authentification Windows, aucun mot de passe. Avec .NET, `TrustServerCertificate=True` est nécessaire en local (le certificat de SQL Server n'est pas approuvé, observé le 2026-10-20) : jamais pour un serveur distant. Les valeurs ne sont écrites nulle part dans le dépôt. Un programme déjà ouvert ne voit pas une variable créée après son démarrage : rouvrir VS Code.
 Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
 
 ## Secrets

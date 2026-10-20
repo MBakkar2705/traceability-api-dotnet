@@ -8,7 +8,7 @@ Ce projet est réalisé avec l'assistance de Claude (Anthropic), sous ma supervi
 
 ## État
 
-Les lots 1, 2a, 2b et 3a sont **terminés**. Lot 1 : la base de données (5 tables et leurs contraintes). Lot 2a : les 7 procédures stockées du schéma `trace` et leurs 38 tests, exécutés sur une base de test `TraceabilityTest`, avec un essai à la main du verrou posé par `AddMovement` (voir [docs/verification.md](docs/verification.md)). Lot 2b : un million de lots inventés et 3 250 000 mouvements générés dans `TraceabilityDev` et contrôlés, des mesures de recherche avant et après index (un index retenu, deux essais abandonnés ; voir [docs/mesures.md](docs/mesures.md)). Lot 3a : trois procédures de lecture (`ListFarms`, `ListStations`, `GetStation`) et leurs 16 tests, et un total ajouté à `ListBatches` (tests 32, 33 et 38 de `006` revus), exécutés sur `TraceabilityTest` (voir [docs/verification.md](docs/verification.md)) ; le coût du total a été mesuré (voir [docs/mesures.md](docs/mesures.md), section 4.3). Le lot 3 a été coupé en deux : l'étude de l'API .NET a montré que le SQL manquait de ces trois procédures et d'un total pour les lots. Ces évolutions SQL forment le lot 3a, l'API .NET forme le lot 3b. Le reste est **Prévu** : l'API. « Prouvé » n'est écrit que pour ce qui a été exécuté et observé.
+Les lots 1, 2a, 2b, 3a et 3b sont **terminés**. Lot 1 : la base de données (5 tables et leurs contraintes). Lot 2a : les 7 procédures stockées du schéma `trace` et leurs 38 tests, exécutés sur une base de test `TraceabilityTest`, avec un essai à la main du verrou posé par `AddMovement` (voir [docs/verification.md](docs/verification.md)). Lot 2b : un million de lots inventés et 3 250 000 mouvements générés dans `TraceabilityDev` et contrôlés, des mesures de recherche avant et après index (un index retenu, deux essais abandonnés ; voir [docs/mesures.md](docs/mesures.md)). Lot 3a : trois procédures de lecture (`ListFarms`, `ListStations`, `GetStation`) et leurs 16 tests, et un total ajouté à `ListBatches` (tests 32, 33 et 38 de `006` revus), exécutés sur `TraceabilityTest` (voir [docs/verification.md](docs/verification.md)) ; le coût du total a été mesuré (voir [docs/mesures.md](docs/mesures.md), section 4.3). Lot 3b : l'API ASP.NET Core pour les fermes et les stations (6 routes), avec un accès aux données en ADO.NET, 49 tests unitaires et 30 tests d'intégration exécutés et observés (voir [docs/verification.md](docs/verification.md), section 9). Le lot 3 a été coupé deux fois : l'étude de l'API .NET a montré que le SQL manquait de ces trois procédures et d'un total pour les lots, ce qui forme le lot 3a ; puis l'API a été coupée par ressource, les fermes et les stations au lot 3b, les lots au lot 3c. Le reste est **Prévu** : les routes des lots. « Prouvé » n'est écrit que pour ce qui a été exécuté et observé.
 
 | Lot | Contenu | État |
 |---|---|---|
@@ -17,34 +17,37 @@ Les lots 1, 2a, 2b et 3a sont **terminés**. Lot 1 : la base de données (5 tabl
 | 2a | Procédures stockées et leurs tests | Terminé |
 | 2b | Données volumineuses, index, mesures | Terminé |
 | 3a | Évolutions SQL pour l'API (lister les fermes et les stations, lire une station, total des lots) | Terminé |
-| 3b | API ASP.NET Core | Prévu |
+| 3b | API ASP.NET Core : fermes et stations (6 routes) | Terminé |
+| 3c | API ASP.NET Core : lots (4 routes) | Prévu |
 | | Optimisation des totaux des listes (index, mesures) | Prévu |
 | | Tests, intégration continue (GitHub Actions) | Prévu |
 | 7 | Interface web (optionnelle) | Prévu |
 
-## Technologies prévues
+## Technologies
 
-ASP.NET Core (.NET 10), SQL Server 2025, procédures stockées T-SQL, xUnit, Git et GitHub.
+ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Server 2025, procédures stockées T-SQL, xUnit, Git et GitHub. L'intégration continue (GitHub Actions) est **Prévue**.
 
 ## Documentation
 
 - [Documentation fonctionnelle](docs/fonctionnel.md) : ce qu'on trace et les règles métier.
 - [Modèle de données](docs/modele-de-donnees.md) : tables, colonnes et contraintes.
 - [Contrat des procédures](docs/procedures.md) : paramètres, contrôles et erreurs des 10 procédures.
-- [Vérification des lots 1, 2a, 2b et 3a](docs/verification.md) : ce qui a été exécuté et observé, et ce qui ne l'est pas encore.
+- [Vérification des lots 1, 2a, 2b, 3a et 3b](docs/verification.md) : ce qui a été exécuté et observé, et ce qui ne l'est pas encore.
 - [Mesures des lots 2b et 3a](docs/mesures.md) : hypothèses écrites avant de mesurer, mesures avant et après chaque index, décisions.
 - [Glossaire](docs/glossaire.md) : les termes techniques expliqués simplement.
 - [ADR 0001](docs/adr/0001-procedures-stockees.md) : règles métier dans des procédures stockées.
 - [ADR 0002](docs/adr/0002-tests-sur-base-reelle.md) : tests sur une vraie base SQL Server.
 - [ADR 0003](docs/adr/0003-verrou-sur-le-lot.md) : verrou sur le lot pour deux mouvements simultanés.
 - [ADR 0004](docs/adr/0004-index-simple-sur-mouvement-par-lot.md) : index simple sur les mouvements par lot.
+- [ADR 0005](docs/adr/0005-ado-net-sans-dapper.md) : accès aux données en ADO.NET, sans Dapper.
 
 ## Ce que ce projet ne prouve pas
 
 - Il ne représente aucun système réel : le scénario est simplifié et inventé.
 - Il ne gère pas les retours de marchandise, ni la découpe ou la fusion de lots.
 - Il ne se connecte à aucun ERP ni outil BI, et n'a pas de gestion d'utilisateurs.
-- Aux lots 1, 2a, 2b et 3a, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3 et 8.3.
+- Aux lots 1, 2a, 2b, 3a et 3b, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3 et 9.3.
+- Le CORS n'est pas configuré et aucun frontend n'a été essayé. Swagger UI ne documente pas encore les erreurs possibles des routes (prévu au lot 3c).
 - Les mesures du lot 2b portent sur un million de lots inventés et une seule machine : elles ne disent rien d'un autre volume, d'une autre machine, ni du coût des index en écriture (voir [docs/mesures.md](docs/mesures.md), section 5).
 - Il donne une base de travail, pas une expérience de production.
 
@@ -76,6 +79,31 @@ Si SSMS souligne en rouge des procédures « introuvables » alors qu'elles exis
 
 L'essai du verrou de l'ADR 0003 se fait à la main, avec deux fenêtres SSMS : le déroulé et le résultat sont dans [docs/verification.md](docs/verification.md), section 6.3.
 
-### API
+### API (lot 3b)
 
-À venir, quand le projet .NET existera.
+Prérequis : le SDK .NET 10 (10.0.402 observé), les deux bases du lot précédent (`TraceabilityDev` avec ses données, `TraceabilityTest` avec les procédures `004`, `005` et `011`), l'authentification Windows. Toutes les commandes sont à lancer dans PowerShell, depuis la racine du dépôt.
+
+1. Certificat HTTPS de développement, une seule fois : `dotnet dev-certs https --trust`. Windows affiche une fenêtre de confirmation : elle concerne le certificat de développement créé par .NET pour `localhost`.
+2. Variables d'environnement, une seule fois, au niveau du compte Windows (aucun mot de passe : authentification Windows) :
+
+   ```powershell
+   [Environment]::SetEnvironmentVariable("ConnectionStrings__Default", "Server=localhost;Database=TraceabilityDev;Integrated Security=True;TrustServerCertificate=True", "User")
+   [Environment]::SetEnvironmentVariable("ConnectionStrings__Test", "Server=localhost;Database=TraceabilityTest;Integrated Security=True;TrustServerCertificate=True", "User")
+   ```
+
+   `TrustServerCertificate=True` est nécessaire en local : sans lui, la connexion depuis .NET a échoué avec une erreur de chaîne de certificats (« autorité qui n'est pas approuvée », observé le 2026-10-20). Comme dans SSMS, il est acceptable seulement en local, jamais pour un serveur distant. Un programme déjà ouvert ne voit pas une variable créée après son démarrage : rouvrir VS Code ou ouvrir une nouvelle fenêtre PowerShell.
+3. Lancer l'API : `dotnet run --project src/Traceability.Api --launch-profile https`. Elle écoute sur `https://localhost:7080` et lit `ConnectionStrings__Default`. Ouvrir ensuite `https://localhost:7080/swagger` à la main : `dotnet run` n'ouvre pas le navigateur (c'est documenté, pas une panne). Arrêt : Ctrl+C.
+4. Les tests : `dotnet test Traceability.slnx`, ou séparément `tests/Traceability.UnitTests` (sans base) et `tests/Traceability.IntegrationTests`. **Attention :** les tests d'intégration vident les 5 tables de `TraceabilityTest` au début de chaque exécution (`DELETE` sans `WHERE`, précédés d'un contrôle du nom de la base) ; ils lisent `ConnectionStrings__Test` et ne touchent jamais `TraceabilityDev`.
+
+Les 6 routes du lot 3b :
+
+| Route | Procédure |
+|---|---|
+| `POST /farms` | `CreateFarm` |
+| `GET /farms?pageNumber=1&pageSize=20` | `ListFarms` |
+| `POST /stations` | `CreateStation` |
+| `GET /stations?pageNumber=1&pageSize=20` | `ListStations` |
+| `GET /stations/{stationCode}` | `GetStation` |
+| `POST /stations/{stationCode}/capabilities` | `AddStationCapability` |
+
+Les listes répondent `items`, `totalCount`, `pageNumber` et `pageSize` ; sans paramètre, la page est la 1 de 20. Les erreurs sont au format Problem Details, avec un champ `errorCode` qui reprend le numéro de la procédure (501xx → 404, 502xx → 409, 503xx → 422, 504xx → 400). Les 4 routes des lots viendront au lot 3c.

@@ -34,3 +34,4 @@ Négatives :
 ## Notes
 
 - 2026-10-18 : choix ADO.NET ou Dapper encore ouvert (lot 3).
+- 2026-10-20 : choix fait au lot 3b : ADO.NET seul, sans Dapper (voir [ADR 0005](0005-ado-net-sans-dapper.md)).
