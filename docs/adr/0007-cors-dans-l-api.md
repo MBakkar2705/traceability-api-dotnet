@@ -1,0 +1,43 @@
+# ADR 0007 : CORS dans l'API, plutôt qu'un proxy de développement
+
+Statut : **Accepté** (2026-10-21)
+
+## Contexte
+
+L'interface web (lot 4a, dossier `web/`) tourne sur `http://localhost:5173`, avec le serveur de développement de Vite, et appelle l'API sur `https://localhost:7080`. Ce sont deux origines différentes (une origine est un schéma, un hôte et un port). Un navigateur ne laisse pas une page lire la réponse d'une autre origine, sauf si cette réponse porte l'en-tête `Access-Control-Allow-Origin` qui nomme l'origine de la page : c'est le CORS. Avant ce lot, l'API n'en avait aucun (voir le README : « non configuré »).
+
+Deux façons de lever le blocage en développement : déclarer l'origine de l'interface dans l'API, ou faire passer les appels par le serveur de développement de Vite (son option `server.proxy`), pour que le navigateur ne parle qu'à une seule origine.
+
+## Décision
+
+- L'API déclare une politique CORS nommée `WebUi`, **appliquée seulement en développement** : origine `http://localhost:5173` (sans `/` final), méthode `GET` seulement, puisque le lot 4a ne fait que lire. `UseCors` est placé entre `UseHttpsRedirection` et `UseAuthorization`.
+- Côté Vite, le port 5173 est fixé avec `strictPort: true` : si le port est pris, le serveur s'arrête au lieu de changer de port, ce qui changerait l'origine et ferait échouer le CORS sans message clair.
+- Au lot 4b, la politique devra aussi accepter `POST` et l'en-tête `Content-Type`. Rien de cela n'est fait, ni prouvé.
+
+Cette option prouve la vraie chaîne navigateur, CORS, API, avec des tests.
+
+## Alternatives écartées
+
+- **Le proxy de développement de Vite.** Le navigateur ne parlerait qu'à l'origine de l'interface : aucun CORS à configurer ni à tester en C#. En contrepartie, il n'existe que pendant le développement, et l'API resterait « CORS non configuré, non prouvé ». Non essayé.
+- **Autoriser toutes les origines** (`AllowAnyOrigin`) : n'importe quelle page web pourrait lire les réponses de l'API depuis un navigateur. Non essayé.
+
+## Conséquences
+
+Positives :
+
+- 5 tests d'intégration par HTTP (`CorsTests`) : l'origine autorisée reçoit l'en-tête, une autre origine non, une requête sans origine non, une erreur 404 écrite par le gestionnaire d'exceptions garde l'en-tête, et une pré-vérification pour `POST` ne liste que `GET`.
+- Casse volontaire : avec l'origine changée en `http://localhost:5174`, 4 tests sur 5 échouent. Le cinquième (« sans origine ») réussit même sans CORS : il ne prouve rien seul.
+- Observé dans Edge, sur `TraceabilityDev` : les 5 écrans de lecture (fermes, stations, détail d'une station, lots, détail d'un lot) lisent l'API réelle. Avec l'API arrêtée, la console dit `ERR_CONNECTION_REFUSED` : ce n'est pas un blocage CORS.
+
+Négatives :
+
+- Le CORS n'est pas une protection : « `GET` seulement » veut dire que le navigateur ne laissera pas la page lire autre chose, pas que l'API refuse un `POST`.
+- Observé : la réponse à une pré-vérification pour `POST` contient `Access-Control-Allow-Origin` (l'origine) et `Access-Control-Allow-Methods: GET`. La page de Microsoft lue pendant le lot disait qu'une pré-vérification refusée n'a aucun en-tête : ce n'est pas ce qu'on observe avec cette version de .NET. Deux hypothèses de Claude fondées sur cette phrase ont été corrigées par l'observation (voir [verification.md](../verification.md), section 11).
+- La politique n'existe qu'en développement. Le déploiement est hors périmètre : l'origine d'un autre environnement n'est pas définie.
+- L'origine est écrite dans le code, pas dans une configuration.
+
+Non observé : un autre navigateur que Edge, et ce que fait le navigateur d'une pré-vérification pour `POST` (lot 4b).
+
+## Notes
+
+- 2026-10-21 : décision au lot 4a, avant l'écriture du code. Observé : les 159 tests C# passent (154 existants et 5 de CORS) et l'interface lit l'API dans Edge.

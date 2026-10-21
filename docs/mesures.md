@@ -228,7 +228,7 @@ Non testé : forcer l'index dans la procédure (fragile, et cela modifierait une
 
 #### Index 3 : `IX_Batch_FarmId` sur `Batch (FarmId)`, essai abandonné (2026-10-19)
 
-Index simple, sans colonnes incluses, créé et supprimé dans une fenêtre SSMS jetable (non commité). Règle de décision fixée avant la mesure, acceptée par Mohamed : garder l'index si les pages lointaines baissent d'au moins un facteur 10 **et** que la page 1 reste sous environ 300 lectures ; sinon le supprimer.
+Index simple, sans colonnes incluses, créé et supprimé dans une fenêtre SSMS jetable (non commité). Règle de décision fixée et acceptée avant la mesure : garder l'index si les pages lointaines baissent d'au moins un facteur 10 **et** que la page 1 reste sous environ 300 lectures ; sinon le supprimer.
 
 Mesure par `trace.ListBatches`, 50 lots par page, après `sp_recompile` (lectures logiques sur `Batch`) :
 
