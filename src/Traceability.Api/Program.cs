@@ -10,6 +10,19 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<SqlExceptionHandler>();
 
+// CORS: lets the web interface (the Vite development server) read the answers of the API.
+// Development only, GET only for now (lot 4a). An origin is scheme + host + port, written
+// without a trailing slash.
+const string WebUiCorsPolicy = "WebUi";
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddCors(options =>
+        options.AddPolicy(WebUiCorsPolicy, policy => policy
+            .WithOrigins("http://localhost:5173")
+            .WithMethods("GET")));
+}
+
 // The connection string comes from the environment variable ConnectionStrings__Default
 // (ASP.NET Core reads it as the key ConnectionStrings:Default). It is never written in a
 // file of the repository. It is read when TraceabilityDb is first needed, so that the
@@ -45,6 +58,11 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors(WebUiCorsPolicy);
+}
 
 app.UseAuthorization();
 
