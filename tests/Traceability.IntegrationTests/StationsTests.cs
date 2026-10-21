@@ -183,4 +183,65 @@ public class StationsTests(ApiFixture api)
 
         await TestData.AssertShapeErrorAsync(response, "movementType");
     }
+
+    // NVARCHAR(100) for the name. The expectation is the behaviour we want: a 400 on the field.
+    // It is NOT known whether the API does it today: a failure tells what really happens.
+    [Fact]
+    public async Task A_station_name_that_is_too_long_gives_400()
+    {
+        var response = await Client.PostAsJsonAsync(
+            "/stations", new { code = TestData.NewCode(), name = new string('N', 101) });
+
+        Assert.True(response.StatusCode == HttpStatusCode.BadRequest, await TestData.DescribeAsync(response));
+        await TestData.AssertShapeErrorAsync(response, "name");
+    }
+
+    // As for the farms: a page beyond the end is not an error: no items, but the same total.
+    // Hypothesis (the procedure behaves the same for stations): this test observes it.
+    [Fact]
+    public async Task A_page_beyond_the_end_is_empty_with_the_same_total()
+    {
+        await CreateStationAsync();
+
+        var firstPage = await TestData.ReadJsonAsync(await Client.GetAsync("/stations"));
+        var beyond = await TestData.ReadJsonAsync(await Client.GetAsync("/stations?pageNumber=999999&pageSize=20"));
+
+        Assert.Equal(0, beyond.GetProperty("items").GetArrayLength());
+        Assert.Equal(firstPage.GetProperty("totalCount").GetInt32(), beyond.GetProperty("totalCount").GetInt32());
+        Assert.Equal(999999, beyond.GetProperty("pageNumber").GetInt32());
+    }
+
+    // Hypothesis (the collation of the database ignores case): a station is found whatever the
+    // case of its code in the address, and the code is returned as it was stored.
+    [Fact]
+    public async Task A_station_is_found_whatever_the_case_of_its_code()
+    {
+        var code = await CreateStationAsync();
+
+        var response = await Client.GetAsync($"/stations/{code.ToLowerInvariant()}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await TestData.ReadJsonAsync(response);
+        Assert.Equal(code, body.GetProperty("code").GetString());
+    }
+
+    // Same hypothesis: a code that differs only by case is a code already taken (409, 50201).
+    [Fact]
+    public async Task A_code_that_differs_only_by_case_is_already_taken()
+    {
+        var code = await CreateStationAsync();
+
+        var second = await Client.PostAsJsonAsync("/stations", new { code = code.ToLowerInvariant(), name = "Other" });
+
+        await TestData.AssertProcedureErrorAsync(second, HttpStatusCode.Conflict, 50201);
+    }
+
+    // NVARCHAR(20) for the movement type: a longer text is refused by the API (shape error).
+    [Fact]
+    public async Task A_function_type_that_is_too_long_gives_400()
+    {
+        var response = await PostCapabilityAsync(TestData.NewCode(), new string('M', 21));
+
+        await TestData.AssertShapeErrorAsync(response, "movementType");
+    }
 }

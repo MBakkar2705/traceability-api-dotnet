@@ -26,6 +26,32 @@ public sealed class FieldErrors
         }
     }
 
+    // For fields that are numbers, dates or times: a missing field reads as null.
+    public void RequireValue<T>(string field, T? value)
+        where T : struct
+    {
+        if (value is null)
+        {
+            Add(field, "The field is required.");
+        }
+    }
+
+    // A time must say that it is UTC: with "Z", or with an offset (it is then converted to UTC).
+    // A time with no indication is refused, so a local time is never read as UTC by mistake.
+    public void RequireUtcTime(string field, DateTime? value)
+    {
+        if (value is null)
+        {
+            Add(field, "The field is required.");
+            return;
+        }
+
+        if (value.Value.Kind == DateTimeKind.Unspecified)
+        {
+            Add(field, "The time must end with 'Z' (UTC) or carry an offset, for example 2026-10-14T06:00:00Z.");
+        }
+    }
+
     public void RequireCode(string field, string? value, int maxLength)
     {
         if (value is null)
@@ -37,6 +63,40 @@ public sealed class FieldErrors
         if (!CodeRules.HasValidShape(value, maxLength))
         {
             Add(field, $"Only letters A-Z, digits, '-' and '_' are allowed, up to {maxLength} characters.");
+        }
+    }
+
+    // A text for a column of limited size (NVARCHAR(n)): a longer text would be cut in silence.
+    // An empty text is accepted here: the stored procedure decides what to do with it.
+    public void RequireText(string field, string? value, int maxLength)
+    {
+        if (value is null)
+        {
+            Add(field, "The field is required.");
+        }
+        else if (value.Length > maxLength)
+        {
+            Add(field, $"At most {maxLength} characters are allowed.");
+        }
+    }
+
+    // A quantity for a DECIMAL(10,2) column: at most 8 digits before the decimal point and 2 after.
+    // A more precise value would be rounded in silence and a bigger one would make SqlClient fail
+    // (both observed in lot 3c). Zero and negative values are left to the stored procedure (50401).
+    public void RequireQuantity(string field, decimal? value)
+    {
+        if (value is null)
+        {
+            Add(field, "The field is required.");
+        }
+        else if (Math.Abs(value.Value) > FieldLimits.QuantityMax)
+        {
+            Add(field, FormattableString.Invariant(
+                $"The absolute value of the quantity is limited to {FieldLimits.QuantityMax}."));
+        }
+        else if (value.Value != decimal.Round(value.Value, FieldLimits.QuantityDecimals))
+        {
+            Add(field, $"At most {FieldLimits.QuantityDecimals} decimals are allowed.");
         }
     }
 

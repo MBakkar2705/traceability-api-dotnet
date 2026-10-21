@@ -26,7 +26,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **`NOT NULL`** : la colonne doit toujours avoir une valeur.
 
-**`DECIMAL(10,2)`** : un nombre exact avec 2 chiffres après la virgule, sans erreur d'arrondi. Ici : les quantités en kg.
+**`DECIMAL(10,2)`** : un nombre exact avec 2 chiffres après la virgule, sans erreur d'arrondi. Ici : les quantités en kg. Au-delà de 2 décimales ou de 8 chiffres avant la virgule, la valeur ne tient pas (voir « Troncature et arrondi silencieux »).
 
 **`DATETIME2` et UTC** : une date et une heure précises. UTC est l'heure de référence mondiale, sans changement d'heure. Ici : `OccurredAt`.
 
@@ -96,7 +96,13 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Injection de dépendances** : ASP.NET Core construit lui-même les objets dont une classe a besoin et les lui donne par son constructeur, comme dans NestJS. Ici : `FarmsController(TraceabilityDb db)` reçoit la classe d'accès aux données enregistrée dans `Program.cs`.
 
-**Contrôleur** : une classe qui reçoit les requêtes HTTP d'une ressource, avec des attributs (`[Route]`, `[HttpGet]`, `[HttpPost]`). Ici : `FarmsController` (2 routes) et `StationsController` (4 routes).
+**Contrôleur** : une classe qui reçoit les requêtes HTTP d'une ressource, avec des attributs (`[Route]`, `[HttpGet]`, `[HttpPost]`). Ici : `FarmsController` (2 routes), `StationsController` (4 routes) et `BatchesController` (4 routes).
+
+**`DateOnly`, `DateTime` et `Kind`** : `DateOnly` est un jour sans heure ; `DateTime` est un jour et une heure, avec une indication (`Kind`) : `Utc`, `Local` (l'heure de la machine) ou `Unspecified` (rien n'est dit). Ici : la date de récolte est un `DateOnly` (`"2026-10-14"`) ; une heure sans `Z` ni décalage est refusée par l'API.
+
+**Avertissement du compilateur** : un message qui n'empêche pas de compiler, mais signale quelque chose d'anormal. Ici : `CS1573` (un paramètre sans balise `<param>` alors que les autres en ont) a été corrigé par les balises ; `CS1591` (membre public sans commentaire) est silencié (`NoWarn`) dans `Traceability.Api.csproj`, car on documente les routes et non chaque classe.
+
+**Commentaire XML (`///`) et `[ProducesResponseType]`** : les commentaires `///` au-dessus d'une action décrivent la route (`<summary>`, `<param>`, `<response>`) ; `[ProducesResponseType]` déclare chaque code de réponse possible. Le générateur OpenAPI a besoin des deux : `<response>` ne fait que décrire un code déjà déclaré. Ici : les 10 routes de Swagger UI.
 
 ## API et tests
 
@@ -118,17 +124,27 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **OpenAPI et Swagger UI** : OpenAPI est la description d'une API dans un fichier JSON ; Swagger UI est la page web qui l'affiche et laisse essayer les routes. Ici : `https://localhost:7080/swagger`, activée en développement seulement.
 
-**Test unitaire** : un test d'un petit morceau de code, seul, sans base ni réseau. Ici : 49 cas pour la traduction des erreurs, la forme des codes et la page par défaut.
+**Test unitaire** : un test d'un petit morceau de code, seul, sans base ni réseau. Ici : 74 cas pour la traduction des erreurs, la forme des champs (codes, textes, quantités, heures) et la page par défaut.
 
-**Test par HTTP (`WebApplicationFactory`)** : un test qui lance la vraie API dans le programme de test et lui envoie de vraies requêtes. Ici : 25 cas sur `TraceabilityTest`.
+**Test par HTTP (`WebApplicationFactory`)** : un test qui lance la vraie API dans le programme de test et lui envoie de vraies requêtes. Ici : 75 cas sur `TraceabilityTest`.
 
-**xUnit : `[Fact]`, `[Theory]` et `[InlineData]`** : `[Fact]` est un test ; `[Theory]` avec des lignes `[InlineData]` est le même test répété avec plusieurs valeurs, et chaque ligne compte comme un cas. Ici : les 8 tests unitaires du plan font 49 cas.
+**xUnit : `[Fact]`, `[Theory]` et `[InlineData]`** : `[Fact]` est un test ; `[Theory]` avec des lignes `[InlineData]` est le même test répété avec plusieurs valeurs, et chaque ligne compte comme un cas. Ici : au lot 3b, les 8 tests unitaires du plan faisaient 49 cas ; avec le lot 3c, les tests unitaires font 74 cas.
 
 **Fixture de test** : un objet construit une seule fois avant les tests d'un groupe et partagé par eux. Ici : `ApiFixture` vérifie la base, vide les 5 tables de `TraceabilityTest` et lance l'API.
 
 **CORS** : une règle appliquée par le navigateur : une page web ne peut appeler une API située à une autre adresse que si l'API l'autorise. Ici : non configuré, aucun frontend n'a été essayé.
 
-**Casse volontaire d'un test** : on change une ligne du code pour vérifier que les tests la voient, puis on la rétablit. Ici : la famille 502xx de 409 à 400 donne 4 échecs unitaires et 3 d'intégration ; le fichier rétabli a la même empreinte que l'original.
+**Casse volontaire d'un test** : on change une ligne du code pour vérifier que les tests la voient, puis on la rétablit. Ici : la famille 502xx de 409 à 400 donne 4 échecs unitaires et 3 d'intégration ; le fichier rétabli a la même empreinte que l'original. Au lot 3c : 5 défauts, 4 vus par les tests, 1 non détecté (la conversion d'une heure avec décalage, sur une machine en UTC).
+
+**Validation de forme** : l'API vérifie qu'une requête est bien formée avant d'appeler la base (champ présent, longueur, caractères, heure en UTC) et répond 400 sans `errorCode`. Les règles métier restent dans les procédures et répondent avec un `errorCode`. Ici : `FieldErrors`, `FieldLimits` et `CodeRules`.
+
+**Troncature et arrondi silencieux** : quand une valeur ne tient pas dans une colonne, elle peut être coupée ou arrondie sans erreur, ce qui abîme la donnée sans prévenir. Observé au lot 3c avant la correction : une variété de 51 caractères enregistrée sur 50, une quantité `500.555` enregistrée `500.56`, et une quantité de 9 chiffres qui faisait lever une `ArgumentException` à SqlClient (réponse 500). Ici : l'API refuse maintenant ces valeurs (400).
+
+**Heure explicitement en UTC (`Z` et décalage)** : `Z` à la fin d'une heure veut dire UTC (`2026-10-14T06:00:00Z`) ; un décalage dit l'écart avec UTC (`08:00:00+02:00` est `06:00:00Z`). Une heure sans rien est ambiguë : l'API la refuse (400). Limite : la conversion du décalage n'est pas prouvée, car sur une machine en UTC elle ne change rien au résultat.
+
+**Test d'observation** : un test dont l'attente est écrite avant comme une hypothèse. S'il échoue, son message montre ce qui se passe vraiment. Ici : les tests de limites du lot 3c (valeur coupée, arrondie, ou erreur 500).
+
+**Empreinte (SHA-256)** : un nombre calculé à partir du contenu d'un fichier ; deux fichiers identiques ont la même empreinte. Ici : elle prouve qu'une ligne cassée pour un test a bien été rétablie à l'identique.
 
 ## Organisation
 

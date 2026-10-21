@@ -310,3 +310,81 @@ Paquets principaux : `Microsoft.Data.SqlClient` 7.1.1, `System.Security.Cryptogr
 
   Résultats observés : 404 avec `errorCode` 50102, puis deux 400 avec un champ `errors` et sans `errorCode`.
 - Pour voir un test échouer : dans `src/Traceability.Api/Errors/SqlErrorTranslator.cs`, passer le 409 de la famille 502xx à 400, lancer `dotnet test Traceability.slnx` (4 échecs unitaires, 3 d'intégration), puis rétablir la ligne.
+
+## 10. Lot 3c : API pour les lots
+
+Observé le 2026-10-21 sous Windows 11, avec le SDK .NET 10.0.402 (exécution 10.0.13), SQL Server 2025 (instance locale 17.0) et xUnit 2.9.3. Les tests d'intégration tournent sur la base `TraceabilityTest`. Les routes sont décrites dans le [README](../README.md), les erreurs des procédures dans [procedures.md](procedures.md). Les données de test sont inventées. Mohamed indique que sa machine est réglée sur UTC : je ne l'ai pas vérifié autrement que par un résultat de test (voir 10.2, casse volontaire).
+
+### 10.1 Ce qui a été construit
+
+| Projet | Ce qui a changé |
+|---|---|
+| `src/Traceability.Data` | 4 méthodes ajoutées à `TraceabilityDb` (`CreateBatchAsync`, `AddMovementAsync`, `GetBatchAsync`, `ListBatchesAsync`) et 3 types de résultat. La classe appelle maintenant les 10 procédures (309 lignes). |
+| `src/Traceability.Api` | `BatchesController` (4 routes) ; vérifications de forme dans `FieldErrors` (`RequireValue<T>`, `RequireUtcTime`, `RequireText`, `RequireQuantity`) ; `FieldLimits` (tailles des colonnes) ; `[ProducesResponseType]` et commentaires XML sur les 10 routes. |
+| `tests/Traceability.UnitTests` | 74 cas sans base : les 49 du lot 3b et 25 sur `FieldErrors`. |
+| `tests/Traceability.IntegrationTests` | 80 cas sur `TraceabilityTest` : 75 par HTTP, 3 de garde-fous (I1 à I3) et 2 sur `Data`. 50 sont nouveaux : `BatchesTests` (30), `BodyFormatTests` (13), `FarmsTests` (2) et `StationsTests` (5). |
+
+Décisions et écarts par rapport au plan :
+
+- **Formats JSON** : la date de récolte s'écrit `"2026-10-14"` (`DateOnly`) ; la quantité est un nombre (`decimal`, précision 10 et échelle 2 fixées sur le paramètre SqlClient) ; l'heure est toujours explicitement en UTC (`Z` ou décalage), sinon 400.
+- **Date envoyée comme `DateTime`** : `TraceabilityDb` envoie la date à SqlClient comme un `DateTime` à minuit avec le type `Date`. L'envoi direct d'un `DateOnly` n'a pas été vérifié.
+- **Heure marquée UTC à la lecture, dans `Data`** (`ReadMovement`), et non dans l'API comme le plan le disait : un seul endroit pour tous les appelants.
+- **Tailles des colonnes (non prévu)** : `FieldLimits`, `RequireText` et `RequireQuantity` ont été ajoutés après que des tests d'observation ont montré des valeurs coupées, arrondies ou refusées par SqlClient (voir 10.2). Décidé avec Mohamed : on corrige dans ce lot. Le type de mouvement et le filtre de statut (20 caractères) sont protégés de la même façon.
+- **Swagger** : `[ProducesResponseType]` plus commentaires XML. `GenerateDocumentationFile` est activé et l'avertissement `CS1591` (membre public sans commentaire) est silencié dans `Traceability.Api.csproj` : les routes et les corps de requête sont documentés, pas chaque classe interne. Les 9 avertissements `CS1573` du premier build ont été corrigés par des balises `<param>`.
+- **Tests ajoutés au plan** : tests sur `RequireValue<T>`, `RequireUtcTime`, `RequireText` et `RequireQuantity`, les limites, les corps vides, le type de mouvement et le statut trop longs, la casse des codes, et 4 erreurs de procédures (50102 à la création et à l'ajout, 50400, 50402) qui n'étaient pas dans la liste B1 à B11.
+
+### 10.2 Ce qui est prouvé
+
+- **Compilation** : `dotnet build Traceability.slnx` réussit pour les 4 projets, avec 0 avertissement.
+- **Tests** : 154 cas réussis, 0 échec (74 unitaires et 80 d'intégration), à la dernière exécution, après le rétablissement de tous les défauts posés pour la casse volontaire.
+- **Cycle de vie par HTTP** : un lot est créé (201, corps vide, `Location` finissant par `/batches/{code}`), reçoit trois mouvements, puis la lecture donne le statut `SHIPPED`, la quantité 470, quatre mouvements dans l'ordre `RECEPTION`, `SORTING`, `PACKING`, `SHIPMENT`, avec des `movementId` croissants et distincts, et aucun identifiant technique de lot.
+- **Erreurs des procédures arrivées jusqu'au client par les routes des lots** : 50100 (404, lecture et ajout d'un mouvement), 50101 (404, création et filtre de la liste), 50102 (404, création et ajout), 50202 (409), 50300, 50301, 50302 (422), 50303 (422, création et ajout), 50400 (400), 50401 (400, création et ajout), 50402 (400, ajout), 50403 (400) et 50404 (400). Chaque test déclenche une seule erreur, d'après l'ordre des contrôles de [procedures.md](procedures.md).
+- **Listes** : filtre par statut, par ferme et par les deux (comptes exacts sur une ferme créée par le test), statut seul (vérification relative), page 1 de 20 par défaut, page au-delà de la fin (200, aucun élément, le vrai total, la page et la taille rappelées).
+- **Formats observés** :
+  - `quantityKg` : `500.55` revient inchangé ; `500.5` revient avec deux décimales (`500.50`, lu dans le texte JSON) ; une quantité écrite comme texte (`"500"`) est acceptée (201).
+  - `occurredAt` : une heure avec `Z` revient avec `Z` ; une heure avec décalage (`08:00:00+02:00`) revient `06:00:00Z` sur cette machine ; une heure sans `Z` ni décalage donne 400 sur `occurredAt`.
+  - Une valeur illisible dans le corps (quantité `"abc"`, date `"not-a-date"`, date avec une heure, heure `"yesterday"`) donne 400 en `application/problem+json`, sans `errorCode`.
+  - Un corps vide `{}` donne 400 et nomme les 7 champs (création d'un lot) ou les 4 champs (mouvement).
+- **Défauts trouvés par les tests d'observation, puis corrigés** :
+
+  | Valeur envoyée | Avant la correction (observé) |
+  |---|---|
+  | quantité `500.555` | 201, enregistrée `500.56` : arrondie en silence |
+  | quantité `100000000` (9 chiffres avant la virgule) | 500 : SqlClient lève une `ArgumentException` (« Valeur du paramètre '100000000.00' hors limites ») avant d'envoyer la requête, ce n'est pas une `SqlException`. La réponse est un 500 générique sans texte interne, et l'erreur est écrite dans la console. |
+  | variété de 51 caractères | 201, longueur enregistrée 50 : coupée en silence |
+  | nom de ferme, région ou nom de station de 101 caractères | 201 : accepté (la longueur enregistrée n'a pas été relue) |
+
+  Après la correction (`FieldLimits`, `RequireText`, `RequireQuantity`), ces 6 tests passent : 400 sur le champ concerné. Un type de mouvement et un statut de 21 caractères donnent aussi 400 ; leur comportement avant la correction n'a pas été observé.
+- **Casse des codes** : une station et un lot sont lus avec leur code en minuscules (200, le code renvoyé reste celui stocké) ; un code de station qui ne diffère que par la casse est refusé (409, 50201).
+- **Stations** : une page au-delà de la fin donne 200, aucun élément et le même `totalCount`.
+- **Swagger UI** (regardé par Mohamed dans Edge, avec l'API lancée sur `TraceabilityDev`, sans cliquer sur « Execute ») : les 10 routes s'affichent avec leur résumé, sous 3 titres (Batches 4, Farms 2, Stations 4) ; `POST /batches` montre ses 5 réponses (201, 400, 404, 409, 422) avec nos descriptions et les `errorCode`, et le schéma `CreateBatchRequest` affiche la description de chaque champ ; `GET /batches` montre le texte `remarks`, les 4 paramètres avec leur description et les valeurs par défaut 1 et 20.
+- **Casse volontaire** (un défaut posé, `dotnet test`, puis ligne rétablie ; l'empreinte SHA-256 du fichier est ensuite identique à l'originale) :
+
+  | Défaut posé | Échecs attendus | Échecs observés |
+  |---|---|---|
+  | `RequireQuantity` : décimales arrondies à 7 au lieu de 2 | 3 (1 unitaire, 2 d'intégration) | 3, ceux annoncés |
+  | heure lue en base non marquée UTC | 2 | 2 |
+  | filtres de statut et de ferme échangés dans `GET /batches` | 4 | 4 |
+  | heure sans indication non refusée | 2 | 2 |
+  | heure avec décalage non convertie en UTC | 1 si le fuseau de la machine n'est pas UTC | 0 : non détecté |
+
+### 10.3 Ce qui n'est pas prouvé
+
+- **Swagger UI** : pour 8 routes sur 10, seul le résumé a été vu, pas leurs réponses. L'exemple d'erreur n'affiche ni `errorCode` ni `errors` (champs ajoutés par l'API), et le type affiché est `application/json` alors que les vraies réponses sont en `application/problem+json`. Les champs obligatoires s'affichent aussi avec « null » comme type possible. `pageNumber` et `pageSize` s'affichent « integer | string ($int32) » : l'hypothèse est la même cause que pour `quantityKg` (un nombre écrit comme texte est accepté), non vérifiée.
+- **Heure avec décalage** : sur cette machine (UTC), le test réussit même sans la conversion en UTC. Elle n'est donc pas prouvée, et son effet sur un serveur dans un autre fuseau n'est pas observé.
+- **Casse volontaire** : seulement 5 défauts. Un test peut ne pas détecter un autre défaut.
+- **Requêtes simultanées par HTTP** : deux créations du même code de lot, ou deux mouvements sur le même lot (verrou de l'ADR 0003, observé seulement au lot 2a).
+- **Valeurs aux limites** : un texte de 100, 50 ou 20 caractères et la quantité `99999999.99` ne sont vérifiés qu'en unitaire, pas par HTTP et base. Les accents et les caractères hors du plan de base ne sont pas essayés : la longueur compte des unités UTF-16, comme SQL Server pour `NVARCHAR`, mais ce n'est pas observé ici.
+- **Autres formats** : une quantité négative par HTTP, une heure avec des fractions de seconde, un champ `null` explicite.
+- **En-tête `Location`** : seul son suffixe est testé, pas sa forme complète.
+- **Vitesse** : `GET /batches` n'a pas été essayée sur `TraceabilityDev` (1 000 000 de lots) et le coût du total n'a pas été remesuré par l'API (voir [mesures.md](mesures.md), section 4.3).
+- **Données** : `TraceabilityDev` a été relue au début de la session (200 fermes, 30 stations, 40 fonctions, 1 000 000 de lots, 3 250 000 mouvements) et n'a pas été recomptée à la fin ; rien n'y a été écrit volontairement. `TraceabilityTest` était vide au début de la session et est vidée par les tests.
+- **Machine en UTC** : indiqué par Mohamed, non vérifié autrement.
+- **Reportés de la section 9.3** : CORS non configuré et aucun frontend ; chaîne de connexion lue à la première utilisation ; .NET 10 sur Windows 11 22H2 ; les deux garde-fous des tests jamais déclenchés (50099 et refus de démarrer de la fixture) ; aucune mesure de charge côté API.
+
+### 10.4 Rejouer la vérification
+
+- Prérequis : le README, section « API (lots 3b et 3c) ».
+- `dotnet build Traceability.slnx`, puis `dotnet test Traceability.slnx` : résumé attendu `total : 154; échec : 0; réussi : 154`. **Attention** : les tests d'intégration exécutent 5 `DELETE` sans `WHERE` sur `TraceabilityTest` (jamais sur `TraceabilityDev`).
+- Swagger UI : `dotnet run --project src/Traceability.Api --launch-profile https`, puis `https://localhost:7080/swagger`. L'API lit `TraceabilityDev` : ne pas cliquer sur « Execute » pour les routes `POST` (elles écriraient dans la base) ni pour `GET /batches` (le total est lent sur un million de lots).
+- Pour voir un test échouer : dans `src/Traceability.Api/Validation/FieldErrors.cs`, remplacer `FieldLimits.QuantityDecimals))` par `FieldLimits.QuantityDecimals + 5))` dans `RequireQuantity`, lancer `dotnet test Traceability.slnx` (3 échecs : 1 unitaire et 2 d'intégration), puis rétablir la ligne.

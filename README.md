@@ -8,7 +8,7 @@ Ce projet est réalisé avec l'assistance de Claude (Anthropic), sous ma supervi
 
 ## État
 
-Les lots 1, 2a, 2b, 3a et 3b sont **terminés**. Lot 1 : la base de données (5 tables et leurs contraintes). Lot 2a : les 7 procédures stockées du schéma `trace` et leurs 38 tests, exécutés sur une base de test `TraceabilityTest`, avec un essai à la main du verrou posé par `AddMovement` (voir [docs/verification.md](docs/verification.md)). Lot 2b : un million de lots inventés et 3 250 000 mouvements générés dans `TraceabilityDev` et contrôlés, des mesures de recherche avant et après index (un index retenu, deux essais abandonnés ; voir [docs/mesures.md](docs/mesures.md)). Lot 3a : trois procédures de lecture (`ListFarms`, `ListStations`, `GetStation`) et leurs 16 tests, et un total ajouté à `ListBatches` (tests 32, 33 et 38 de `006` revus), exécutés sur `TraceabilityTest` (voir [docs/verification.md](docs/verification.md)) ; le coût du total a été mesuré (voir [docs/mesures.md](docs/mesures.md), section 4.3). Lot 3b : l'API ASP.NET Core pour les fermes et les stations (6 routes), avec un accès aux données en ADO.NET, 49 tests unitaires et 30 tests d'intégration exécutés et observés (voir [docs/verification.md](docs/verification.md), section 9). Le lot 3 a été coupé deux fois : l'étude de l'API .NET a montré que le SQL manquait de ces trois procédures et d'un total pour les lots, ce qui forme le lot 3a ; puis l'API a été coupée par ressource, les fermes et les stations au lot 3b, les lots au lot 3c. Le reste est **Prévu** : les routes des lots. « Prouvé » n'est écrit que pour ce qui a été exécuté et observé.
+Les lots 1, 2a, 2b, 3a, 3b et 3c sont **terminés**. Lot 1 : la base de données (5 tables et leurs contraintes). Lot 2a : les 7 procédures stockées du schéma `trace` et leurs 38 tests, exécutés sur une base de test `TraceabilityTest`, avec un essai à la main du verrou posé par `AddMovement` (voir [docs/verification.md](docs/verification.md)). Lot 2b : un million de lots inventés et 3 250 000 mouvements générés dans `TraceabilityDev` et contrôlés, des mesures de recherche avant et après index (un index retenu, deux essais abandonnés ; voir [docs/mesures.md](docs/mesures.md)). Lot 3a : trois procédures de lecture (`ListFarms`, `ListStations`, `GetStation`) et leurs 16 tests, et un total ajouté à `ListBatches` (tests 32, 33 et 38 de `006` revus), exécutés sur `TraceabilityTest` (voir [docs/verification.md](docs/verification.md)) ; le coût du total a été mesuré (voir [docs/mesures.md](docs/mesures.md), section 4.3). Lot 3b : l'API ASP.NET Core pour les fermes et les stations (6 routes), avec un accès aux données en ADO.NET, 49 tests unitaires et 30 tests d'intégration exécutés et observés (voir [docs/verification.md](docs/verification.md), section 9). Lot 3c : l'API pour les lots (4 routes), la documentation Swagger des 10 routes, le refus par l'API des valeurs que les colonnes ne peuvent pas stocker (texte trop long, quantité trop précise ou trop grande : sans cela, elles étaient coupées, arrondies ou faisaient échouer SqlClient, observé), 74 tests unitaires et 80 tests d'intégration exécutés et observés, et une casse volontaire de 5 défauts (voir [docs/verification.md](docs/verification.md), section 10). Le lot 3 a été coupé deux fois : l'étude de l'API .NET a montré que le SQL manquait de ces trois procédures et d'un total pour les lots, ce qui forme le lot 3a ; puis l'API a été coupée par ressource, les fermes et les stations au lot 3b, les lots au lot 3c. Le reste est **Prévu** : l'optimisation des totaux des listes, les tests en intégration continue et l'interface web. « Prouvé » n'est écrit que pour ce qui a été exécuté et observé.
 
 | Lot | Contenu | État |
 |---|---|---|
@@ -18,7 +18,7 @@ Les lots 1, 2a, 2b, 3a et 3b sont **terminés**. Lot 1 : la base de données (5 
 | 2b | Données volumineuses, index, mesures | Terminé |
 | 3a | Évolutions SQL pour l'API (lister les fermes et les stations, lire une station, total des lots) | Terminé |
 | 3b | API ASP.NET Core : fermes et stations (6 routes) | Terminé |
-| 3c | API ASP.NET Core : lots (4 routes) | Prévu |
+| 3c | API ASP.NET Core : lots (4 routes) | Terminé |
 | | Optimisation des totaux des listes (index, mesures) | Prévu |
 | | Tests, intégration continue (GitHub Actions) | Prévu |
 | 7 | Interface web (optionnelle) | Prévu |
@@ -32,7 +32,7 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 - [Documentation fonctionnelle](docs/fonctionnel.md) : ce qu'on trace et les règles métier.
 - [Modèle de données](docs/modele-de-donnees.md) : tables, colonnes et contraintes.
 - [Contrat des procédures](docs/procedures.md) : paramètres, contrôles et erreurs des 10 procédures.
-- [Vérification des lots 1, 2a, 2b, 3a et 3b](docs/verification.md) : ce qui a été exécuté et observé, et ce qui ne l'est pas encore.
+- [Vérification des lots 1, 2a, 2b, 3a, 3b et 3c](docs/verification.md) : ce qui a été exécuté et observé, et ce qui ne l'est pas encore.
 - [Mesures des lots 2b et 3a](docs/mesures.md) : hypothèses écrites avant de mesurer, mesures avant et après chaque index, décisions.
 - [Glossaire](docs/glossaire.md) : les termes techniques expliqués simplement.
 - [ADR 0001](docs/adr/0001-procedures-stockees.md) : règles métier dans des procédures stockées.
@@ -46,8 +46,8 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 - Il ne représente aucun système réel : le scénario est simplifié et inventé.
 - Il ne gère pas les retours de marchandise, ni la découpe ou la fusion de lots.
 - Il ne se connecte à aucun ERP ni outil BI, et n'a pas de gestion d'utilisateurs.
-- Aux lots 1, 2a, 2b, 3a et 3b, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3 et 9.3.
-- Le CORS n'est pas configuré et aucun frontend n'a été essayé. Swagger UI ne documente pas encore les erreurs possibles des routes (prévu au lot 3c).
+- Aux lots 1, 2a, 2b, 3a, 3b et 3c, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3, 9.3 et 10.3.
+- Le CORS n'est pas configuré et aucun frontend n'a été essayé. Swagger UI décrit les 10 routes et leurs erreurs, mais son exemple d'erreur n'affiche pas les champs ajoutés par l'API (`errorCode`, `errors`).
 - Les mesures du lot 2b portent sur un million de lots inventés et une seule machine : elles ne disent rien d'un autre volume, d'une autre machine, ni du coût des index en écriture (voir [docs/mesures.md](docs/mesures.md), section 5).
 - Il donne une base de travail, pas une expérience de production.
 
@@ -79,7 +79,7 @@ Si SSMS souligne en rouge des procédures « introuvables » alors qu'elles exis
 
 L'essai du verrou de l'ADR 0003 se fait à la main, avec deux fenêtres SSMS : le déroulé et le résultat sont dans [docs/verification.md](docs/verification.md), section 6.3.
 
-### API (lot 3b)
+### API (lots 3b et 3c)
 
 Prérequis : le SDK .NET 10 (10.0.402 observé), les deux bases du lot précédent (`TraceabilityDev` avec ses données, `TraceabilityTest` avec les procédures `004`, `005` et `011`), l'authentification Windows. Toutes les commandes sont à lancer dans PowerShell, depuis la racine du dépôt.
 
@@ -95,7 +95,7 @@ Prérequis : le SDK .NET 10 (10.0.402 observé), les deux bases du lot précéde
 3. Lancer l'API : `dotnet run --project src/Traceability.Api --launch-profile https`. Elle écoute sur `https://localhost:7080` et lit `ConnectionStrings__Default`. Ouvrir ensuite `https://localhost:7080/swagger` à la main : `dotnet run` n'ouvre pas le navigateur (c'est documenté, pas une panne). Arrêt : Ctrl+C.
 4. Les tests : `dotnet test Traceability.slnx`, ou séparément `tests/Traceability.UnitTests` (sans base) et `tests/Traceability.IntegrationTests`. **Attention :** les tests d'intégration vident les 5 tables de `TraceabilityTest` au début de chaque exécution (`DELETE` sans `WHERE`, précédés d'un contrôle du nom de la base) ; ils lisent `ConnectionStrings__Test` et ne touchent jamais `TraceabilityDev`.
 
-Les 6 routes du lot 3b :
+Les 10 routes (6 au lot 3b, 4 au lot 3c) :
 
 | Route | Procédure |
 |---|---|
@@ -105,5 +105,13 @@ Les 6 routes du lot 3b :
 | `GET /stations?pageNumber=1&pageSize=20` | `ListStations` |
 | `GET /stations/{stationCode}` | `GetStation` |
 | `POST /stations/{stationCode}/capabilities` | `AddStationCapability` |
+| `POST /batches` | `CreateBatch` |
+| `GET /batches?status=...&farmCode=...&pageNumber=1&pageSize=20` | `ListBatches` |
+| `GET /batches/{batchCode}` | `GetBatch` |
+| `POST /batches/{batchCode}/movements` | `AddMovement` |
 
-Les listes répondent `items`, `totalCount`, `pageNumber` et `pageSize` ; sans paramètre, la page est la 1 de 20. Les erreurs sont au format Problem Details, avec un champ `errorCode` qui reprend le numéro de la procédure (501xx → 404, 502xx → 409, 503xx → 422, 504xx → 400). Les 4 routes des lots viendront au lot 3c.
+Les listes répondent `items`, `totalCount`, `pageNumber` et `pageSize` ; sans paramètre, la page est la 1 de 20. Les erreurs sont au format Problem Details, avec un champ `errorCode` qui reprend le numéro de la procédure (501xx → 404, 502xx → 409, 503xx → 422, 504xx → 400). Les routes `POST` répondent 201 sans corps, avec un en-tête `Location` vers la station ou le lot. `GET /batches/{batchCode}` renvoie un seul objet : le lot et la liste `movements`, dans l'ordre d'enregistrement.
+
+Formats (observés au lot 3c) : les champs sont en camelCase ; la date de récolte s'écrit `2026-10-14` ; une quantité est un nombre, avec au plus 2 décimales et au plus 99 999 999,99 ; une heure est toujours en UTC : elle doit se terminer par `Z` ou porter un décalage, sinon l'API répond 400 sur `occurredAt`, et les heures renvoyées se terminent par `Z`. L'API refuse (400) un texte plus long que sa colonne (noms, région, variété, type de mouvement, statut) et une quantité que la colonne ne peut pas stocker. Swagger UI décrit les 10 routes, leurs réponses et leurs `errorCode`.
+
+Attention : `GET /batches` calcule le total à chaque appel, ce qui est lent sur le million de lots de `TraceabilityDev` (voir [docs/mesures.md](docs/mesures.md), section 4.3). Les routes `POST` écrivent dans la base que l'API lit : pour des essais à la main, préférer une base de test.
