@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+/* The colours of the interface, all defined here (and only here). Warm tones that go with the fruit
+   wallpaper. Each name gives classes: bg-page, text-ink, border-edge... To change the look, change
+   these values. */
+@theme {
+  --color-page: #f7f1e5; /* background of the window */
+  --color-paper: #fffdf8; /* the cards (table and pagination) */
+  --color-paper-head: #e9dfcc; /* header row of a table */
+  --color-paper-bar: #efe6d4; /* pagination bar */
+  --color-paper-hover: #f3ead8; /* row under the pointer */
+  --color-veil: rgb(255 253 248 / 0.9); /* titles and messages over the wallpaper */
+  --color-edge: #c8b999; /* thin borders */
+  --color-edge-strong: #a89877; /* borders of cards and buttons */
+  --color-ink: #2b2620; /* main text */
+  --color-ink-soft: #5c5346; /* secondary text */
+  --color-ink-faint: #8a7f6c; /* text of a disabled button */
+  --color-button: #fbf7ee; /* active button */
+  --color-button-off: #ddd0b6; /* disabled button */
+  --color-nav: #292524; /* navigation bar */
+  --color-nav-active: #57534e; /* link of the current page */
+  --color-nav-hover: #3d3835; /* link under the pointer */
+  --color-link: #166534; /* links in the text */
+}

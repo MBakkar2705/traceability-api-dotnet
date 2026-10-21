@@ -22,7 +22,7 @@ Inclus :
 - Un parcours de lot en quatre étapes (voir section 4).
 - Des règles métier appliquées par la base de données (procédures stockées).
 - Une API pour enregistrer et consulter.
-- Une interface web en React (lot 4).
+- Une interface web en React : lecture (lot 4a, faite) et écriture (lot 4b, prévue).
 
 Hors périmètre de ce projet. Ce sont des choses qui se font en entreprise, mais elles sont hors périmètre de ce projet d'apprentissage :
 
@@ -37,6 +37,7 @@ Hors périmètre de ce projet. Ce sont des choses qui se font en entreprise, mai
 - Correction des mouvements (voir section 9).
 - Retours de marchandise (voir section 9).
 - Archivage ou purge des anciennes données : aucun lot ni mouvement n'est supprimé (règles 3 et 4), donc la base ne fait que grossir.
+- Données et écrans de contrôle qualité : le modèle n'a aucune donnée de ce genre, et le métier est à connaître avant de les concevoir.
 - Un cahier de scénarios fonctionnels (une recette) : créer une ferme, créer un lot, le faire avancer jusqu'à l'expédition, avec un maximum de scénarios, y compris les refus. Il pourra être rejoué à la main, puis automatisé en partie une fois l'interface web faite.
 
 ## 3. Ce qu'on trace
@@ -120,7 +121,7 @@ Trois demandes qui seraient refusées :
 
 ## 8. Choix retenus
 
-Validés par Mohamed le 2026-10-18.
+Validés le 2026-10-18.
 
 - À la création, un lot reçoit directement son premier mouvement `RECEPTION` et son statut `RECEIVED`.
 - Dans un mouvement, la quantité est celle constatée à cette étape. Dans le lot, c'est la dernière quantité connue.

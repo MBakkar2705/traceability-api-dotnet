@@ -1,6 +1,6 @@
-# Vérification (lots 1, 2a, 2b, 3a, 3b et 3c)
+# Vérification (lots 1, 2a, 2b, 3a, 3b, 3c et 4a)
 
-Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9) et l'API des lots (lot 3c, section 10). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
+Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10) et l'interface web de lecture (lot 4a, section 11). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
 
 Lot 1 : observé dans SQL Server (instance locale, base `TraceabilityDev`) le 2026-10-18, avec les scripts du dossier `database/`.
 
@@ -313,7 +313,7 @@ Paquets principaux : `Microsoft.Data.SqlClient` 7.1.1, `System.Security.Cryptogr
 
 ## 10. Lot 3c : API pour les lots
 
-Observé le 2026-10-21 sous Windows 11, avec le SDK .NET 10.0.402 (exécution 10.0.13), SQL Server 2025 (instance locale 17.0) et xUnit 2.9.3. Les tests d'intégration tournent sur la base `TraceabilityTest`. Les routes sont décrites dans le [README](../README.md), les erreurs des procédures dans [procedures.md](procedures.md). Les données de test sont inventées. Mohamed indique que sa machine est réglée sur UTC : je ne l'ai pas vérifié autrement que par un résultat de test (voir 10.2, casse volontaire).
+Observé le 2026-10-21 sous Windows 11, avec le SDK .NET 10.0.402 (exécution 10.0.13), SQL Server 2025 (instance locale 17.0) et xUnit 2.9.3. Les tests d'intégration tournent sur la base `TraceabilityTest`. Les routes sont décrites dans le [README](../README.md), les erreurs des procédures dans [procedures.md](procedures.md). Les données de test sont inventées. La machine est réglée sur UTC.
 
 ### 10.1 Ce qui a été construit
 
@@ -329,7 +329,7 @@ Décisions et écarts par rapport au plan :
 - **Formats JSON** : la date de récolte s'écrit `"2026-10-14"` (`DateOnly`) ; la quantité est un nombre (`decimal`, précision 10 et échelle 2 fixées sur le paramètre SqlClient) ; l'heure est toujours explicitement en UTC (`Z` ou décalage), sinon 400.
 - **Date envoyée comme `DateTime`** : `TraceabilityDb` envoie la date à SqlClient comme un `DateTime` à minuit avec le type `Date`. L'envoi direct d'un `DateOnly` n'a pas été vérifié.
 - **Heure marquée UTC à la lecture, dans `Data`** (`ReadMovement`), et non dans l'API comme le plan le disait : un seul endroit pour tous les appelants.
-- **Tailles des colonnes (non prévu)** : `FieldLimits`, `RequireText` et `RequireQuantity` ont été ajoutés après que des tests d'observation ont montré des valeurs coupées, arrondies ou refusées par SqlClient (voir 10.2). Décidé avec Mohamed : on corrige dans ce lot. Le type de mouvement et le filtre de statut (20 caractères) sont protégés de la même façon.
+- **Tailles des colonnes (non prévu)** : `FieldLimits`, `RequireText` et `RequireQuantity` ont été ajoutés après que des tests d'observation ont montré des valeurs coupées, arrondies ou refusées par SqlClient (voir 10.2). Décidé : on corrige dans ce lot. Le type de mouvement et le filtre de statut (20 caractères) sont protégés de la même façon.
 - **Swagger** : `[ProducesResponseType]` plus commentaires XML. `GenerateDocumentationFile` est activé et l'avertissement `CS1591` (membre public sans commentaire) est silencié dans `Traceability.Api.csproj` : les routes et les corps de requête sont documentés, pas chaque classe interne. Les 9 avertissements `CS1573` du premier build ont été corrigés par des balises `<param>`.
 - **Tests ajoutés au plan** : tests sur `RequireValue<T>`, `RequireUtcTime`, `RequireText` et `RequireQuantity`, les limites, les corps vides, le type de mouvement et le statut trop longs, la casse des codes, et 4 erreurs de procédures (50102 à la création et à l'ajout, 50400, 50402) qui n'étaient pas dans la liste B1 à B11.
 
@@ -357,7 +357,7 @@ Décisions et écarts par rapport au plan :
   Après la correction (`FieldLimits`, `RequireText`, `RequireQuantity`), ces 6 tests passent : 400 sur le champ concerné. Un type de mouvement et un statut de 21 caractères donnent aussi 400 ; leur comportement avant la correction n'a pas été observé.
 - **Casse des codes** : une station et un lot sont lus avec leur code en minuscules (200, le code renvoyé reste celui stocké) ; un code de station qui ne diffère que par la casse est refusé (409, 50201).
 - **Stations** : une page au-delà de la fin donne 200, aucun élément et le même `totalCount`.
-- **Swagger UI** (regardé par Mohamed dans Edge, avec l'API lancée sur `TraceabilityDev`, sans cliquer sur « Execute ») : les 10 routes s'affichent avec leur résumé, sous 3 titres (Batches 4, Farms 2, Stations 4) ; `POST /batches` montre ses 5 réponses (201, 400, 404, 409, 422) avec nos descriptions et les `errorCode`, et le schéma `CreateBatchRequest` affiche la description de chaque champ ; `GET /batches` montre le texte `remarks`, les 4 paramètres avec leur description et les valeurs par défaut 1 et 20.
+- **Swagger UI** (regardé dans Edge, avec l'API lancée sur `TraceabilityDev`, sans cliquer sur « Execute ») : les 10 routes s'affichent avec leur résumé, sous 3 titres (Batches 4, Farms 2, Stations 4) ; `POST /batches` montre ses 5 réponses (201, 400, 404, 409, 422) avec nos descriptions et les `errorCode`, et le schéma `CreateBatchRequest` affiche la description de chaque champ ; `GET /batches` montre le texte `remarks`, les 4 paramètres avec leur description et les valeurs par défaut 1 et 20.
 - **Casse volontaire** (un défaut posé, `dotnet test`, puis ligne rétablie ; l'empreinte SHA-256 du fichier est ensuite identique à l'originale) :
 
   | Défaut posé | Échecs attendus | Échecs observés |
@@ -379,7 +379,6 @@ Décisions et écarts par rapport au plan :
 - **En-tête `Location`** : seul son suffixe est testé, pas sa forme complète.
 - **Vitesse** : `GET /batches` n'a pas été essayée sur `TraceabilityDev` (1 000 000 de lots) et le coût du total n'a pas été remesuré par l'API (voir [mesures.md](mesures.md), section 4.3).
 - **Données** : `TraceabilityDev` a été relue au début de la session (200 fermes, 30 stations, 40 fonctions, 1 000 000 de lots, 3 250 000 mouvements) et n'a pas été recomptée à la fin ; rien n'y a été écrit volontairement. `TraceabilityTest` était vide au début de la session et est vidée par les tests.
-- **Machine en UTC** : indiqué par Mohamed, non vérifié autrement.
 - **Reportés de la section 9.3** : CORS non configuré et aucun frontend ; chaîne de connexion lue à la première utilisation ; .NET 10 sur Windows 11 22H2 ; les deux garde-fous des tests jamais déclenchés (50099 et refus de démarrer de la fixture) ; aucune mesure de charge côté API.
 
 ### 10.4 Rejouer la vérification
@@ -388,3 +387,88 @@ Décisions et écarts par rapport au plan :
 - `dotnet build Traceability.slnx`, puis `dotnet test Traceability.slnx` : résumé attendu `total : 154; échec : 0; réussi : 154`. **Attention** : les tests d'intégration exécutent 5 `DELETE` sans `WHERE` sur `TraceabilityTest` (jamais sur `TraceabilityDev`).
 - Swagger UI : `dotnet run --project src/Traceability.Api --launch-profile https`, puis `https://localhost:7080/swagger`. L'API lit `TraceabilityDev` : ne pas cliquer sur « Execute » pour les routes `POST` (elles écriraient dans la base) ni pour `GET /batches` (le total est lent sur un million de lots).
 - Pour voir un test échouer : dans `src/Traceability.Api/Validation/FieldErrors.cs`, remplacer `FieldLimits.QuantityDecimals))` par `FieldLimits.QuantityDecimals + 5))` dans `RequireQuantity`, lancer `dotnet test Traceability.slnx` (3 échecs : 1 unitaire et 2 d'intégration), puis rétablir la ligne.
+
+## 11. Lot 4a : interface web de lecture (React)
+
+Observé le 2026-10-21 sous Windows 11, dans Edge, avec Node v22.16.0 et npm 10.9.2, le SDK .NET 10 et SQL Server 2025 (instance locale). Pour les observations dans Edge, l'API tournait sur `TraceabilityDev` ; les tests d'intégration C# tournent sur `TraceabilityTest`. Les choix d'outils sont dans l'[ADR 0006](adr/0006-interface-web-vite-react.md), le CORS dans l'[ADR 0007](adr/0007-cors-dans-l-api.md).
+
+### 11.1 Ce qui a été construit
+
+| Où | Ce qui a changé |
+|---|---|
+| `src/Traceability.Api` | `Program.cs` : une politique CORS `WebUi`, en développement seulement (origine `http://localhost:5173`, méthode `GET`). |
+| `tests/Traceability.IntegrationTests` | `CorsTests` : 5 tests par HTTP. Les tests C# passent à 159 : 74 unitaires et 85 d'intégration. |
+| `web/src/api` | `types.ts` (types des réponses), `errors.ts` (`ApiError`, `NetworkError`), `client.ts` (une fonction par route de lecture : 5 `GET`). |
+| `web/src/lib` | `format.ts` (heure en UTC, date, quantité, calculées sur le texte, sans objet `Date`), `labels.ts` (statuts et types de mouvement en français), `messages.ts` (erreur de l'API en message français, selon `errorCode`), `page.ts` (page lue dans l'adresse), `useApi.ts` (états chargement, erreur, réussite ; annulation d'un appel remplacé). |
+| `web/src/components` | mise en page et navigation, liste générique avec sa pagination (Début, Précédent, Suivant, Fin), tableau, fiche de détail, pastille de statut, messages de chargement, d'erreur et de liste vide, fond d'écran. |
+| `web/src/pages` | 5 écrans (fermes, stations, détail d'une station, lots avec filtres, détail d'un lot) et la page « introuvable ». |
+| `web/` | 13 fichiers de test, 79 tests. |
+
+Décisions et écarts par rapport au plan :
+
+- **Lot 4 coupé en deux** : le 4a lit, le 4b écrira.
+- **Taille de page** : le plan disait 20 lignes. Après avoir vu l'écran, elle est passée à 10 (pour tenir sur un écran sans défiler), puis à 15 avec des lignes moins hautes. C'est une constante de `web/src/config.ts` ; l'API garde 20 par défaut.
+- **Heures** : affichées en UTC avec la mention « UTC », jamais converties en heure locale.
+- **Petits écrans** : sous 640 pixels de large, les colonnes Ferme et Variété de la liste des lots sont cachées pour éviter le défilement de côté.
+- **Non prévus au plan, décidés pendant le lot, après avoir vu la page** : les boutons « Début » et « Fin », un thème de couleurs chaudes défini à un seul endroit (`src/index.css`), et un fond d'écran de dessins (fruits, légumes, caisses, cartons) tracés en SVG.
+- **Filtres** : le statut et la ferme de la liste des lots sont dans l'adresse (`?status=…&farmCode=…&page=…`) ; appliquer un filtre revient à la page 1.
+- **ADR 0007 ajouté** : le CORS n'était pas prévu comme décision à part.
+
+### 11.2 Ce qui est prouvé
+
+- **Qualité du code** (dernière exécution, après le rétablissement de tous les défauts de la casse volontaire) : `npm run lint` donne 0 avertissement et 0 erreur (116 règles, 49 fichiers) ; `npm run build` réussit (JavaScript 280,81 ko, CSS 14,15 ko). Les noms des fichiers construits sont les mêmes qu'avant la casse : le code compilé est identique.
+- **Tests de l'interface** : 79 réussis, 0 échec, 13 fichiers (`client` 11, `format` 7, `messages` 10, `page` 10, `labels` 4, `useApi` 5, `Pagination` 2, `FarmsPage` 8, `StationsPage` 2, `StationPage` 4, `BatchesPage` 8, `BatchPage` 5, `App` 3). `fetch` y est remplacé par un faux : ces tests ne prouvent rien de l'API réelle.
+- **Tests C#** : 159 réussis, 0 échec (74 unitaires et 85 d'intégration).
+- **CORS, par HTTP** : l'origine `http://localhost:5173` reçoit `Access-Control-Allow-Origin` ; une autre origine non ; une requête sans origine non ; une erreur 404 écrite par le gestionnaire d'exceptions garde l'en-tête ; une pré-vérification pour `POST` reçoit `Access-Control-Allow-Methods: GET`. Observé aussi : cette réponse contient l'origine alors que la méthode demandée n'est pas permise, ce que la page de Microsoft lue pendant le lot disait ne pas arriver. Deux hypothèses de Claude fondées sur cette page ont été corrigées par l'observation avant d'arriver au test final.
+- **Observé dans Edge, sur les vraies données de `TraceabilityDev`** :
+  - Fermes : 200 fermes, 15 par page, « Page 1 sur 14 · 200 au total ». À 10 lignes par page (avant le changement), « Fin » arrivait à la page 20 sur 20, `F191` à `F200`.
+  - Stations : 30 stations, 2 pages. Page 1 : `SITE-01` à `SITE-10` puis `PCK-01` à `PCK-05`. Page 2 (`?page=2`) : `PCK-06` à `PCK-10` puis `SHP-01` à `SHP-10`, avec « Suivant » et « Fin » grisés.
+  - Lots : « Page 1 sur 66 667 · 1 000 000 au total », 15 lignes, 6 colonnes sur un grand écran, une pastille de statut. « Fin » : la page 66 667 affiche 10 lots, de `LOT-0999991` à `LOT-1000000`, au statut « Reçu ».
+  - Détail du lot `LOT-0000001` : ferme `F001`, variété `roma`, 20/10/2024, 176,66 kg, « Expédié » ; le parcours a 4 étapes (Réception à `SITE-02` 06:13:00, Tri à `SITE-02` 08:30:00, Emballage à `PCK-01` 10:49:00, Expédition à `SHP-01` 13:12:00, toutes « UTC »), avec des quantités qui diminuent (179,19 ; 178,64 ; 177,79 ; 176,66 kg).
+  - Détail de la station `SITE-02` : son nom (`Reception and sorting site 02`, en anglais : c'est la donnée de la base) et deux fonctions, Réception et Tri.
+  - Navigation : les liens vont de la liste au détail et du parcours d'un lot à une station ; le lien de retour revient à la liste. La page est dans l'adresse (`?page=3`) : F5 reste sur la même page, et la flèche « retour » du navigateur revient à la page précédente.
+  - Erreurs à l'écran : un lot inexistant donne « Lot introuvable. » sans ligne « Référence » ; `?farmCode=F999` donne « Ferme introuvable. » (le champ garde `F999`, « Effacer les filtres » apparaît) ; l'API arrêtée donne « Impossible de joindre l'API. Est-elle lancée ? », et la console dit `net::ERR_CONNECTION_REFUSED` (pas de blocage CORS) ; une erreur 500 de l'API donne « Erreur inattendue du serveur. » avec sa « Référence ».
+  - Mode « mobile » des outils de développement (468 pixels) : la liste des lots garde 4 colonnes (Code, Récolte, Quantité, Statut), les codes tiennent sur une ligne, sans défilement de côté ; le détail d'un lot tient, dates comprises ; la pagination se range sur trois lignes.
+  - Durées lues dans l'onglet « Réseau » : la page 1000 des lots (14 985 lots sautés) a pris 371 ms puis 388 ms ; le premier appel après le redémarrage de l'API, 2,70 s ; « Fin » des lots (999 990 lots sautés) : 8,88 s, 11,73 s, 9,72 s et 1,90 s selon l'essai (statut 200), et trois échecs (statut 500), dont un mesuré à 30,15 s (voir 11.3).
+  - Appel annulé : l'onglet « Réseau » montre, avant la vraie requête, une ligne rouge sans réponse (0 octet, 6 à 9 ms). C'est l'effet du mode strict de React en développement (`<StrictMode>` dans `main.tsx`) et de l'annulation par `useApi`.
+- **Durée de `trace.ListBatches` dans SSMS** (lecture seule, pages de 15, une exécution par ligne, durée écoulée de la procédure entière, page et total ensemble) : page 1000, 335 ms ; page 10 000, 662 ms ; page 30 000, 1 274 ms ; page 66 667, 2 744 ms. La durée croît avec le nombre de lignes sautées.
+- **Journal de l'API** (deux erreurs lues dans le terminal) : un dépassement de délai SQL (`Unexpected SQL error (number -2)`, « Le délai d'exécution a expiré ») dans `ListBatchesAsync`, au moment de « Fin » (deux erreurs de ce type lues dans le terminal, avec deux identifiants de connexion différents) ; et un appel annulé (`Unexpected SQL error (number 0)`, « Opération annulée par l'utilisateur ») dans `ListFarmsAsync`.
+- **Casse volontaire** (défauts posés, tests lancés, fichiers rétablis ; l'empreinte SHA-256 de chaque fichier est ensuite identique à l'originale) :
+
+  | Défaut posé | Échecs annoncés | Échecs observés |
+  |---|---|---|
+  | D1 : `formatUtc` n'écrit plus « UTC » | `format` 2, `BatchPage` 1 | `format` **3**, `BatchPage` 1 (le test des fractions de seconde écrit aussi « UTC » : compte faux) |
+  | D2 : messages des erreurs 50100 et 50102 échangés | `messages` 2 | 2 (les deux tests de pages sur ces cas échouaient aussi, mais masqués par D3) |
+  | D3 : le client ne lève plus d'erreur pour un statut d'erreur | `client` 4, plusieurs tests de pages | `client` **3**, plus 5 tests de pages en échec et 5 plantages `Cannot read properties of undefined (reading 'length')`. Voir plus bas. |
+  | D4 : « Précédent » au-delà de la fin va à la page n-1 | `FarmsPage` 1 | 1 (« Page 8 sur 3 ») |
+  | D5 : `useApi` n'ignore plus la réponse lente d'un appel remplacé | `useApi` 1 | 1 |
+  | D6 : `readPageNumber` accepte 0 | `page` 1 cas | 1 |
+  | D7 : les filtres vides ne sont plus omis de l'adresse | `client` 2, `BatchesPage` 2, `App` 1 | 5, ceux annoncés |
+  | D8 (API) : origine CORS `http://localhost:5174` | 4 tests CORS sur 5 | 4 sur 5 : le test « sans origine » réussit même sans CORS |
+
+  Avec D1 à D7 posés : 22 tests en échec sur 79, dans 10 des 13 fichiers (les 3 autres, par déduction : `labels`, `StationsPage` et `Pagination`).
+  - **Un test trop faible trouvé** : avec D3, le test « erreur inattendue (500) » réussissait à tort, parce que le corps de la réponse simulée contenait déjà `status` et `traceId`, les deux champs vérifiés. Il vérifie maintenant aussi `toBeInstanceOf(ApiError)`, comme le test de l'erreur de forme. Rejoué avec D3 seul : 4 échecs et 7 réussis dans `client.test`.
+  - **Un programme compilé périmé** : après D8 rétabli par copie, 4 tests CORS échouaient encore (« Actual: http://localhost:5174 »), alors que `Program.cs` avait l'empreinte d'origine. La construction de l'API avait duré 12,1 s avec le défaut, puis 1,6 s sans rien recompiler : la copie avait gardé l'ancienne date du fichier, et `dotnet` ne recompile que si une source est plus récente que le programme. Après mise à jour de la date : construction de 3,8 s et 159 tests réussis. Le contenu des fichiers n'avait pas changé.
+
+### 11.3 Ce qui n'est pas prouvé
+
+- **« Fin » de la liste des lots.** Sur 7 essais le même soir : 3 échecs (500, dépassement de délai SQL, numéro -2 dans le journal de l'API ; un mesuré à 30,15 s) et 4 réussites (8,88 s, 11,73 s, 9,72 s, 1,90 s). Dans SSMS, la même page prend 2,2 à 2,7 s. Pendant la réussite de 9,72 s, une lecture de `sys.dm_exec_requests` toutes les 2 secondes a montré la requête de l'API sans blocage ni attente (`wait_type` vide), avec sa mémoire accordée aussitôt (95 296 Ko), un plan parallèle à 4 fils et `cpu_ms` passant de 3 044 à 12 631 en 8 s, soit environ 14 fois les 0,9 s de processeur mesurés dans SSMS pour la même page. **La cause n'est pas trouvée.** Les pistes (plan d'exécution gardé en mémoire, données pas en mémoire, processeur pris par autre chose) ne sont ni confirmées ni écartées ; une lecture de `sys.dm_exec_procedure_stats` n'a renvoyé aucune ligne. Notre code ne fixe aucun délai d'attente (`CommandTimeout`) et la chaîne de connexion du README n'en contient pas : c'est donc la valeur par défaut du pilote, 30 secondes selon la [documentation de Microsoft](https://learn.microsoft.com/en-us/dotnet/api/microsoft.data.sqlclient.sqlcommand.commandtimeout) (page lue le 2026-10-21, qui précise que seules les anciennes méthodes asynchrones comme `BeginExecuteReader` l'ignorent) ; l'échec mesuré à 30,15 s est cohérent avec elle. Le cas R5 de [mesures.md](mesures.md) avait annoncé la limite de la pagination par `OFFSET`. À traiter au lot 5, avec des mesures répétées plutôt qu'un seul essai.
+- **Appels annulés** : l'API écrit un appel annulé par le navigateur comme une erreur grave dans son journal. Le lien avec l'annulation faite par l'interface (et le mode strict de React) est déduit du message et de l'onglet « Réseau », pas prouvé ; rien n'a été changé.
+- **Filtres de la liste des lots sur les vraies données** (statut, ferme, sur le million de lots) : non essayés dans Edge, durée inconnue. Ils ne sont testés qu'avec un faux serveur.
+- **Autres navigateurs, vrai téléphone** : seul Edge a été utilisé, et le mode « mobile » de ses outils (468 pixels). Les fermes, les stations et le détail d'une station n'ont pas été regardés à cette largeur.
+- **Accessibilité** : lecteur d'écran et contrastes non vérifiés. **Apparence** : couleurs et dessins ne sont pas testés automatiquement ; ils ont été regardés dans Edge.
+- **Écriture** : aucune dans ce lot. Le CORS n'accepte que `GET` ; une pré-vérification pour `POST` n'a été testée que par C#, pas par un navigateur. Les en-têtes que la page peut lire (par exemple `Location`, renvoyé par les routes `POST`) ne sont pas vérifiés.
+- **Fuseau** : les heures sont affichées en UTC, jamais en heure locale (volontaire) ; l'effet d'un autre fuseau n'est pas observé.
+- **Casse volontaire** : 8 défauts seulement. Un test peut ne pas voir un autre défaut.
+- **Rechargement de Vite** : pendant un remaniement de `BatchesPage.tsx` écrit en deux fois, la console d'Edge a montré « Failed to reload » et une erreur 500 de Vite ; la cause supposée est la lecture d'un état intermédiaire du fichier, non prouvée. Le lint, le build et les 79 tests passent sur le fichier final.
+- **Données** : `TraceabilityDev` a été relue au début de la session (200 fermes, 30 stations, 40 fonctions, 1 000 000 de lots, 3 250 000 mouvements) et n'a pas été recomptée à la fin ; l'interface ne fait que lire. `TraceabilityTest` contenait des restes de tests au début (26 fermes, 27 stations, 36 fonctions, 20 lots, 28 mouvements) ; les tests d'intégration la vident.
+- **React Router 8.5.0** : non essayée (elle demande Node 22.22.0 ou plus).
+- **Reportés de la section 10.3**, toujours ouverts : l'exemple d'erreur de Swagger UI, les requêtes simultanées par HTTP, les valeurs aux limites par HTTP et base, l'en-tête `Location`, et la chaîne de connexion lue à la première utilisation.
+
+### 11.4 Rejouer la vérification
+
+- Prérequis : le README, sections « API (lots 3b et 3c) » et « Interface web (lot 4a) ».
+- Qualité et tests de l'interface, dans `web/` : `npm install` (une fois), puis `npm run lint`, `npm run build` et `npm test` : attendu 0 avertissement, build réussi, `Tests  79 passed (79)`.
+- Tests C#, à la racine, **API arrêtée** : `dotnet test Traceability.slnx` : attendu `total : 159; échec : 0; réussi : 159`. **Attention** : les tests d'intégration exécutent 5 `DELETE` sans `WHERE` sur `TraceabilityTest` (jamais sur `TraceabilityDev`).
+- Voir l'interface : dans un terminal, `dotnet run --project src/Traceability.Api --launch-profile https` ; dans un autre, `cd web` puis `npm run dev` ; ouvrir `http://localhost:5173/`. L'interface du lot 4a ne fait que lire, mais la liste des lots calcule le total à chaque page : « Fin » a duré de 1,9 s à plus de 30 s (échec) selon l'essai (voir 11.3).
+- Pour voir un test échouer : dans `web/src/lib/format.ts`, retirer ` UTC` de la chaîne renvoyée par `formatUtc`, lancer `npm test` (3 échecs dans `format.test` et 1 dans `BatchPage.test`), puis rétablir la ligne. **Après avoir remis un fichier par copie**, mettre à jour sa date (`(Get-Item chemin).LastWriteTime = Get-Date` dans PowerShell), sinon `dotnet` peut ne pas recompiler (voir 11.2) ; un fichier remis par l'éditeur est déjà à la bonne date.

@@ -68,7 +68,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Garde `NOEXEC`** : `SET NOEXEC ON` fait ignorer le reste du script. Ici : utilisé quand la base n'est pas la bonne, pour que rien ne soit exécuté.
 
-**Pagination (`OFFSET` / `FETCH`)** : renvoyer les lignes par pages (la page 2 de 50 lignes, par exemple). Ici : `ListBatches`, `ListFarms` et `ListStations`, qui renvoient aussi le total ; l'API répond avec `items`, `totalCount`, `pageNumber` et `pageSize`.
+**Pagination (`OFFSET` / `FETCH`)** : renvoyer les lignes par pages (la page 2 de 50 lignes, par exemple). Ici : `ListBatches`, `ListFarms` et `ListStations`, qui renvoient aussi le total ; l'API répond avec `items`, `totalCount`, `pageNumber` et `pageSize`. Limite observée au lot 4a : plus la page est loin, plus `OFFSET` fait lire de lignes sautées ; la dernière page des lots (999 990 lignes sautées) a pris de 1,9 à 11,7 s par l'API (contre 2,2 à 2,7 s dans SSMS) et a échoué 3 fois sur 7 par dépassement de délai (voir verification.md, section 11.3).
 
 ## .NET et C#
 
@@ -132,7 +132,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Fixture de test** : un objet construit une seule fois avant les tests d'un groupe et partagé par eux. Ici : `ApiFixture` vérifie la base, vide les 5 tables de `TraceabilityTest` et lance l'API.
 
-**CORS** : une règle appliquée par le navigateur : une page web ne peut appeler une API située à une autre adresse que si l'API l'autorise. Ici : non configuré, aucun frontend n'a été essayé.
+**CORS** : une règle appliquée par le navigateur : une page web ne peut appeler une API située à une autre adresse que si l'API l'autorise. Ici : configuré en développement seulement, pour l'interface sur `http://localhost:5173`, en `GET` seulement (voir ADR 0007).
 
 **Casse volontaire d'un test** : on change une ligne du code pour vérifier que les tests la voient, puis on la rétablit. Ici : la famille 502xx de 409 à 400 donne 4 échecs unitaires et 3 d'intégration ; le fichier rétabli a la même empreinte que l'original. Au lot 3c : 5 défauts, 4 vus par les tests, 1 non détecté (la conversion d'une heure avec décalage, sur une machine en UTC).
 
@@ -145,6 +145,36 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 **Test d'observation** : un test dont l'attente est écrite avant comme une hypothèse. S'il échoue, son message montre ce qui se passe vraiment. Ici : les tests de limites du lot 3c (valeur coupée, arrondie, ou erreur 500).
 
 **Empreinte (SHA-256)** : un nombre calculé à partir du contenu d'un fichier ; deux fichiers identiques ont la même empreinte. Ici : elle prouve qu'une ligne cassée pour un test a bien été rétablie à l'identique.
+
+**Délai d'attente (timeout) d'une commande SQL** : le temps maximal qu'un programme accepte d'attendre la réponse de SQL Server ; passé ce délai, la commande est abandonnée et une erreur est levée (numéro -2 dans la `SqlException`). Ici : notre code n'en fixe aucun, c'est donc la valeur par défaut du pilote (30 secondes d'après la documentation de Microsoft sur `SqlCommand.CommandTimeout`) ; observé 3 fois sur 7 essais sur la dernière page de `GET /batches` (30,15 s mesuré pour l'un d'eux) (voir verification.md, section 11.3).
+
+**Programme compilé périmé** : `dotnet` ne recompile un projet que si un fichier source est plus récent que le programme déjà compilé. Ici : après avoir remis un fichier par copie, qui avait gardé son ancienne date, les tests ont tourné sur l'ancien programme et 4 d'entre eux ont échoué à tort ; mettre la date à jour a suffi (voir verification.md, section 11.2).
+
+## Interface web
+
+**Origine** : le triplet schéma, hôte et port d'une adresse. Ici : `http://localhost:5173` (l'interface) et `https://localhost:7080` (l'API) sont deux origines différentes, même sur la même machine.
+
+**Pré-vérification (preflight)** : une requête `OPTIONS` que le navigateur envoie avant certaines requêtes (en général un `POST` en JSON) pour demander à l'API si elle les accepte. Ici : testée en C# pour `POST` (observé : l'API répond avec l'origine et `Access-Control-Allow-Methods: GET`) ; l'interface du lot 4a n'écrit rien.
+
+**En-têtes exposés** : par défaut, une page ne peut lire que quelques en-têtes d'une réponse venue d'une autre origine ; l'API doit nommer les autres pour qu'une page les lise. Ici : l'interface du lot 4a n'en lit aucun ; à revoir au lot 4b pour le `Location` des routes `POST` (non vérifié).
+
+**Proxy de développement** : le serveur de développement relaie lui-même les appels de l'interface vers l'API, pour que le navigateur ne parle qu'à une origine. Ici : écarté, non essayé (voir ADR 0007).
+
+**Vite** : l'outil qui sert l'interface en développement (`npm run dev`, port 5173 fixé avec `strictPort`) et qui la construit (`npm run build`, dossier `dist/`). Ici : version 8.3.5.
+
+**Routeur (React Router)** : la bibliothèque qui associe une adresse à un écran. Ici : `/batches`, `/batches/:batchCode`, `/farms`, `/stations` et `/stations/:stationCode` ; les filtres et la page sont dans l'adresse (`?status=…&page=2`), donc F5 et la flèche « retour » gardent l'écran (observé).
+
+**Tailwind CSS (classes utilitaires)** : le style s'écrit avec de petites classes dans le code des composants (`px-3`, `text-ink`). Ici : les couleurs sont des variables de thème, définies une seule fois dans `src/index.css`.
+
+**Linter (Oxlint)** : un outil qui lit le code sans l'exécuter et signale des fautes probables. Ici : 0 avertissement ; il a signalé un `setState` appelé de façon synchrone dans un effet de `useApi`, corrigé.
+
+**Vitest et jsdom** : Vitest lance les tests de l'interface ; jsdom simule un navigateur dans Node, ce qui permet de tester des composants React sans ouvrir Edge. Ici : 79 tests, avec un faux `fetch` à la place de l'API.
+
+**Annulation d'un appel (`AbortController`)** : un moyen de dire à `fetch` d'abandonner une requête devenue inutile. Ici : `useApi` annule l'appel quand l'écran ou la page change ; l'API peut alors écrire « Opération annulée par l'utilisateur » dans son journal (voir verification.md, section 11.3).
+
+**Mode strict de React (`StrictMode`)** : en développement seulement, React exécute chaque effet deux fois pour révéler des défauts. Ici : observé dans l'onglet « Réseau » d'Edge : un premier appel annulé (0 octet, quelques millisecondes), puis le vrai.
+
+**Mode « mobile » des outils de développement** : dans Edge, F12 puis l'icône « téléphone et tablette » simulent la largeur d'un petit écran. Ici : 468 pixels. Ce n'est pas un vrai téléphone.
 
 ## Organisation
 

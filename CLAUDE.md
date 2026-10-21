@@ -22,6 +22,8 @@ Depuis la racine du dépôt, dans PowerShell (la solution est `Traceability.slnx
 - Lancer l'API : `dotnet run --project src/Traceability.Api --launch-profile https`, puis ouvrir `https://localhost:7080/swagger` à la main (`dotnet run` n'ouvre pas le navigateur). Elle lit `ConnectionStrings__Default`. Arrêt : Ctrl+C.
 - Certificat de développement HTTPS, une fois, lancé par Mohamed : `dotnet dev-certs https --trust`.
 - Variables d'environnement, définies par Mohamed au niveau de son compte Windows : `ConnectionStrings__Default` (base `TraceabilityDev`) et `ConnectionStrings__Test` (base `TraceabilityTest`). Authentification Windows, aucun mot de passe. Avec .NET, `TrustServerCertificate=True` est nécessaire en local (le certificat de SQL Server n'est pas approuvé, observé le 2026-10-20) : jamais pour un serveur distant. Les valeurs ne sont écrites nulle part dans le dépôt. Un programme déjà ouvert ne voit pas une variable créée après son démarrage : rouvrir VS Code.
+- Interface web, dans `web/`, lancée par Mohamed (le texte affiché est en français) : `npm install` (une fois), `npm run dev` (serveur Vite sur `http://localhost:5173/`, port fixé ; il demande l'API lancée dans un autre terminal), `npm run lint`, `npm run build` (vérifie les types, écrit `dist/`) et `npm test` (Vitest, 79 tests, sans API ni base). Aucun fichier `.env` n'est créé par Claude ; l'adresse de l'API est `https://localhost:7080`, ou `VITE_API_URL`.
+- Arrêter l'API (Ctrl+C) avant `dotnet test`, qui doit pouvoir recompiler. Après avoir remis un fichier par copie (casse volontaire), mettre à jour sa date de modification, sinon `dotnet` peut ne pas recompiler (observé au lot 4a).
 Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
 
 ## Secrets

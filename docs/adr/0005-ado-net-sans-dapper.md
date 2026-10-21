@@ -14,7 +14,7 @@ Ce que l'API demande à cette couche est limité : appeler une procédure par so
 - L'accès est regroupé dans une seule classe, `TraceabilityDb` (projet `Traceability.Data`) : une méthode par procédure, qui ouvre une connexion, envoie les paramètres, lit les tableaux avec `NextResultAsync` et referme la connexion.
 - Cette classe ne rattrape aucune erreur SQL : l'API lit le numéro et le message de l'exception pour choisir la réponse HTTP.
 
-Raison du choix, dite par Mohamed : ADO.NET laisse voir plus de code ; pour un projet d'apprentissage, il l'a jugé préférable.
+Raison du choix : ADO.NET laisse voir plus de code ; idéal pour un projet d'apprentissage.
 
 ## Alternatives écartées
 
@@ -37,5 +37,5 @@ Négatives :
 
 ## Notes
 
-- 2026-10-20 : décision de Mohamed, avant l'écriture du code du lot 3b. Observé : les 6 procédures des fermes et des stations sont appelées par `TraceabilityDb`, et les 30 tests d'intégration du lot 3b passent, sur `TraceabilityTest` (voir [verification.md](../verification.md), section 9). Non observé : la vitesse, le comportement sous charge, et ce que donnerait Dapper.
+- 2026-10-20 : décision prise avant l'écriture du code du lot 3b. Observé : les 6 procédures des fermes et des stations sont appelées par `TraceabilityDb`, et les 30 tests d'intégration du lot 3b passent, sur `TraceabilityTest` (voir [verification.md](../verification.md), section 9). Non observé : la vitesse, le comportement sous charge, et ce que donnerait Dapper.
 - 2026-10-21 : lot 3c. `TraceabilityDb` appelle maintenant les 10 procédures (309 lignes, contre environ 185 pour les 6 du lot 3b : la croissance annoncée dans les conséquences négatives). Observé : une quantité de `100000000` a fait lever à SqlClient une `ArgumentException` (« Valeur du paramètre '100000000.00' hors limites ») avant tout envoi à SQL Server, donc une exception qui n'est pas une `SqlException` et que la classe ne traduit pas ; l'API vérifie maintenant la forme des quantités avant l'appel. Non observé : la vitesse, le comportement sous charge, et ce que donnerait Dapper.
