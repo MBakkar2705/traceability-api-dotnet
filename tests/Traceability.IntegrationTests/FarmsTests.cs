@@ -105,4 +105,26 @@ public class FarmsTests(ApiFixture api)
         Assert.Equal(firstPage.GetProperty("totalCount").GetInt32(), beyond.GetProperty("totalCount").GetInt32());
         Assert.Equal(999999, beyond.GetProperty("pageNumber").GetInt32());
     }
+
+    // NVARCHAR(100) for the name and the region. The expectation is the behaviour we want: a 400
+    // on the field. It is NOT known whether the API does it today: a failure tells what happens.
+    [Fact]
+    public async Task A_farm_name_that_is_too_long_gives_400()
+    {
+        var response = await Client.PostAsJsonAsync(
+            "/farms", new { code = TestData.NewCode(), name = new string('N', 101), region = "Region A" });
+
+        Assert.True(response.StatusCode == HttpStatusCode.BadRequest, await TestData.DescribeAsync(response));
+        await TestData.AssertShapeErrorAsync(response, "name");
+    }
+
+    [Fact]
+    public async Task A_farm_region_that_is_too_long_gives_400()
+    {
+        var response = await Client.PostAsJsonAsync(
+            "/farms", new { code = TestData.NewCode(), name = "Test farm", region = new string('R', 101) });
+
+        Assert.True(response.StatusCode == HttpStatusCode.BadRequest, await TestData.DescribeAsync(response));
+        await TestData.AssertShapeErrorAsync(response, "region");
+    }
 }

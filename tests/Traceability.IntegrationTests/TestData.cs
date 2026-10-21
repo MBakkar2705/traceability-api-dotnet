@@ -44,4 +44,8 @@ public static class TestData
         var names = body.GetProperty("errors").EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToList();
         Assert.Equal(fields.OrderBy(n => n).ToList(), names);
     }
+
+    // For failure messages: what the API really answered.
+    public static async Task<string> DescribeAsync(HttpResponseMessage response) =>
+        $"status {(int)response.StatusCode}, body: {await response.Content.ReadAsStringAsync()}";
 }
