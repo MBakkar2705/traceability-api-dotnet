@@ -8,7 +8,7 @@ Ce projet est réalisé avec l'assistance de Claude (Anthropic), sous ma supervi
 
 ## État
 
-Les lots 1, 2a, 2b, 3a, 3b et 3c sont **terminés**. Lot 1 : la base de données (5 tables et leurs contraintes). Lot 2a : les 7 procédures stockées du schéma `trace` et leurs 38 tests, exécutés sur une base de test `TraceabilityTest`, avec un essai à la main du verrou posé par `AddMovement` (voir [docs/verification.md](docs/verification.md)). Lot 2b : un million de lots inventés et 3 250 000 mouvements générés dans `TraceabilityDev` et contrôlés, des mesures de recherche avant et après index (un index retenu, deux essais abandonnés ; voir [docs/mesures.md](docs/mesures.md)). Lot 3a : trois procédures de lecture (`ListFarms`, `ListStations`, `GetStation`) et leurs 16 tests, et un total ajouté à `ListBatches` (tests 32, 33 et 38 de `006` revus), exécutés sur `TraceabilityTest` (voir [docs/verification.md](docs/verification.md)) ; le coût du total a été mesuré (voir [docs/mesures.md](docs/mesures.md), section 4.3). Lot 3b : l'API ASP.NET Core pour les fermes et les stations (6 routes), avec un accès aux données en ADO.NET, 49 tests unitaires et 30 tests d'intégration exécutés et observés (voir [docs/verification.md](docs/verification.md), section 9). Lot 3c : l'API pour les lots (4 routes), la documentation Swagger des 10 routes, le refus par l'API des valeurs que les colonnes ne peuvent pas stocker (texte trop long, quantité trop précise ou trop grande : sans cela, elles étaient coupées, arrondies ou faisaient échouer SqlClient, observé), 74 tests unitaires et 80 tests d'intégration exécutés et observés, et une casse volontaire de 5 défauts (voir [docs/verification.md](docs/verification.md), section 10). Le lot 3 a été coupé deux fois : l'étude de l'API .NET a montré que le SQL manquait de ces trois procédures et d'un total pour les lots, ce qui forme le lot 3a ; puis l'API a été coupée par ressource, les fermes et les stations au lot 3b, les lots au lot 3c. Le reste est **Prévu** : l'optimisation des totaux des listes, les tests en intégration continue et l'interface web. « Prouvé » n'est écrit que pour ce qui a été exécuté et observé.
+Les lots 1, 2a, 2b, 3a, 3b et 3c sont **terminés**. Lot 1 : la base de données (5 tables et leurs contraintes). Lot 2a : les 7 procédures stockées du schéma `trace` et leurs 38 tests, exécutés sur une base de test `TraceabilityTest`, avec un essai à la main du verrou posé par `AddMovement` (voir [docs/verification.md](docs/verification.md)). Lot 2b : un million de lots inventés et 3 250 000 mouvements générés dans `TraceabilityDev` et contrôlés, des mesures de recherche avant et après index (un index retenu, deux essais abandonnés ; voir [docs/mesures.md](docs/mesures.md)). Lot 3a : trois procédures de lecture (`ListFarms`, `ListStations`, `GetStation`) et leurs 16 tests, et un total ajouté à `ListBatches` (tests 32, 33 et 38 de `006` revus), exécutés sur `TraceabilityTest` (voir [docs/verification.md](docs/verification.md)) ; le coût du total a été mesuré (voir [docs/mesures.md](docs/mesures.md), section 4.3). Lot 3b : l'API ASP.NET Core pour les fermes et les stations (6 routes), avec un accès aux données en ADO.NET, 49 tests unitaires et 30 tests d'intégration exécutés et observés (voir [docs/verification.md](docs/verification.md), section 9). Lot 3c : l'API pour les lots (4 routes), la documentation Swagger des 10 routes, le refus par l'API des valeurs que les colonnes ne peuvent pas stocker (texte trop long, quantité trop précise ou trop grande : sans cela, elles étaient coupées, arrondies ou faisaient échouer SqlClient, observé), 74 tests unitaires et 80 tests d'intégration exécutés et observés, et une casse volontaire de 5 défauts (voir [docs/verification.md](docs/verification.md), section 10). Le lot 3 a été coupé deux fois : l'étude de l'API .NET a montré que le SQL manquait de ces trois procédures et d'un total pour les lots, ce qui forme le lot 3a ; puis l'API a été coupée par ressource, les fermes et les stations au lot 3b, les lots au lot 3c. Le reste est **Prévu**, dans cet ordre : l'interface web (lot 4), l'optimisation des totaux des listes (lot 5) et l'intégration continue (lot 6). Dans ce README, « Prévu » veut dire « on a l'intention de le faire », pas « on sait que ça marchera » : pour le lot 6, on ne sait pas encore si GitHub peut faire tourner nos tests d'intégration (ils utilisent l'authentification Windows et une base locale). « Prouvé » n'est écrit que pour ce qui a été exécuté et observé.
 
 | Lot | Contenu | État |
 |---|---|---|
@@ -19,13 +19,13 @@ Les lots 1, 2a, 2b, 3a, 3b et 3c sont **terminés**. Lot 1 : la base de données
 | 3a | Évolutions SQL pour l'API (lister les fermes et les stations, lire une station, total des lots) | Terminé |
 | 3b | API ASP.NET Core : fermes et stations (6 routes) | Terminé |
 | 3c | API ASP.NET Core : lots (4 routes) | Terminé |
-| | Optimisation des totaux des listes (index, mesures) | Prévu |
-| | Tests, intégration continue (GitHub Actions) | Prévu |
-| 7 | Interface web (optionnelle) | Prévu |
+| 4 | Interface web (React) | Prévu |
+| 5 | Optimisation des totaux des listes (index, mesures) | Prévu |
+| 6 | Intégration continue (GitHub Actions) ; faisabilité à étudier au début du lot | Prévu |
 
 ## Technologies
 
-ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Server 2025, procédures stockées T-SQL, xUnit, Git et GitHub. L'intégration continue (GitHub Actions) est **Prévue**.
+ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Server 2025, procédures stockées T-SQL, xUnit, Git et GitHub. L'intégration continue (GitHub Actions) est **Prévue** (lot 6).
 
 ## Documentation
 
@@ -44,12 +44,31 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 ## Ce que ce projet ne prouve pas
 
 - Il ne représente aucun système réel : le scénario est simplifié et inventé.
-- Il ne gère pas les retours de marchandise, ni la découpe ou la fusion de lots.
-- Il ne se connecte à aucun ERP ni outil BI, et n'a pas de gestion d'utilisateurs.
 - Aux lots 1, 2a, 2b, 3a, 3b et 3c, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3, 9.3 et 10.3.
 - Le CORS n'est pas configuré et aucun frontend n'a été essayé. Swagger UI décrit les 10 routes et leurs erreurs, mais son exemple d'erreur n'affiche pas les champs ajoutés par l'API (`errorCode`, `errors`).
 - Les mesures du lot 2b portent sur un million de lots inventés et une seule machine : elles ne disent rien d'un autre volume, d'une autre machine, ni du coût des index en écriture (voir [docs/mesures.md](docs/mesures.md), section 5).
 - Il donne une base de travail, pas une expérience de production.
+
+## Hors périmètre et suite
+
+### Hors périmètre
+
+Ce sont des choses qui se font en entreprise, mais elles sont hors périmètre de ce projet d'apprentissage :
+
+- l'interfaçage avec un ERP, un DataWarehouse et des outils BI ;
+- la livraison et le déploiement continus (le « CD » de CI/CD) et la mise en production ;
+- le support applicatif de niveau 2 ;
+- la découpe ou la fusion de lots.
+
+### À faire ou à prendre en compte
+
+Ces points ne sont pas planifiés dans un lot : ce sont des intentions, pas des promesses.
+
+- la gestion des utilisateurs et des droits (authentification) ;
+- la correction des mouvements : aujourd'hui, une faute de saisie ne peut pas être corrigée (voir [docs/fonctionnel.md](docs/fonctionnel.md), section 9) ;
+- les retours de marchandise ;
+- l'archivage ou la purge des anciennes données ;
+- un cahier de scénarios fonctionnels (une recette) : créer une ferme, créer un lot, le faire avancer jusqu'à l'expédition, avec un maximum de scénarios, y compris les refus. Il pourra être rejoué à la main, puis automatisé en partie une fois l'interface web faite.
 
 ## Démarrage
 
