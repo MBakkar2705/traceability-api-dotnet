@@ -150,4 +150,4 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **ADR (Architecture Decision Record)** : un court document qui garde la trace d'une décision, de ses alternatives et de ses conséquences. Dans `docs/adr/`.
 
-**CI/CD** : l'exécution automatique de la construction et des tests à chaque modification (dans ce projet : GitHub Actions).
+**CI/CD** : deux pratiques automatiques. La CI (intégration continue) construit le projet et lance les tests à chaque modification : elle est prévue dans ce projet, avec GitHub Actions (lot 6). Le CD (livraison ou déploiement continu) met ensuite la nouvelle version en service : il est hors périmètre de ce projet.

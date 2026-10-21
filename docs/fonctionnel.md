@@ -22,15 +22,22 @@ Inclus :
 - Un parcours de lot en quatre étapes (voir section 4).
 - Des règles métier appliquées par la base de données (procédures stockées).
 - Une API pour enregistrer et consulter.
+- Une interface web en React (lot 4).
 
-Hors périmètre pour l'instant :
+Hors périmètre de ce projet. Ce sont des choses qui se font en entreprise, mais elles sont hors périmètre de ce projet d'apprentissage :
 
 - Découpe ou fusion de lots : un lot reste un lot du début à la fin.
 - Connexion à un ERP, un DataWarehouse ou un outil BI.
-- Gestion des utilisateurs et des droits.
-- Archivage ou purge des anciennes données : aucun lot ni mouvement n'est supprimé (règles 3 et 4), donc la base ne fait que grossir.
+- Livraison et déploiement continus (le « CD » de CI/CD) et mise en production.
+- Support applicatif de niveau 2.
+
+À faire ou à prendre en compte. Ces points ne sont pas planifiés dans un lot : ce sont des intentions, pas des promesses.
+
+- Gestion des utilisateurs et des droits (authentification).
+- Correction des mouvements (voir section 9).
 - Retours de marchandise (voir section 9).
-- Interface web : plus tard (lot 7, optionnel).
+- Archivage ou purge des anciennes données : aucun lot ni mouvement n'est supprimé (règles 3 et 4), donc la base ne fait que grossir.
+- Un cahier de scénarios fonctionnels (une recette) : créer une ferme, créer un lot, le faire avancer jusqu'à l'expédition, avec un maximum de scénarios, y compris les refus. Il pourra être rejoué à la main, puis automatisé en partie une fois l'interface web faite.
 
 ## 3. Ce qu'on trace
 
