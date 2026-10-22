@@ -5,6 +5,14 @@ export function ok(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 }
 
+// A 201: with a body (POST /farms) or without (the other POST routes).
+export function created(body?: unknown): Response {
+  if (body === undefined) {
+    return new Response(null, { status: 201 })
+  }
+  return new Response(JSON.stringify(body), { status: 201, headers: { 'Content-Type': 'application/json' } })
+}
+
 export function problem(status: number, extra: Record<string, unknown> = {}): Response {
   return new Response(JSON.stringify({ title: 'x', status, traceId: '00-abc', ...extra }), {
     status,
