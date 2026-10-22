@@ -1,4 +1,4 @@
-# Vérification (lots 1, 2a, 2b, 3a, 3b, 3c et 4a)
+# Vérification (lots 1, 2a, 2b, 3a, 3b, 3c, 4a et 4b)
 
 Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10) et l'interface web de lecture (lot 4a, section 11). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
 
@@ -472,3 +472,80 @@ Décisions et écarts par rapport au plan :
 - Tests C#, à la racine, **API arrêtée** : `dotnet test Traceability.slnx` : attendu `total : 159; échec : 0; réussi : 159`. **Attention** : les tests d'intégration exécutent 5 `DELETE` sans `WHERE` sur `TraceabilityTest` (jamais sur `TraceabilityDev`).
 - Voir l'interface : dans un terminal, `dotnet run --project src/Traceability.Api --launch-profile https` ; dans un autre, `cd web` puis `npm run dev` ; ouvrir `http://localhost:5173/`. L'interface du lot 4a ne fait que lire, mais la liste des lots calcule le total à chaque page : « Fin » a duré de 1,9 s à plus de 30 s (échec) selon l'essai (voir 11.3).
 - Pour voir un test échouer : dans `web/src/lib/format.ts`, retirer ` UTC` de la chaîne renvoyée par `formatUtc`, lancer `npm test` (3 échecs dans `format.test` et 1 dans `BatchPage.test`), puis rétablir la ligne. **Après avoir remis un fichier par copie**, mettre à jour sa date (`(Get-Item chemin).LastWriteTime = Get-Date` dans PowerShell), sinon `dotnet` peut ne pas recompiler (voir 11.2) ; un fichier remis par l'éditeur est déjà à la bonne date.
+
+## 12. Lot 4b : interface web d'écriture (formulaires)
+
+Observé le 2026-10-22 sous Windows 11, dans Edge, avec Node v22.23.4 et npm 10.9.9, le SDK .NET 10 et SQL Server 2025 (instance locale). Pour les observations dans Edge, l'API tournait sur `TraceabilityTest` (la variable `ConnectionStrings__Default` était changée dans le terminal de l'API), jamais sur `TraceabilityDev`. Les tests d'intégration C# vident `TraceabilityTest` : les données de l'essai (codes `ZV-…`) n'y sont plus. Le CORS est dans l'[ADR 0007](adr/0007-cors-dans-l-api.md).
+
+### 12.1 Ce qui a été construit
+
+| Où | Ce qui a changé |
+|---|---|
+| `src/Traceability.Api` | `Program.cs` : la politique CORS `WebUi` accepte `GET` et `POST` et l'en-tête `Content-Type` (origine `http://localhost:5173`, développement seulement). |
+| `tests/` | `CorsTests` passe de 5 à 8 tests (pré-vérification de `POST`, `PUT` et `DELETE` non listés, `POST` en 201, `POST` refusé en 400 avec l'en-tête). `FieldErrorsTests` : un test fige les textes anglais des erreurs de forme que l'interface traduit. Tests C# : 163 (75 unitaires, 88 d'intégration). |
+| `web/src/api` | `client.ts` : les appels d'écriture (`POST` sur fermes, stations, lots, fonctions et mouvements) ; `types.ts` : `MOVEMENT_TYPES`. |
+| `web/src/lib` | `messages.ts` (erreurs d'écriture en français, selon `errorCode` ou le champ de l'erreur de forme), `useSubmit.ts` (état « envoi », garde contre le double envoi), `utc.ts` (heure du formulaire et texte UTC), `nextStep.ts` (étape proposée selon le statut), `useApi.ts` (paramètre `refresh` : relire après une écriture sans écran de chargement). |
+| `web/src/components` | `Field`, `FormAlert`, `SuccessMessage`, `AddCapabilityForm`, `AddMovementForm`. |
+| `web/src/pages` | `NewFarmPage`, `NewStationPage`, `NewBatchPage` (adresses `/new-farm`, `/new-station`, `/new-batch`) ; formulaire d'ajout de fonction sur la page d'une station et d'ajout de mouvement sur la page d'un lot. |
+| `web/` | 22 fichiers de test, 178 tests. |
+
+Décisions et écarts par rapport au plan :
+
+- **Formulaires non contrôlés** : les valeurs sont lues avec `FormData` au moment de l'envoi, sans état par champ.
+- **Un seul envoi à la fois** : pendant un envoi, le bouton est désactivé et un second envoi est ignoré (garde dans `useSubmit`).
+- **Pas de nouvel essai automatique** : si l'API ne répond pas, l'écriture a peut-être eu lieu ; le message le dit et demande de vérifier dans la liste.
+- **Heures en UTC** : le champ date et heure est prérempli avec l'heure UTC du moment et envoyé avec un « Z » ; la réception d'un lot et chaque mouvement l'utilisent.
+- **Le formulaire de mouvement redémarre après chaque ajout** (sa clé est le statut du lot : étape suivante, nouvelle quantité, nouvelle heure) ; son message de succès est donc gardé par la page du lot, pas par le formulaire.
+- **Un défaut trouvé à l'essai dans Edge** : le message vert « Mouvement … ajouté. » restait affiché à côté du cadre rouge d'un envoi suivant refusé. Corrigé par un appel `onStart` du formulaire, qui efface le message dès qu'un nouvel envoi démarre (test écrit avant la correction). Rejoué dans Edge ensuite : plus de bandeau vert.
+
+### 12.2 Ce qui est prouvé
+
+- **Qualité du code** : `npm run lint` donne 0 avertissement et 0 erreur (116 règles, 69 fichiers) ; `npm run build` réussit (61 modules, JavaScript 293,21 ko, CSS 14,55 ko).
+- **Tests de l'interface** : 178 réussis, 0 échec, 22 fichiers (`client` 21, `format` 7, `messages` 37, `page` 10, `labels` 4, `useApi` 8, `useSubmit` 5, `nextStep` 4, `utc` 6, `Pagination` 2, `FormAlert` 3, `SuccessMessage` 1, `Field` 2, `FarmsPage` 8, `StationsPage` 2, `StationPage` 10, `BatchesPage` 8, `BatchPage` 15, `App` 3, `NewFarmPage` 7, `NewStationPage` 7, `NewBatchPage` 8). `fetch` y est remplacé par un faux : ces tests ne prouvent rien de l'API réelle.
+- **Tests C#** : 163 réussis, 0 échec (75 unitaires, 88 d'intégration).
+- **Observé dans Edge, API sur `TraceabilityTest`** (onglet « Réseau » en filtre « All » : les pré-vérifications, de type `preflight`, sont cachées par le filtre « Fetch/XHR ») :
+  - Création d'une ferme : `OPTIONS` 204, puis `POST` 201 ; message « Ferme ZV-FARM créée. » avec un lien, formulaire vidé.
+  - Même code redonné : `POST` 409 ; cadre rouge « Une ferme porte déjà ce code. » ; les valeurs restent dans le formulaire.
+  - Code avec une espace : `POST` 400 ; cadre « Certains champs sont invalides. » ; sous Code, « Lettres A-Z sans accent, chiffres, « - » et « _ » seulement, 20 caractères au plus. » ; rien sous Nom et Région.
+  - Station : `POST` 201, puis la page de la station s'ouvre (« Aucune fonction déclarée. »). Ajout d'une fonction : `POST` 201, message vert, la fonction apparaît dans la fiche après une relecture, sans écran de chargement. Même fonction une seconde fois : `POST` 409, « Cette station a déjà cette fonction. », pas de relecture.
+  - Lot `ZV-S5-LOT` : `POST` 201, la page du lot s'ouvre : statut « Reçu », 100,00 kg, un mouvement de réception. Le formulaire propose « Tri » et la quantité actuelle.
+  - Mouvements, règles de la procédure (réponses **422**, erreurs 5030x) : Tri sur une station sans la fonction, « Cette station n'a pas la fonction de ce mouvement. » ; Expédition alors que l'étape suivante est l'emballage, « Ce mouvement n'est pas l'étape suivante du lot. » ; quantité 101 pour un lot de 100 kg, « La quantité dépasse la quantité actuelle du lot. ». Dans ces trois cas : pas de relecture, saisie gardée, statut inchangé.
+  - Mouvements réussis (**201**, puis une relecture du lot) : Tri 100 kg, « Trié », le formulaire propose « Emballage » et 100 ; Emballage 95 kg, « Emballé », 95,00 kg, le formulaire propose « Expédition » ; Expédition 95 kg, « Expédié », parcours de 4 lignes, le formulaire est remplacé par « Ce lot est expédié : aucun mouvement n'est plus possible. » (le message vert reste affiché).
+  - Touche Entrée dans un champ : le formulaire est envoyé, une seule requête part.
+  - API arrêtée : cadre rouge « Pas de réponse de l'API : l'enregistrement a peut-être eu lieu. Vérifiez dans la liste avant de recommencer. » ; la saisie reste ; l'onglet « Réseau » montre la pré-vérification et la requête en rouge, sans statut ; la console dit `POST https://localhost:7080/farms net::ERR_CONNECTION_REFUSED`, sans message CORS. Après le redémarrage de l'API, la ferme n'est pas dans la liste (28 fermes).
+  - Double clic : avec la limitation « 3G » des outils de développement, le bouton affiche « Envoi… » et reste désactivé ; un seul `POST` (201, 2,08 s) ; la liste passe à 29 fermes. Un clic fait après la création, sur le formulaire vidé, est arrêté par le navigateur (« Veuillez remplir ce champ. », champ obligatoire) sans aucune requête.
+  - Requêtes annulées : chaque ouverture de page montre, avant la vraie lecture, une ligne rouge sans statut (0 octet, quelques millisecondes) : l'effet du mode strict de React en développement et de l'annulation par `useApi`, comme au lot 4a.
+  - Rejeu après la correction du défaut, sur un nouveau lot : Tri valide (message vert), puis Expédition refusée en 422 : le cadre rouge est seul, le bandeau vert a disparu, le statut reste « Trié ».
+- **Casse volontaire** (défauts posés, tests lancés, fichiers rétablis par copie ; l'empreinte SHA-256 de chaque fichier est ensuite identique à l'originale et `git status` indique « working tree clean ») :
+
+  | Défaut posé | Échecs observés |
+  |---|---|
+  | D1 : `onStart()` retiré (`AddMovementForm.tsx`) | 1 : le test du message de succès qui doit disparaître (`BatchPage`) ; 14 autres réussis dans le fichier |
+  | D2 : garde du double envoi retirée (`useSubmit.ts`) | 1 : « ignores a second send while the first one is running » (`useSubmit`) ; 177 réussis. Les 5 tests de pages « clicked twice » réussissent : le bouton désactivé suffit à les satisfaire, et seul le test de `useSubmit` voit la garde |
+  | D3 : l'étape suivante d'un lot reçu est l'emballage au lieu du tri (`nextStep.ts`) | 5 dans 2 fichiers : `nextStep` 1, `BatchPage` 4 ; 173 réussis |
+  | D4 : `refresh` retiré des dépendances de l'effet (`useApi.ts`) | 6 dans 3 fichiers : `useApi` 3, `BatchPage` 2, `StationPage` 1 ; 172 réussis ; plus une « Unhandled Rejection » (une promesse rejetée que le code cassé n'attend jamais) |
+  | D5 (API) : « characters. » changé en « chars. » dans le texte de l'erreur de code (`FieldErrors.cs`) | 1 test unitaire : celui qui fige les textes lus par l'interface ; 74 réussis sur 75 |
+  | D6 (API) : `POST` retiré de la politique CORS (`Program.cs`) | 1 test d'intégration : la pré-vérification pour `POST` (`Allow-Methods` ne contient que `GET`) ; 7 réussis sur 8, dont le `POST` réel : l'API ne contrôle pas la méthode d'une vraie requête, c'est le navigateur qui bloque |
+
+### 12.3 Ce qui n'est pas prouvé
+
+- **La garde `useRef` de `useSubmit`** : non observée seule dans Edge, parce que le bouton désactivé bloque déjà le second clic ; elle n'est vue que par son test unitaire.
+- **Erreurs de liaison JSON** (par exemple une date invalide) : l'interface ne permet pas de les produire ; elles ne sont vues que par les tests C#.
+- **Build de production** : non essayé dans le navigateur ; l'absence de requêtes annulées sans le mode strict de React est déduite, pas observée.
+- **Autres navigateurs, vrai téléphone, lecteur d'écran** : seul Edge a été utilisé. Les formulaires ont été essayés dans le mode adaptatif des outils de développement (largeurs de 345 à 433 pixels), pas sur un vrai téléphone.
+- **Écriture simultanée** : deux utilisateurs qui ajoutent un mouvement au même lot en même temps ne sont pas essayés (le verrou est prouvé en SQL, section 6).
+- **En-tête `Location`** : l'interface ne le lit pas ; elle ouvre la page du lot ou de la station avec le code saisi. Il n'est pas vérifié dans un navigateur.
+- **« Fin » de la liste des lots** : lent, parfois en erreur (section 11.3) ; non revu, c'est l'objet du lot 5.
+- **Durée des tests de l'interface** : la suite a pris de 28 s à 143 s selon les exécutions, sans cause identifiée ; un test de `StationsPage` a dépassé une fois 5 s pendant une exécution lente, cause non prouvée.
+- **Journal de l'API** : il écrit toujours un appel annulé comme une erreur grave (observé au lot 4a) ; rien n'a été changé.
+- **Casse volontaire** : 6 défauts seulement. Un test peut ne pas voir un autre défaut.
+- **React Router 8.5.0** : désormais permise par la version de Node (22.23.4, la version demandée est 22.22.0 ou plus), mais non essayée.
+- **Données** : `TraceabilityDev` n'a pas été touchée ni recomptée ; `TraceabilityTest` a été vidée par les tests d'intégration après l'essai.
+
+### 12.4 Rejouer la vérification
+
+- Prérequis : le README, sections « API (lots 3b et 3c) » et « Interface web ».
+- Qualité et tests de l'interface, dans `web/` : `npm install` (une fois), puis `npm run lint`, `npm run build` et `npm test` : attendu 0 avertissement, build réussi (61 modules), `Test Files  22 passed (22)` et `Tests  178 passed (178)`.
+- Tests C#, à la racine, **API arrêtée** : `dotnet test Traceability.slnx` : attendu `total : 163; échec : 0; réussi : 163`. **Attention** : les tests d'intégration vident `TraceabilityTest` (jamais `TraceabilityDev`).
+- Essayer l'écriture sans toucher à `TraceabilityDev` : dans le terminal de l'API, mettre `$env:ConnectionStrings__Default` sur la chaîne de `TraceabilityTest`, puis `dotnet run --project src/Traceability.Api --launch-profile https` ; dans un autre terminal, `cd web` puis `npm run dev` ; ouvrir `http://localhost:5173/`. La variable ne vit que dans cette fenêtre de terminal.
+- Pour voir un test échouer : dans `web/src/lib/nextStep.ts`, remplacer `RECEIVED: 'SORTING'` par `RECEIVED: 'PACKING'`, lancer `npm test` (5 échecs : 1 dans `nextStep`, 4 dans `BatchPage`), puis rétablir la ligne. **Après avoir remis un fichier par copie**, mettre à jour sa date (`(Get-Item chemin).LastWriteTime = Get-Date` dans PowerShell), sinon `dotnet` peut ne pas recompiler (voir 11.2).
