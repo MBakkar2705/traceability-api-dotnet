@@ -254,4 +254,43 @@ describe('BatchPage, adding a movement', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain("l'enregistrement a peut-être eu lieu")
   })
+
+  it('removes the message of the last success when a new attempt starts, so that it does not stay beside an error', async () => {
+    let current = received
+    let calls = 0
+    stubApi({
+      '/batches/LOT-0000001': () => ok(current),
+      '/batches/LOT-0000001/movements': () => {
+        calls += 1
+        if (calls > 1) {
+          return problem(422, { errorCode: 50301 })
+        }
+        current = {
+          ...received,
+          status: 'SORTED',
+          quantityKg: 480,
+          movements: [
+            ...received.movements,
+            { movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-22T09:00:00Z' },
+          ],
+        }
+        return created()
+      },
+    })
+    renderApp('/batches/LOT-0000001')
+    await screen.findByText('Roma')
+
+    // First attempt: it works, the message of success is shown.
+    fill(STATION, 'SITE-02')
+    add()
+    expect(await screen.findByText('Mouvement Tri ajouté.')).toBeTruthy()
+    await screen.findByText('Trié')
+
+    // Second attempt: the API refuses it. Only the error must stay on the screen.
+    fill(STATION, 'SITE-03')
+    add()
+
+    expect((await screen.findByRole('alert')).textContent).toContain("Ce mouvement n'est pas l'étape suivante du lot.")
+    expect(screen.queryByText('Mouvement Tri ajouté.')).toBeNull()
+  })
 })

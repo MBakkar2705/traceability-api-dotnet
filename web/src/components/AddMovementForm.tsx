@@ -18,13 +18,15 @@ interface AddMovementFormProps {
   // The status and the quantity of the batch now: they decide what the form proposes.
   status: string
   quantityKg: number
+  // Called when a new attempt starts: the page forgets the message of the last success.
+  onStart: () => void
   // Called when the movement has been added: the page reads the batch again.
   onAdded: (movementType: string) => void
 }
 
 // The form that adds a movement to a batch. The page gives it a `key` that changes with the status
 // of the batch, so that it starts again (next step, new quantity, new time) after each movement.
-export default function AddMovementForm({ batchCode, status, quantityKg, onAdded }: AddMovementFormProps) {
+export default function AddMovementForm({ batchCode, status, quantityKg, onStart, onAdded }: AddMovementFormProps) {
   const { state, submit } = useSubmit()
   // The time of the movement starts at the current time (UTC), read once when the form appears.
   const [now] = useState(nowUtcInput)
@@ -44,6 +46,7 @@ export default function AddMovementForm({ batchCode, status, quantityKg, onAdded
       occurredAt: toUtcText(text('occurredAt')),
     }
 
+    onStart()
     if (await submit(() => addMovement(batchCode, movement))) {
       onAdded(movement.movementType)
     }

@@ -90,6 +90,7 @@ export default function BatchPage() {
               batchCode={batchCode}
               status={state.data.status}
               quantityKg={state.data.quantityKg}
+              onStart={() => setAdded(null)}
               onAdded={(type) => {
                 setAdded({ batchCode, type })
                 setRefresh((n) => n + 1)
