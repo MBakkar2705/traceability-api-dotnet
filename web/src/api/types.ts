@@ -8,6 +8,7 @@
 // - movementId is a 64-bit number in the database; JavaScript reads it exactly up to 2^53.
 
 export const BATCH_STATUSES = ['RECEIVED', 'SORTED', 'PACKED', 'SHIPPED'] as const
+export const MOVEMENT_TYPES = ['RECEPTION', 'SORTING', 'PACKING', 'SHIPMENT'] as const
 
 export interface Page<T> {
   items: T[]

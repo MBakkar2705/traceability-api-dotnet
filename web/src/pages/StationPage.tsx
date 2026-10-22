@@ -1,6 +1,7 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useParams } from 'react-router'
 import { getStation } from '../api/client'
+import AddCapabilityForm from '../components/AddCapabilityForm'
 import BackLink from '../components/BackLink'
 import DetailCard from '../components/DetailCard'
 import ErrorMessage from '../components/ErrorMessage'
@@ -12,8 +13,11 @@ import { useApi } from '../lib/useApi'
 export default function StationPage() {
   const { stationCode = '' } = useParams()
 
+  // Raised when a function has been added: the station is read again.
+  const [refresh, setRefresh] = useState(0)
+
   const load = useCallback((signal: AbortSignal) => getStation(stationCode, signal), [stationCode])
-  const state = useApi(load)
+  const state = useApi(load, refresh)
 
   return (
     <section>
@@ -23,27 +27,30 @@ export default function StationPage() {
       {state.status === 'loading' && <Loading />}
       {state.status === 'error' && <ErrorMessage error={state.error} />}
       {state.status === 'success' && (
-        <DetailCard
-          fields={[
-            { label: 'Code', value: <span className="font-mono">{state.data.code}</span> },
-            { label: 'Nom', value: state.data.name },
-            {
-              label: 'Fonctions',
-              value:
-                state.data.capabilities.length === 0 ? (
-                  'Aucune fonction déclarée.'
-                ) : (
-                  <span className="flex flex-wrap gap-2">
-                    {state.data.capabilities.map((capability) => (
-                      <span key={capability} className="rounded bg-paper-head px-2 py-0.5 text-sm">
-                        {movementLabel(capability)}
-                      </span>
-                    ))}
-                  </span>
-                ),
-            },
-          ]}
-        />
+        <>
+          <DetailCard
+            fields={[
+              { label: 'Code', value: <span className="font-mono">{state.data.code}</span> },
+              { label: 'Nom', value: state.data.name },
+              {
+                label: 'Fonctions',
+                value:
+                  state.data.capabilities.length === 0 ? (
+                    'Aucune fonction déclarée.'
+                  ) : (
+                    <span className="flex flex-wrap gap-2">
+                      {state.data.capabilities.map((capability) => (
+                        <span key={capability} className="rounded bg-paper-head px-2 py-0.5 text-sm">
+                          {movementLabel(capability)}
+                        </span>
+                      ))}
+                    </span>
+                  ),
+              },
+            ]}
+          />
+          <AddCapabilityForm stationCode={stationCode} onAdded={() => setRefresh((n) => n + 1)} />
+        </>
       )}
     </section>
   )
