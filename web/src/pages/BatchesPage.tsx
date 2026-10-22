@@ -73,6 +73,9 @@ export default function BatchesPage() {
       {/* The title and the filters share a line (they go under each other on a narrow screen). */}
       <div className="flex flex-wrap items-start gap-x-3">
         <PageTitle>Lots</PageTitle>
+        <Link to="/new-batch" className={`${BUTTON} mb-3 inline-block`}>
+          Nouveau lot
+        </Link>
 
         {/* The key makes the form start again from the address when the address changes. */}
         <form

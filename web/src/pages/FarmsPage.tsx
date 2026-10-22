@@ -1,10 +1,11 @@
 import { useCallback } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { listFarms } from '../api/client'
 import type { Farm } from '../api/types'
 import type { Column } from '../components/column'
 import ListView from '../components/ListView'
 import PageTitle from '../components/PageTitle'
+import { BUTTON } from '../components/styles'
 import { PAGE_SIZE } from '../config'
 import { readPageNumber } from '../lib/page'
 import { useApi } from '../lib/useApi'
@@ -27,7 +28,12 @@ export default function FarmsPage() {
 
   return (
     <section>
-      <PageTitle>Fermes</PageTitle>
+      <div className="flex flex-wrap items-start gap-x-3">
+        <PageTitle>Fermes</PageTitle>
+        <Link to="/new-farm" className={`${BUTTON} mb-3 inline-block`}>
+          Nouvelle ferme
+        </Link>
+      </div>
       <ListView
         state={state}
         columns={COLUMNS}
