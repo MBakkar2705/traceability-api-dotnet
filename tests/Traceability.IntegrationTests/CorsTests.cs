@@ -65,19 +65,73 @@ public class CorsTests(ApiFixture api)
         Assert.Equal(WebUiOrigin, AllowOrigin(response));
     }
 
-    // Lot 4a allows GET only. Before a POST the browser asks first (preflight). Observed: the API
-    // answers with the allowed origin and the methods of its policy (GET), whatever method is asked.
-    [Fact]
-    public async Task A_preflight_for_POST_lists_only_GET_as_allowed_method()
+    // Lot 4b: the web interface writes with POST and a JSON body. The browser then asks first
+    // (preflight): it sends OPTIONS with the method and the headers it wants to use, reads the
+    // answer, and sends the real request only if the policy allows both.
+    private static HttpRequestMessage Preflight(string method, string? headers = null)
     {
         var request = Request(HttpMethod.Options, "/farms", WebUiOrigin);
-        request.Headers.Add("Access-Control-Request-Method", "POST");
+        request.Headers.Add("Access-Control-Request-Method", method);
+        if (headers is not null)
+        {
+            request.Headers.Add("Access-Control-Request-Headers", headers);
+        }
+
+        return request;
+    }
+
+    // The values of a header written as a comma separated list (Allow-Methods, Allow-Headers).
+    private static string[] ListedValues(HttpResponseMessage response, string name) =>
+        response.Headers.TryGetValues(name, out var values)
+            ? values.SelectMany(v => v.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)).ToArray()
+            : [];
+
+    [Fact]
+    public async Task A_preflight_for_POST_with_Content_Type_allows_both()
+    {
+        var response = await Client.SendAsync(Preflight("POST", "content-type"));
+
+        Assert.Equal(WebUiOrigin, AllowOrigin(response));
+        Assert.Contains("POST", ListedValues(response, "Access-Control-Allow-Methods"));
+        Assert.Contains(
+            ListedValues(response, "Access-Control-Allow-Headers"),
+            header => string.Equals(header, "content-type", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // The policy opens GET and POST and nothing else: an open policy would pass the test above too.
+    [Fact]
+    public async Task A_preflight_does_not_list_PUT_or_DELETE()
+    {
+        var response = await Client.SendAsync(Preflight("DELETE"));
+
+        var methods = ListedValues(response, "Access-Control-Allow-Methods");
+        Assert.DoesNotContain("PUT", methods);
+        Assert.DoesNotContain("DELETE", methods);
+    }
+
+    [Fact]
+    public async Task A_POST_from_the_web_interface_origin_gets_the_allow_origin_header()
+    {
+        var request = Request(HttpMethod.Post, "/farms", WebUiOrigin);
+        request.Content = TestData.Json($$"""{"code":"{{TestData.NewCode()}}","name":"Test farm","region":"Region A"}""");
 
         var response = await Client.SendAsync(request);
 
-        var allowMethods = response.Headers.TryGetValues("Access-Control-Allow-Methods", out var values)
-            ? string.Join(",", values)
-            : null;
-        Assert.Equal("GET", allowMethods);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(WebUiOrigin, AllowOrigin(response));
+    }
+
+    // The errors by field of a POST are read by the page: if the 400 dropped the header, the
+    // browser would hide them and the form could not show them.
+    [Fact]
+    public async Task A_POST_refused_with_400_keeps_the_allow_origin_header()
+    {
+        var request = Request(HttpMethod.Post, "/farms", WebUiOrigin);
+        request.Content = TestData.Json("{}");
+
+        var response = await Client.SendAsync(request);
+
+        await TestData.AssertShapeErrorAsync(response, "code", "name", "region");
+        Assert.Equal(WebUiOrigin, AllowOrigin(response));
     }
 }
