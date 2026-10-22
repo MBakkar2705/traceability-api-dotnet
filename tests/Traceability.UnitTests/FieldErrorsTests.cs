@@ -293,4 +293,33 @@ public class FieldErrorsTests
 
         Assert.False(errors.HasErrors);
     }
+
+    // The web interface (web/src/lib/messages.ts) translates these texts by exact match. If one
+    // changes here, its screens would show "Valeur invalide." in its place: change messages.ts and
+    // messages.test.ts with it.
+    [Fact]
+    public void The_texts_read_by_the_web_interface_do_not_change()
+    {
+        var errors = new FieldErrors();
+
+        errors.RequireValue("required", (string?)null);
+        errors.RequireCode("code", "AB CD", 20);
+        errors.RequireText("text", new string('a', 101), 100);
+        errors.RequireQuantity("decimals", 1.234m);
+        errors.RequireQuantity("tooBig", 100_000_000m);
+        errors.RequireUtcTime("time", new DateTime(2026, 10, 14, 6, 0, 0, DateTimeKind.Unspecified));
+
+        Assert.Equal("The field is required.", Assert.Single(errors.Errors["required"]));
+        Assert.Equal(
+            "Only letters A-Z, digits, '-' and '_' are allowed, up to 20 characters.",
+            Assert.Single(errors.Errors["code"]));
+        Assert.Equal("At most 100 characters are allowed.", Assert.Single(errors.Errors["text"]));
+        Assert.Equal("At most 2 decimals are allowed.", Assert.Single(errors.Errors["decimals"]));
+        Assert.Equal(
+            "The absolute value of the quantity is limited to 99999999.99.",
+            Assert.Single(errors.Errors["tooBig"]));
+        Assert.Equal(
+            "The time must end with 'Z' (UTC) or carry an offset, for example 2026-10-14T06:00:00Z.",
+            Assert.Single(errors.Errors["time"]));
+    }
 }

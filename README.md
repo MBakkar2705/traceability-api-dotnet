@@ -8,7 +8,7 @@ Ce projet est réalisé avec l'assistance de Claude (Anthropic), sous ma supervi
 
 ## État
 
-Les lots 1, 2a, 2b, 3a, 3b, 3c et 4a sont **terminés**. Lot 1 : la base de données (5 tables et leurs contraintes). Lot 2a : les 7 procédures stockées du schéma `trace` et leurs 38 tests, exécutés sur une base de test `TraceabilityTest`, avec un essai à la main du verrou posé par `AddMovement` (voir [docs/verification.md](docs/verification.md)). Lot 2b : un million de lots inventés et 3 250 000 mouvements générés dans `TraceabilityDev` et contrôlés, des mesures de recherche avant et après index (un index retenu, deux essais abandonnés ; voir [docs/mesures.md](docs/mesures.md)). Lot 3a : trois procédures de lecture (`ListFarms`, `ListStations`, `GetStation`) et leurs 16 tests, et un total ajouté à `ListBatches` (tests 32, 33 et 38 de `006` revus), exécutés sur `TraceabilityTest` (voir [docs/verification.md](docs/verification.md)) ; le coût du total a été mesuré (voir [docs/mesures.md](docs/mesures.md), section 4.3). Lot 3b : l'API ASP.NET Core pour les fermes et les stations (6 routes), avec un accès aux données en ADO.NET, 49 tests unitaires et 30 tests d'intégration exécutés et observés (voir [docs/verification.md](docs/verification.md), section 9). Lot 3c : l'API pour les lots (4 routes), la documentation Swagger des 10 routes, le refus par l'API des valeurs que les colonnes ne peuvent pas stocker (texte trop long, quantité trop précise ou trop grande : sans cela, elles étaient coupées, arrondies ou faisaient échouer SqlClient, observé), 74 tests unitaires et 80 tests d'intégration exécutés et observés, et une casse volontaire de 5 défauts (voir [docs/verification.md](docs/verification.md), section 10). Le lot 3 a été coupé deux fois : l'étude de l'API .NET a montré que le SQL manquait de ces trois procédures et d'un total pour les lots, ce qui forme le lot 3a ; puis l'API a été coupée par ressource, les fermes et les stations au lot 3b, les lots au lot 3c. Lot 4a : l'interface web de lecture (React, Vite, TypeScript, Tailwind CSS) avec 5 écrans (fermes, stations, détail d'une station, lots avec filtres, détail d'un lot), le CORS de l'API pour le serveur de développement de l'interface, 79 tests d'interface et 159 tests C# (dont 5 de CORS) exécutés et observés, un essai dans Edge sur les vraies données de `TraceabilityDev`, et une casse volontaire de 8 défauts (voir [docs/verification.md](docs/verification.md), section 11). Le lot 4 a été coupé en deux : lecture (4a) et écriture (4b). Un point n'est pas réglé : sur le million de lots, le bouton « Fin » de la liste des lots a échoué 3 fois sur 7 essais par dépassement de délai SQL (30 s) et a répondu en 1,9 à 11,7 s les 4 autres fois, sans cause trouvée ; le lot 5 devra traiter ce point (la pagination par `OFFSET` en est la limite annoncée au lot 3a, mais la cause exacte n'est pas établie). Le reste est **Prévu**, dans cet ordre : l'écriture dans l'interface web (lot 4b), l'optimisation des totaux des listes (lot 5) et l'intégration continue (lot 6). Dans ce README, « Prévu » veut dire « on a l'intention de le faire », pas « on sait que ça marchera » : pour le lot 6, on ne sait pas encore si GitHub peut faire tourner nos tests d'intégration (ils utilisent l'authentification Windows et une base locale). « Prouvé » n'est écrit que pour ce qui a été exécuté et observé.
+Les lots 1, 2a, 2b, 3a, 3b, 3c, 4a et 4b sont **terminés**. Lot 1 : la base de données (5 tables et leurs contraintes). Lot 2a : les 7 procédures stockées du schéma `trace` et leurs 38 tests, exécutés sur une base de test `TraceabilityTest`, avec un essai à la main du verrou posé par `AddMovement` (voir [docs/verification.md](docs/verification.md)). Lot 2b : un million de lots inventés et 3 250 000 mouvements générés dans `TraceabilityDev` et contrôlés, des mesures de recherche avant et après index (un index retenu, deux essais abandonnés ; voir [docs/mesures.md](docs/mesures.md)). Lot 3a : trois procédures de lecture (`ListFarms`, `ListStations`, `GetStation`) et leurs 16 tests, et un total ajouté à `ListBatches` (tests 32, 33 et 38 de `006` revus), exécutés sur `TraceabilityTest` (voir [docs/verification.md](docs/verification.md)) ; le coût du total a été mesuré (voir [docs/mesures.md](docs/mesures.md), section 4.3). Lot 3b : l'API ASP.NET Core pour les fermes et les stations (6 routes), avec un accès aux données en ADO.NET, 49 tests unitaires et 30 tests d'intégration exécutés et observés (voir [docs/verification.md](docs/verification.md), section 9). Lot 3c : l'API pour les lots (4 routes), la documentation Swagger des 10 routes, le refus par l'API des valeurs que les colonnes ne peuvent pas stocker (texte trop long, quantité trop précise ou trop grande : sans cela, elles étaient coupées, arrondies ou faisaient échouer SqlClient, observé), 74 tests unitaires et 80 tests d'intégration exécutés et observés, et une casse volontaire de 5 défauts (voir [docs/verification.md](docs/verification.md), section 10). Le lot 3 a été coupé deux fois : l'étude de l'API .NET a montré que le SQL manquait de ces trois procédures et d'un total pour les lots, ce qui forme le lot 3a ; puis l'API a été coupée par ressource, les fermes et les stations au lot 3b, les lots au lot 3c. Lot 4a : l'interface web de lecture (React, Vite, TypeScript, Tailwind CSS) avec 5 écrans (fermes, stations, détail d'une station, lots avec filtres, détail d'un lot), le CORS de l'API pour le serveur de développement de l'interface, 79 tests d'interface et 159 tests C# (dont 5 de CORS) exécutés et observés, un essai dans Edge sur les vraies données de `TraceabilityDev`, et une casse volontaire de 8 défauts (voir [docs/verification.md](docs/verification.md), section 11). Le lot 4 a été coupé en deux : lecture (4a) et écriture (4b). Lot 4b : l'interface web d'écriture (trois pages de création : fermes, stations, lots ; ajout d'une fonction à une station et d'un mouvement à un lot), les erreurs de l'API affichées en français, par champ pour les erreurs de forme, le CORS de l'API étendu à `POST`, 178 tests d'interface et 163 tests C# exécutés et observés, un essai dans Edge sur `TraceabilityTest`, un défaut trouvé à cet essai puis corrigé, et une casse volontaire de 6 défauts (voir [docs/verification.md](docs/verification.md), section 12). Un point n'est pas réglé : sur le million de lots, le bouton « Fin » de la liste des lots a échoué 3 fois sur 7 essais par dépassement de délai SQL (30 s) et a répondu en 1,9 à 11,7 s les 4 autres fois, sans cause trouvée ; le lot 5 devra traiter ce point (la pagination par `OFFSET` en est la limite annoncée au lot 3a, mais la cause exacte n'est pas établie). Le reste est **Prévu**, dans cet ordre : l'optimisation des totaux des listes (lot 5) et l'intégration continue (lot 6). Dans ce README, « Prévu » veut dire « on a l'intention de le faire », pas « on sait que ça marchera » : pour le lot 6, on ne sait pas encore si GitHub peut faire tourner nos tests d'intégration (ils utilisent l'authentification Windows et une base locale). « Prouvé » n'est écrit que pour ce qui a été exécuté et observé.
 
 | Lot | Contenu | État |
 |---|---|---|
@@ -20,7 +20,7 @@ Les lots 1, 2a, 2b, 3a, 3b, 3c et 4a sont **terminés**. Lot 1 : la base de donn
 | 3b | API ASP.NET Core : fermes et stations (6 routes) | Terminé |
 | 3c | API ASP.NET Core : lots (4 routes) | Terminé |
 | 4a | Interface web (React) : lecture, 5 écrans, et CORS de l'API | Terminé |
-| 4b | Interface web : écriture (formulaires, erreurs par champ) | Prévu |
+| 4b | Interface web : écriture (formulaires, erreurs par champ) | Terminé |
 | 5 | Optimisation des totaux des listes (index, mesures) | Prévu |
 | 6 | Intégration continue (GitHub Actions) ; faisabilité à étudier au début du lot | Prévu |
 
@@ -33,7 +33,7 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 - [Documentation fonctionnelle](docs/fonctionnel.md) : ce qu'on trace et les règles métier.
 - [Modèle de données](docs/modele-de-donnees.md) : tables, colonnes et contraintes.
 - [Contrat des procédures](docs/procedures.md) : paramètres, contrôles et erreurs des 10 procédures.
-- [Vérification des lots 1, 2a, 2b, 3a, 3b, 3c et 4a](docs/verification.md) : ce qui a été exécuté et observé, et ce qui ne l'est pas encore.
+- [Vérification des lots 1, 2a, 2b, 3a, 3b, 3c, 4a et 4b](docs/verification.md) : ce qui a été exécuté et observé, et ce qui ne l'est pas encore.
 - [Mesures des lots 2b et 3a](docs/mesures.md) : hypothèses écrites avant de mesurer, mesures avant et après chaque index, décisions.
 - [Glossaire](docs/glossaire.md) : les termes techniques expliqués simplement.
 - [ADR 0001](docs/adr/0001-procedures-stockees.md) : règles métier dans des procédures stockées.
@@ -47,7 +47,7 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 ## Ce que ce projet ne prouve pas
 
 - Il ne représente aucun système réel : le scénario est simplifié et inventé.
-- Aux lots 1, 2a, 2b, 3a, 3b, 3c et 4a, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3, 9.3, 10.3 et 11.3.
+- Aux lots 1, 2a, 2b, 3a, 3b, 3c, 4a et 4b, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3, 9.3, 10.3, 11.3 et 12.3.
 - Le CORS n'est configuré que pour le serveur de développement de l'interface (`http://localhost:5173`, `GET` seulement), et l'interface n'écrit encore rien. L'interface n'a été vue que dans Edge. Le bouton « Fin » de la liste des lots est fragile sur un million de lots (voir ci-dessus). Swagger UI décrit les 10 routes et leurs erreurs, mais son exemple d'erreur n'affiche pas les champs ajoutés par l'API (`errorCode`, `errors`).
 - Les mesures du lot 2b portent sur un million de lots inventés et une seule machine : elles ne disent rien d'un autre volume, d'une autre machine, ni du coût des index en écriture (voir [docs/mesures.md](docs/mesures.md), section 5).
 - Il donne une base de travail, pas une expérience de production.
@@ -72,7 +72,7 @@ Ces points ne sont pas planifiés dans un lot : ce sont des intentions, pas des 
 - les retours de marchandise ;
 - l'archivage ou la purge des anciennes données ;
 - des données et des écrans de contrôle qualité : le modèle n'a aucune donnée de ce genre, et le métier est à connaître avant de les concevoir ;
-- mettre à jour Node (v22.16.0 observé) : React Router 8.5.0 demande Node 22.22.0 ou plus (voir l'[ADR 0006](docs/adr/0006-interface-web-vite-react.md)) ;
+- essayer React Router 8.5.0 : elle demande Node 22.22.0 ou plus, ce que la version installée (22.23.4) permet ; non essayée (voir l'[ADR 0006](docs/adr/0006-interface-web-vite-react.md)) ;
 - des tests d'interface qui pilotent un vrai navigateur, et un essai sur un vrai téléphone ;
 - le journal de l'API écrit comme une erreur grave un appel que le navigateur a annulé (observé au lot 4a) ;
 - un cahier de scénarios fonctionnels (une recette) : créer une ferme, créer un lot, le faire avancer jusqu'à l'expédition, avec un maximum de scénarios, y compris les refus. Il pourra être rejoué à la main, puis automatisé en partie une fois l'interface web faite.
@@ -142,17 +142,17 @@ Formats (observés au lot 3c) : les champs sont en camelCase ; la date de récol
 
 Attention : `GET /batches` calcule le total à chaque appel, ce qui est lent sur le million de lots de `TraceabilityDev` (voir [docs/mesures.md](docs/mesures.md), section 4.3). L'interface web appelle cette route à chaque page : voir [docs/verification.md](docs/verification.md), section 11.3, pour la dernière page. Les routes `POST` écrivent dans la base que l'API lit : pour des essais à la main, préférer une base de test.
 
-### Interface web (lot 4a)
+### Interface web (lots 4a et 4b)
 
-Prérequis : Node.js (v22.16.0 et npm 10.9.2 observés), l'API et ses deux bases (voir la section précédente). Les commandes sont à lancer dans PowerShell.
+Prérequis : Node.js (v22.23.4 et npm 10.9.9 observés), l'API et ses deux bases (voir la section précédente). Les commandes sont à lancer dans PowerShell.
 
 1. Dans un terminal, lancer l'API (étape 3 de la section précédente).
 2. Dans un autre terminal, depuis le dossier `web/` : `npm install` (une seule fois), puis `npm run dev`. Vite écoute sur `http://localhost:5173/`. Le port est fixé (`strictPort`) : s'il est pris, le serveur s'arrête avec une erreur au lieu de changer de port, ce qui ferait échouer le CORS (voir l'[ADR 0007](docs/adr/0007-cors-dans-l-api.md)). L'API n'accepte l'interface qu'en développement (environnement `Development`, ce que donne le profil `https`).
-3. Autres commandes, dans `web/` : `npm run lint`, `npm run build` (vérifie les types et écrit dans `dist/`, ignoré par git) et `npm test` (79 tests, sans API ni base).
+3. Autres commandes, dans `web/` : `npm run lint`, `npm run build` (vérifie les types et écrit dans `dist/`, ignoré par git) et `npm test` (178 tests, sans API ni base).
 
 L'interface appelle l'API sur `https://localhost:7080` ; la variable d'environnement `VITE_API_URL` remplace cette adresse. Aucun fichier `.env` n'est fourni.
 
-Les 5 écrans (lecture seule, 15 lignes par page) :
+Les 5 écrans de lecture (15 lignes par page) :
 
 | Adresse | Écran |
 |---|---|
@@ -163,3 +163,15 @@ Les 5 écrans (lecture seule, 15 lignes par page) :
 | `/stations/{stationCode}` | une station et ses fonctions |
 
 Les filtres et la page sont dans l'adresse : recharger la page ou revenir en arrière garde l'écran. Les noms de fermes et de stations s'affichent tels qu'ils sont dans la base (en anglais pour les données inventées). Attention : sur le million de lots de `TraceabilityDev`, le bouton « Fin » de la liste des lots a répondu en 1,9 à 11,7 s à quatre essais et a échoué par dépassement de délai (30 s) à trois autres (voir [docs/verification.md](docs/verification.md), section 11.3).
+
+Les écrans d'écriture (lot 4b) : chaque liste a un lien vers la page de création. Les erreurs de l'API s'affichent en français, un seul envoi part à la fois, et les heures se saisissent et s'envoient en UTC.
+
+| Adresse | Écran |
+|---|---|
+| `/new-farm` | créer une ferme (code, nom, région) ; le message de succès reste sur la page et le formulaire est vidé |
+| `/new-station` | créer une station (code, nom) ; ouvre la page de la station |
+| `/new-batch` | créer un lot (code, ferme, variété, date de récolte, quantité, station et heure de réception en UTC) ; ouvre la page du lot |
+| `/stations/{stationCode}` | en plus : ajouter une fonction (Réception, Tri, Emballage, Expédition) |
+| `/batches/{batchCode}` | en plus : ajouter un mouvement (le formulaire propose l'étape suivante et la quantité actuelle) ; un lot expédié n'a plus de formulaire |
+
+Ces écrans écrivent dans la base que l'API utilise. Pour les essayer sans toucher à `TraceabilityDev`, voir [docs/verification.md](docs/verification.md), section 12.4.

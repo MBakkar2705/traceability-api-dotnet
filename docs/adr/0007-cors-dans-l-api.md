@@ -10,9 +10,9 @@ Deux façons de lever le blocage en développement : déclarer l'origine de l'in
 
 ## Décision
 
-- L'API déclare une politique CORS nommée `WebUi`, **appliquée seulement en développement** : origine `http://localhost:5173` (sans `/` final), méthode `GET` seulement, puisque le lot 4a ne fait que lire. `UseCors` est placé entre `UseHttpsRedirection` et `UseAuthorization`.
+- L'API déclare une politique CORS nommée `WebUi`, **appliquée seulement en développement** : origine `http://localhost:5173` (sans `/` final), méthodes `GET` (lot 4a, lecture) et `POST` (lot 4b, écriture) et en-tête `Content-Type`, rien d'autre. `UseCors` est placé entre `UseHttpsRedirection` et `UseAuthorization`.
 - Côté Vite, le port 5173 est fixé avec `strictPort: true` : si le port est pris, le serveur s'arrête au lieu de changer de port, ce qui changerait l'origine et ferait échouer le CORS sans message clair.
-- Au lot 4b, la politique devra aussi accepter `POST` et l'en-tête `Content-Type`. Rien de cela n'est fait, ni prouvé.
+- Au lot 4b, la politique accepte aussi `POST` et l'en-tête `Content-Type` (`WithMethods("GET", "POST")` et `WithHeaders("Content-Type")`). Prouvé par les tests d'intégration, puis observé dans Edge (voir la note du 2026-10-22).
 
 Cette option prouve la vraie chaîne navigateur, CORS, API, avec des tests.
 
@@ -25,19 +25,22 @@ Cette option prouve la vraie chaîne navigateur, CORS, API, avec des tests.
 
 Positives :
 
-- 5 tests d'intégration par HTTP (`CorsTests`) : l'origine autorisée reçoit l'en-tête, une autre origine non, une requête sans origine non, une erreur 404 écrite par le gestionnaire d'exceptions garde l'en-tête, et une pré-vérification pour `POST` ne liste que `GET`.
-- Casse volontaire : avec l'origine changée en `http://localhost:5174`, 4 tests sur 5 échouent. Le cinquième (« sans origine ») réussit même sans CORS : il ne prouve rien seul.
+- 8 tests d'intégration par HTTP (`CorsTests`) : l'origine autorisée reçoit l'en-tête, une autre origine non, une requête sans origine non, une erreur 404 écrite par le gestionnaire d'exceptions garde l'en-tête, une pré-vérification pour `POST` avec `Content-Type` autorise les deux, une pré-vérification ne liste ni `PUT` ni `DELETE`, un `POST` réel reçoit l'en-tête (201), et un `POST` refusé en 400 le garde aussi (sans cela, le navigateur cacherait à la page les erreurs par champ).
+- Observé au lot 4b : avant la modification, le test de pré-vérification échouait (`Allow-Methods` valait `GET`) ; après, les 8 tests de CORS et les 162 tests C# de la solution réussissent. Les 2 tests de `POST` réel réussissaient déjà avant : sur une requête réelle, l'API met `Allow-Origin` quelle que soit la méthode listée ; seule la pré-vérification regarde la liste.
+- Casse volontaire (lot 4a, sur les 5 tests de l'époque) : avec l'origine changée en `http://localhost:5174`, 4 tests sur 5 échouent. Le cinquième (« sans origine ») réussit même sans CORS : il ne prouve rien seul.
 - Observé dans Edge, sur `TraceabilityDev` : les 5 écrans de lecture (fermes, stations, détail d'une station, lots, détail d'un lot) lisent l'API réelle. Avec l'API arrêtée, la console dit `ERR_CONNECTION_REFUSED` : ce n'est pas un blocage CORS.
 
 Négatives :
 
-- Le CORS n'est pas une protection : « `GET` seulement » veut dire que le navigateur ne laissera pas la page lire autre chose, pas que l'API refuse un `POST`.
-- Observé : la réponse à une pré-vérification pour `POST` contient `Access-Control-Allow-Origin` (l'origine) et `Access-Control-Allow-Methods: GET`. La page de Microsoft lue pendant le lot disait qu'une pré-vérification refusée n'a aucun en-tête : ce n'est pas ce qu'on observe avec cette version de .NET. Deux hypothèses de Claude fondées sur cette phrase ont été corrigées par l'observation (voir [verification.md](../verification.md), section 11).
+- Le CORS n'est pas une protection : « `GET` et `POST` seulement » veut dire que le navigateur ne laissera pas la page envoyer une autre méthode, pas que l'API refuse une requête qui ne vient pas d'un navigateur.
+- Observé (lot 4a, politique `GET` seulement) : la réponse à une pré-vérification pour `POST` contient `Access-Control-Allow-Origin` (l'origine) et `Access-Control-Allow-Methods: GET`. La page de Microsoft lue pendant le lot disait qu'une pré-vérification refusée n'a aucun en-tête : ce n'est pas ce qu'on observe avec cette version de .NET. Deux hypothèses de Claude fondées sur cette phrase ont été corrigées par l'observation (voir [verification.md](../verification.md), section 11).
 - La politique n'existe qu'en développement. Le déploiement est hors périmètre : l'origine d'un autre environnement n'est pas définie.
 - L'origine est écrite dans le code, pas dans une configuration.
 
-Non observé : un autre navigateur que Edge, et ce que fait le navigateur d'une pré-vérification pour `POST` (lot 4b).
+Observé dans Edge au lot 4b (2026-10-22) : avant chaque `POST`, l'onglet « Réseau » montre une ligne `OPTIONS` en 204, de type `preflight` (cachée par le filtre « Fetch/XHR »), puis le `POST` (201, 400, 409 ou 422) dont la page lit le corps pour afficher le message ; avec l'API arrêtée, la console dit `net::ERR_CONNECTION_REFUSED`, sans message CORS. Non observé : un autre navigateur que Edge.
 
 ## Notes
 
 - 2026-10-21 : décision au lot 4a, avant l'écriture du code. Observé : les 159 tests C# passent (154 existants et 5 de CORS) et l'interface lit l'API dans Edge.
+- 2026-10-22 : lot 4b, étape 1 : la politique accepte `POST` et `Content-Type`. Observé : le test de pré-vérification échouait avant (`["GET"]`), les 8 tests de CORS et les 162 tests C# réussissent après.
+- 2026-10-22 : lot 4b, essai dans Edge (API sur `TraceabilityTest`). Observé : les formulaires écrivent avec la politique `GET` et `POST` (voir ci-dessus). Casse volontaire : `POST` retiré de la politique, seul le test de pré-vérification pour `POST` échoue (7 réussis sur 8, dont le `POST` réel), puis rétabli. 163 tests C# réussis (voir [verification.md](../verification.md), section 12).

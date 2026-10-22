@@ -8,6 +8,7 @@
 // - movementId is a 64-bit number in the database; JavaScript reads it exactly up to 2^53.
 
 export const BATCH_STATUSES = ['RECEIVED', 'SORTED', 'PACKED', 'SHIPPED'] as const
+export const MOVEMENT_TYPES = ['RECEPTION', 'SORTING', 'PACKING', 'SHIPMENT'] as const
 
 export interface Page<T> {
   items: T[]
@@ -54,4 +55,39 @@ export interface Movement {
 export interface BatchDetails extends Batch {
   // In the order they were recorded.
   movements: Movement[]
+}
+
+// What the web interface sends to the API: the bodies of the POST routes, copied by hand from
+// src/Traceability.Api/Models/Requests.cs (nothing keeps them in sync automatically).
+//
+// - harvestDate is a day without time ("2026-10-14").
+// - occurredAt is a time in UTC that must end with Z.
+// - quantityKg is a JSON number (more than 0, at most 2 decimals).
+
+export interface NewFarm {
+  code: string
+  name: string
+  region: string
+}
+
+export interface NewStation {
+  code: string
+  name: string
+}
+
+export interface NewBatch {
+  batchCode: string
+  farmCode: string
+  variety: string
+  harvestDate: string
+  quantityKg: number
+  stationCode: string
+  occurredAt: string
+}
+
+export interface NewMovement {
+  stationCode: string
+  movementType: string
+  quantityKg: number
+  occurredAt: string
 }

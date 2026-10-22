@@ -1,9 +1,22 @@
-// The only module that calls the API: one function per route (the 5 GET routes of the lot 4a).
-// A call can be cancelled with an AbortSignal.
+// The only module that calls the API: one function per route (the 5 GET routes of the lot 4a,
+// the 5 POST routes of the lot 4b).
+// A read can be cancelled with an AbortSignal. A write never is: cancelling a call does not
+// cancel what the server does, so the screen could not know if the data was saved.
 
 import { API_BASE_URL } from '../config'
 import { ApiError, NetworkError, isAbortError } from './errors'
-import type { Batch, BatchDetails, Farm, Page, Station, StationDetails } from './types'
+import type {
+  Batch,
+  BatchDetails,
+  Farm,
+  NewBatch,
+  NewFarm,
+  NewMovement,
+  NewStation,
+  Page,
+  Station,
+  StationDetails,
+} from './types'
 
 export interface PageParams {
   pageNumber?: number
@@ -64,10 +77,12 @@ export async function toApiError(response: Response): Promise<ApiError> {
   })
 }
 
-async function getJson<T>(path: string, query: Query, signal?: AbortSignal): Promise<T> {
+// Sends a request and gives the answer when it is a success. An API that cannot be reached gives
+// a NetworkError, an error status gives an ApiError, a cancelled call is let through as it is.
+async function send(path: string, query: Query, init: RequestInit): Promise<Response> {
   let response: Response
   try {
-    response = await fetch(buildUrl(path, query), { headers: { Accept: 'application/json' }, signal })
+    response = await fetch(buildUrl(path, query), init)
   } catch (error) {
     if (isAbortError(error)) {
       throw error
@@ -78,7 +93,26 @@ async function getJson<T>(path: string, query: Query, signal?: AbortSignal): Pro
   if (!response.ok) {
     throw await toApiError(response)
   }
+  return response
+}
+
+async function getJson<T>(path: string, query: Query, signal?: AbortSignal): Promise<T> {
+  const response = await send(path, query, { headers: { Accept: 'application/json' }, signal })
   return (await response.json()) as T
+}
+
+// No signal on purpose (see the top of the file). The caller reads the body only if it needs it:
+// most POST routes answer 201 with no body.
+function postJson(path: string, body: unknown): Promise<Response> {
+  return send(
+    path,
+    {},
+    {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
 }
 
 const segment = encodeURIComponent
@@ -110,4 +144,25 @@ export function listBatches(filters: BatchFilters = {}, signal?: AbortSignal): P
 
 export function getBatch(batchCode: string, signal?: AbortSignal): Promise<BatchDetails> {
   return getJson(`/batches/${segment(batchCode)}`, {}, signal)
+}
+
+export async function createFarm(farm: NewFarm): Promise<Farm> {
+  const response = await postJson('/farms', farm)
+  return (await response.json()) as Farm
+}
+
+export async function createStation(station: NewStation): Promise<void> {
+  await postJson('/stations', station)
+}
+
+export async function addCapability(stationCode: string, movementType: string): Promise<void> {
+  await postJson(`/stations/${segment(stationCode)}/capabilities`, { movementType })
+}
+
+export async function createBatch(batch: NewBatch): Promise<void> {
+  await postJson('/batches', batch)
+}
+
+export async function addMovement(batchCode: string, movement: NewMovement): Promise<void> {
+  await postJson(`/batches/${segment(batchCode)}/movements`, movement)
 }

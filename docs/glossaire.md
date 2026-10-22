@@ -132,7 +132,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Fixture de test** : un objet construit une seule fois avant les tests d'un groupe et partagé par eux. Ici : `ApiFixture` vérifie la base, vide les 5 tables de `TraceabilityTest` et lance l'API.
 
-**CORS** : une règle appliquée par le navigateur : une page web ne peut appeler une API située à une autre adresse que si l'API l'autorise. Ici : configuré en développement seulement, pour l'interface sur `http://localhost:5173`, en `GET` seulement (voir ADR 0007).
+**CORS** : une règle appliquée par le navigateur : une page web ne peut appeler une API située à une autre adresse que si l'API l'autorise. Ici : configuré en développement seulement, pour l'interface sur `http://localhost:5173`, en `GET` et `POST` seulement, avec l'en-tête `Content-Type` (voir ADR 0007).
 
 **Casse volontaire d'un test** : on change une ligne du code pour vérifier que les tests la voient, puis on la rétablit. Ici : la famille 502xx de 409 à 400 donne 4 échecs unitaires et 3 d'intégration ; le fichier rétabli a la même empreinte que l'original. Au lot 3c : 5 défauts, 4 vus par les tests, 1 non détecté (la conversion d'une heure avec décalage, sur une machine en UTC).
 
@@ -154,9 +154,15 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Origine** : le triplet schéma, hôte et port d'une adresse. Ici : `http://localhost:5173` (l'interface) et `https://localhost:7080` (l'API) sont deux origines différentes, même sur la même machine.
 
-**Pré-vérification (preflight)** : une requête `OPTIONS` que le navigateur envoie avant certaines requêtes (en général un `POST` en JSON) pour demander à l'API si elle les accepte. Ici : testée en C# pour `POST` (observé : l'API répond avec l'origine et `Access-Control-Allow-Methods: GET`) ; l'interface du lot 4a n'écrit rien.
+**Pré-vérification (preflight)** : une requête `OPTIONS` que le navigateur envoie avant certaines requêtes (en général un `POST` en JSON) pour demander à l'API si elle les accepte. Ici : l'interface la déclenche pour chaque écriture (lot 4b). Dans l'onglet « Réseau » d'Edge, une ligne `OPTIONS` en 204, de type `preflight`, accompagne chaque `POST` ; le filtre « Fetch/XHR » la cache, il faut choisir « All ». Testée aussi en C# : la politique accepte `POST` avec `Content-Type` et ne liste ni `PUT` ni `DELETE`. Avec l'API arrêtée, la console d'Edge dit `net::ERR_CONNECTION_REFUSED` (voir [verification.md](verification.md), section 12.2).
 
-**En-têtes exposés** : par défaut, une page ne peut lire que quelques en-têtes d'une réponse venue d'une autre origine ; l'API doit nommer les autres pour qu'une page les lise. Ici : l'interface du lot 4a n'en lit aucun ; à revoir au lot 4b pour le `Location` des routes `POST` (non vérifié).
+**`Access-Control-Allow-Origin`** : l'en-tête de réponse par lequel l'API dit quelle origine a le droit de lire la réponse. Il doit figurer sur toutes les réponses, erreurs comprises : sans lui, le navigateur cache à la page le corps d'une erreur de l'API. Ici : `http://localhost:5173`, vérifié en C# sur des réponses 200, 201, 400 et 404.
+
+**`Access-Control-Allow-Methods`** : l'en-tête de la réponse à une pré-vérification, qui liste les méthodes HTTP permises. Ici : il contient `GET` et `POST`. Quand `POST` en a été retiré (casse volontaire, [verification.md](verification.md), section 12.2), le test de la pré-vérification a échoué, alors que le test d'un vrai `POST` a réussi : l'API ne contrôle pas la méthode d'une vraie requête, c'est le navigateur qui bloque.
+
+**`Access-Control-Allow-Headers`** : l'en-tête de la réponse à une pré-vérification, qui liste les en-têtes de requête permis. Ici : `Content-Type`, parce que l'interface envoie du JSON.
+
+**En-têtes exposés** : par défaut, une page ne peut lire que quelques en-têtes d'une réponse venue d'une autre origine ; l'API doit nommer les autres pour qu'une page les lise. Ici : l'interface n'en lit aucun ; elle ouvre la page du lot ou de la station avec le code saisi, donc le `Location` des routes `POST` n'est pas lu (non vérifié dans un navigateur).
 
 **Proxy de développement** : le serveur de développement relaie lui-même les appels de l'interface vers l'API, pour que le navigateur ne parle qu'à une origine. Ici : écarté, non essayé (voir ADR 0007).
 
@@ -168,7 +174,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Linter (Oxlint)** : un outil qui lit le code sans l'exécuter et signale des fautes probables. Ici : 0 avertissement ; il a signalé un `setState` appelé de façon synchrone dans un effet de `useApi`, corrigé.
 
-**Vitest et jsdom** : Vitest lance les tests de l'interface ; jsdom simule un navigateur dans Node, ce qui permet de tester des composants React sans ouvrir Edge. Ici : 79 tests, avec un faux `fetch` à la place de l'API.
+**Vitest et jsdom** : Vitest lance les tests de l'interface ; jsdom simule un navigateur dans Node, ce qui permet de tester des composants React sans ouvrir Edge. Ici : 178 tests, avec un faux `fetch` à la place de l'API.
 
 **Annulation d'un appel (`AbortController`)** : un moyen de dire à `fetch` d'abandonner une requête devenue inutile. Ici : `useApi` annule l'appel quand l'écran ou la page change ; l'API peut alors écrire « Opération annulée par l'utilisateur » dans son journal (voir verification.md, section 11.3).
 

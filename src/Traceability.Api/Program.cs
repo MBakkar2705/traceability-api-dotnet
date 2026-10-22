@@ -11,8 +11,9 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<SqlExceptionHandler>();
 
 // CORS: lets the web interface (the Vite development server) read the answers of the API.
-// Development only, GET only for now (lot 4a). An origin is scheme + host + port, written
-// without a trailing slash.
+// Development only. GET for reading (lot 4a), POST and the Content-Type header for writing
+// with a JSON body (lot 4b). An origin is scheme + host + port, written without a trailing
+// slash.
 const string WebUiCorsPolicy = "WebUi";
 
 if (builder.Environment.IsDevelopment())
@@ -20,7 +21,8 @@ if (builder.Environment.IsDevelopment())
     builder.Services.AddCors(options =>
         options.AddPolicy(WebUiCorsPolicy, policy => policy
             .WithOrigins("http://localhost:5173")
-            .WithMethods("GET")));
+            .WithMethods("GET", "POST")
+            .WithHeaders("Content-Type")));
 }
 
 // The connection string comes from the environment variable ConnectionStrings__Default
