@@ -561,3 +561,32 @@ FROM sys.dm_exec_query_resource_semaphores;
 
 - On recommence jusqu'à observer 3 échecs, avec 6 appels au plus. Un essai dont la grille est vide, ou prise après la fin de l'appel, ne compte pas ; les réussites sont notées. M1 est confirmée si les 3 échecs respectent tous les critères ci-dessus, et fausse si au moins un échec en viole un.
 - Lecture seule : la procédure, l'API et la base ne sont pas modifiées.
+
+**Résultat (2026-10-23)**
+
+Écarts avec la méthode ci-dessus :
+- Les essais 1 et 2 ont suivi la méthode (lecture à environ 25 s). Les deux appels avaient déjà fini : les grilles des requêtes en cours et des demandes de mémoire étaient vides.
+- À partir de l'essai 3, la lecture à un instant est remplacée par une surveillance : une ligne par seconde pendant 60 s, écrite dans l'onglet Messages de SSMS (boucle en lecture seule), sur la requête de l'API et sur la mémoire disponible du pool 2. La durée des appels varie trop pour viser 25 s à la main. Les critères de M1 ne changent pas.
+- L'essai 6 a été fait après l'arrêt et le redémarrage de l'API. Cela ne recrée pas les conditions des échecs de 9.1, où l'ordinateur venait de redémarrer et où SQL Server n'avait aucun plan en mémoire.
+
+| Essai | Résultat | Observé |
+|---|---|---|
+| 1 | réussite, 26,53 s | appel fini à la lecture ; pool 2 : 39 Mo au total, 39 Mo disponibles |
+| 2 | réussite, 25,21 s | appel fini à la lecture ; pool 2 : 661 Mo disponibles avant, 704 Mo à la lecture |
+| 3 | réussite, 12,45 s | requête visible de t = 6 s à t = 17 s, mémoire accordée de 95 296 Ko dès le premier relevé, attente `CXCONSUMER` ; mémoire disponible du pool 2 : 800 Mo, 43 Mo à t = 8 s, 0 Mo à t = 9 s, environ 47 Mo de t = 10 à t = 13 s, 609 Mo à t = 14 s, 730 Mo après la fin |
+| 4 | réussite, 8,31 s | requête de t = 5 s à t = 12 s, 95 296 Ko accordés, attente `CXCONSUMER` ; mémoire disponible de 643 à 674 Mo pendant la requête ; chute à 143 Mo de t = 33 s à t = 37 s, sans requête de l'API visible |
+| 5 | réussite, 7,49 s | requête de t = 3 s à t = 10 s, 95 296 Ko accordés ; mémoire disponible de 828 à 852 Mo pendant la requête ; chute à 142 Mo de t = 15 s à t = 19 s, sans requête de l'API visible |
+| 6 (API redémarrée) | réussite, 8,67 s | requête de t = 4 s à t = 11 s, **77 896 Ko accordés** ; mémoire disponible de 141 à 143 Mo avant l'appel, 16 Mo au premier relevé de la requête puis environ 65 Mo, et 141 à 142 Mo pendant tout le reste de la minute |
+
+**Verdict.** Les 6 appels ont réussi (de 7,49 s à 26,53 s) : aucun échec n'a été observé, alors que la règle de la méthode en demande 3. **M1 n'est ni confirmée ni infirmée.** Aucune attente `RESOURCE_SEMAPHORE` n'a été vue ; les attentes observées sont `CXCONSUMER` et `CXSYNC_PORT`, liées au parallélisme.
+
+**Observations non expliquées**
+
+- Les 3 échecs de 9.1 (de 10:03 à 10:17) sont les 3 premiers appels de la séance. Depuis 10:23, les 7 appels suivants (l'appel 4 de 9.1 et les 6 de M1) ont réussi. Le lien avec l'ordre ou avec l'heure n'est pas examiné.
+- La mémoire disponible pour les requêtes varie de 0 à 964 Mo. Des chutes à 142 ou 143 Mo, de 5 s, sont observées sans requête de l'API (essais 4 et 5) ; à l'essai 6, ce niveau est resté pendant toute la minute. À l'essai 3, la mémoire est tombée à 0 Mo pendant que la requête n'en détenait que 93 Mo.
+- La mémoire accordée est de 77 896 Ko à l'essai 6 contre 95 296 Ko aux essais 3 à 5, pour le même plan et les mêmes paramètres.
+- Le temps de processeur de la requête de l'API est d'environ 10 300 à 12 900 ms pour 7,2 à 12 s écoulées, contre 3 906 ms pour la même page dans SSMS (A3 et G1a). Cause non examinée.
+
+**État de la mémoire après l'essai 6** (lectures à 11:08 et 11:10) : SQL Server utilise 258 Mo (`physical_memory_in_use`) pour un maximum autorisé de 5 120 Mo ; mémoire engagée et cible de mémoire : 386 Mo ; budget de mémoire des requêtes (pool 2) : 140 Mo, dont 140 Mo disponibles ; la plus grosse part (`MEMORYCLERK_SQLBUFFERPOOL`) fait 84 Mo. RAM totale 8 108 Mo, libre 699 Mo ; Windows annonce « Physical memory usage is steady » et SQL Server ne se déclare pas en manque de mémoire (`process_physical_memory_low` à 0). Gestionnaire des tâches de Windows : mémoire utilisée à 90-92 %, processeur à 38-44 %. Plus gros processus visibles : Visual Studio Code 969 Mo, Claude 698 Mo, Google Chrome 318 Mo, SSMS 300 Mo, Edge 271 Mo, un processus `language_server` 231 Mo, Microsoft Defender 149 Mo, SQL Server 141,5 Mo. Ces processus font environ 3,3 Go ; pour environ 7,3 Go utilisés, le reste n'a pas été identifié (la liste n'a pas été parcourue en entier).
+
+**Ce qui n'est pas établi.** Que la mémoire limitée de la machine (8 Go, presque pleine) explique la variation de la mémoire disponible pour les requêtes, et par elle les échecs de 9.1, n'est pas démontré : aucun échec n'a été observé pendant la surveillance. C'est une raison de plus de lire les mesures de ce lot comme faites sur une seule machine (section 5).
