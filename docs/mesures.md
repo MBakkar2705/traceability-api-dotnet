@@ -422,3 +422,53 @@ Cette hypothèse est écrite **après** les mesures « avant » de la section 7.
 - **Contrôle d'abord :** la variante par défaut doit montrer le plan de A3 (parallèle, tri qui déverse dans `tempdb`). Sinon le test ne dit rien sur la procédure.
 - Bloc G1a : le plan réel de chaque variante (une exécution chacune, Ctrl+M actif).
 - Bloc G1b : 5 paires d'exécutions, sans plan, les deux variantes alternées, pour les comparer dans la même période, puisque la durée de la même page varie dans le temps (section 7.3).
+
+### 8.4 Résultat (2026-10-23)
+
+Conditions : script `database/014_measure_lot5_trials.sql` exécuté dans SSMS sur `TraceabilityDev`. Bloc G1a avec le plan réel actif, une exécution de chaque variante. Bloc G1b sans plan (Ctrl+M désactivé selon la consigne), 5 paires d'exécutions alternées. Aucune autre requête n'a été lancée pendant les mesures (indication de la personne qui les a faites).
+
+**G1a : un appel de chaque variante, page 66 667**
+
+| | Variante par défaut (contrôle) | `OPTION (MAXDOP 1)` |
+|---|---|---|
+| `Batch` : lectures logiques | 10 574 (5 analyses) | 10 424 (1 analyse) |
+| `Farm` : lectures logiques | 2 | 2 |
+| Zone de travail (`Worktable`, lecture anticipée) | 10 538 | 10 496 |
+| Temps de processeur / temps écoulé | 3 906 ms / 120 414 ms | 796 ms / 2 232 ms |
+| Plan | parallèle, tri de 1 000 000 de lignes (estimé : 331 677), avertissement sur le tri ; durée de l'opérateur de tête 8,372 s, du tri 1,227 s | aucun opérateur de parallélisme, tri de 1 000 000 de lignes (estimé : 331 677) ; durée de l'opérateur de tête 1,843 s, du tri 1,805 s |
+| Index absent proposé | `Batch (FarmId)` avec colonnes incluses, impact 40,146 | même forme, impact 29,5993 |
+
+Le contrôle a le plan de A3 (section 7.2) : le test porte donc bien sur la forme de plan de la procédure. Infobulle du tri de la variante `MAXDOP 1` : l'opérateur a utilisé `tempdb` pour déverser les données (niveau de déversement 1, 1 fil) ; le tri a écrit 10 496 pages dans `tempdb` et en a relu 10 496, avec 88 104 Ko de mémoire allouée et 88 104 Ko utilisés. L'infobulle du tri de la variante par défaut n'a pas été relue dans ce bloc (elle l'avait été pour A3, section 7.2).
+
+**G1b : 5 paires, temps écoulé de l'exécution, en ms**
+
+| Paire | Par défaut | `MAXDOP 1` |
+|---|---|---|
+| 1 | 8 972 | 1 556 |
+| 2 | 7 967 | 1 397 |
+| 3 | 8 708 | 1 474 |
+| 4 | 7 716 | 1 625 |
+| 5 | 8 827 | 1 591 |
+
+À chaque exécution par défaut : `Batch` 10 574 lectures logiques (5 analyses), `Farm` 2, zone de travail de 10 530 à 10 532 pages. À chaque exécution `MAXDOP 1` : `Batch` 10 424 (1 analyse), `Farm` 2, zone de travail de 10 496 à 10 497 pages. Dans chaque paire, la variante par défaut est 4,7 à 5,9 fois plus lente que la variante `MAXDOP 1`.
+
+**Verdict sur G1** (règles de la section 8.2)
+
+| Critère | Résultat |
+|---|---|
+| Chaque durée de la variante `MAXDOP 1` à 4 s ou moins | **confirmé** : 1 397 à 1 625 ms en G1b, 2 232 ms en G1a |
+| La plus lente au plus 2 fois la plus rapide | **confirmé** : 1 625 ms contre 1 397 ms |
+| Lectures de `Batch` d'environ 10 400 à 10 600 | **confirmé** : 10 424 |
+| Plus d'opérateur de tri, plus de déversement dans `tempdb` | **infirmé** : le tri est resté, avec 10 496 pages déversées |
+| Lectures sur `Farm` (non prédites) | 2 |
+
+La règle « fausse si le plan garde un tri qui déverse dans `tempdb` » est remplie : **G1 est fausse telle qu'elle a été énoncée**. Elle est conforme sur la durée et la régularité de la variante sans parallélisme.
+
+**Observations non expliquées**
+
+- Sans parallélisme, la même page est 4,7 à 5,9 fois plus rapide, alors que le tri qui déverse dans `tempdb` est resté : la cause n'est pas établie.
+- Pour la variante par défaut, la durée affichée dans le plan et la durée mesurée diffèrent beaucoup : 8,372 s dans le plan contre 120,4 s mesurées en G1a, et 9,170 s contre 17,3 s en A3. Pour `MAXDOP 1`, 1,843 s contre 2,2 s. Ce que l'exécution fait pendant la différence n'a pas été examiné.
+- L'irrégularité n'a pas été reproduite en G1b : les cinq exécutions par défaut ont duré de 7,7 s à 9,0 s, alors que B1 (runs 4 et 5) et G1a ont donné 121,8 s, 146,3 s et 120,4 s pour la même page. Cause inconnue.
+- `Batch` est lu en 10 424 pages sans parallélisme (la taille de la table, section 1) et en 10 574 pages avec le plan parallèle : les 150 pages en plus coïncident avec le plan parallèle, sans que la cause soit examinée.
+
+**Ce qui n'est pas fait.** Rien n'a été mesuré par l'API. La procédure et l'API ne sont pas modifiées, et aucune décision n'est prise : adopter `OPTION (MAXDOP 1)` reviendrait à modifier `ListBatches`, avec ses tests, et demanderait de comparer les alternatives. Prochain essai : le plan réellement utilisé par l'API (section 9.1).
