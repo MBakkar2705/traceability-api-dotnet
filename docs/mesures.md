@@ -688,3 +688,50 @@ Ces hypothèses sont écrites après les résultats de T3 et avant les mesures q
 - Mesures de W1 : durée des 500 appels, quantité de journal utilisée par la transaction (`sys.dm_tran_database_transactions`), journal par appel.
 - Mesures de C2 : 5 tours, chacun de 100 appels avec `OPTION (RECOMPILE)` puis 20 appels sans, en boucle, sur l'instruction du total (pas sur la procédure).
 - Ordre : W1, C2 et C3 avec `IX_Batch_FarmId` en place ; puis `DROP INDEX IX_Batch_FarmId` à la main (annoncé avant), et W1 de nouveau **sans** l'index. L'index est recréé plus tard seulement si le changement est retenu.
+
+**Résultat de W1 (avec l'index), C2 et C3 (2026-10-23)**
+
+Conditions : `IX_Batch_FarmId` en place (1 737 pages), API arrêtée, script `database/016_measure_lot5_costs.sql`, mesures dans SSMS. Un premier lancement de W1 a été refusé par SQL Server avant son exécution (erreur 1046 : sous-requête dans un `PRINT`, aux lignes 101, 134 et 135) : rien n'a été écrit. Le script a été corrigé (les valeurs sont calculées dans des variables avant d'être affichées) et W1 a ensuite été lancé tel quel.
+
+**W1, avec l'index** (station `SITE-01`, ferme `F001`) :
+
+| Série de 500 appels | Durée | Journal utilisé | Journal par appel |
+|---|---|---|---|
+| 1 | 189 ms | 389 956 octets | 779 octets |
+| 2 | 94 ms | 371 472 octets | 742 octets |
+| 3 | 112 ms | 371 264 octets | 742 octets |
+| 4 | 162 ms | 371 680 octets | 743 octets |
+| 5 | 138 ms | 371 472 octets | 742 octets |
+| Moyenne | 139 ms (environ 0,28 ms par appel) | 375 169 octets | environ 750 octets |
+
+Contrôle : 1 000 000 de lots avant et après, 3 250 000 mouvements avant et après. Rien n'est resté dans la base. La première série consomme un peu plus de journal que les suivantes ; la cause n'est pas examinée. **Le verdict sur C1 n'est pas rendu** : la mesure sans l'index n'est pas faite.
+
+**C2, le total de `F001` avec et sans `OPTION (RECOMPILE)`**, en boucle sur l'instruction (pas sur la procédure) :
+
+| Tour | Avec (100 appels) | Sans (20 appels) |
+|---|---|---|
+| 1 | 153,853 ms | 162,559 ms |
+| 2 | 175,786 ms | 172,113 ms |
+| 3 | 177,077 ms | 226,926 ms |
+| 4 | 204,553 ms | 178,531 ms |
+| 5 | 184,031 ms | 157,005 ms |
+| Moyenne | 179,06 ms par appel | 179,43 ms par appel |
+
+**Verdict sur C2 : fausse.** L'hypothèse prévoyait moins de 10 ms par appel avec `OPTION (RECOMPILE)` ; on mesure de 154 à 205 ms, soit la même durée que sans. **Non expliqué :** en T3, la même instruction avec `OPTION (RECOMPILE)` lisait 47 pages ; ici elle dure autant qu'une lecture complète de la table, alors que la compilation seule dure 2 ms en C3a. Ce que l'instruction lit dans cette boucle n'a pas été mesuré (hypothèse D1 ci-dessous).
+
+**C3, le total sans filtre** (plan réel actif) :
+
+| | Plan | Lectures de `Batch` | Temps |
+|---|---|---|---|
+| C3a, avec `OPTION (RECOMPILE)` | analyse d'un index `IX_Batch…` (nom tronqué à l'écran ; seul index de ce nom sur la table), sans parallélisme, 1 000 000 de lignes estimées et lues | **1 740** (1 analyse, 346 lectures physiques) | compilation 2 ms ; 236 ms écoulés (93 ms de processeur) |
+| C3b, sans `OPTION (RECOMPILE)` | analyse parallèle de `PK_Batch`, 214 891 lignes estimées pour 1 000 000 lues | **10 574** (5 analyses, 589 lectures physiques) | 2 134 ms écoulés (343 ms de processeur) |
+
+**Verdict sur C3 : confirmée** : 1 740 lectures, moins de 2 000, à peine plus que la taille de l'index (1 737 pages). Les durées de C3a et C3b ne sont pas comparées : C3b a lu une partie des pages sur disque.
+
+**Hypothèse D1 (écrite après les résultats de C2, avant son test)**
+
+- **Ce qui la motive :** le désaccord entre T3 (47 lectures avec `OPTION (RECOMPILE)`) et C2 (179 ms par appel, comme sans).
+- **Hypothèse :** pour `F001`, avec `IX_Batch_FarmId` présent et `OPTION (RECOMPILE)`, les deux écritures du total (a : le résultat va dans une variable, comme dans la boucle de C2 ; b : le résultat est renvoyé, comme en T3) lisent chacune 47 pages de `Batch`, et chacune dure moins de 15 ms écoulées (compilation et exécution comprises) à sa **deuxième** exécution.
+- **Fausse si** l'une des deux écritures lit 100 pages ou plus, ou dure 15 ms ou plus à sa deuxième exécution.
+- **Sens des deux issues :** si D1 est vraie, la durée de 179 ms de C2 ne vient pas de l'instruction elle-même ; la boucle de C2 est alors une méthode inadaptée, ce qu'on écrit comme limite. Si D1 est fausse, la lecture ou la compilation explique C2, et `OPTION (RECOMPILE)` n'est pas gratuit.
+- **Méthode :** bloc D1 du script `016` (2 exécutions de chaque forme, plan réel actif, lectures et temps affichés), lecture seule. Le résultat s'ajoute à la suite.

@@ -4,6 +4,8 @@
     - W1: the cost of the index IX_Batch_FarmId on writes (trace.CreateBatch).
     - C2: the cost of OPTION (RECOMPILE) on the total of trace.ListBatches.
     - C3: the total without filter with OPTION (RECOMPILE).
+    - D1: a diagnostic of the result of C2 (docs/mesures.md, section 9.4): the same statement,
+      two forms, with the reads and the compile time.
 
   !!! W1 IS NOT READ ONLY !!!
   W1 calls trace.CreateBatch 500 times in ONE transaction, 5 times in a row, and every
@@ -97,11 +99,11 @@ DECLARE @code NVARCHAR(30);
 DECLARE @start DATETIME2(3);
 DECLARE @ms INT;
 DECLARE @logBytes BIGINT;
-PRINT CONCAT(N'index IX_Batch_FarmId present: ',
-             CASE WHEN EXISTS (SELECT 1 FROM sys.indexes
-                               WHERE object_id = OBJECT_ID(N'trace.Batch') AND name = N'IX_Batch_FarmId')
-                  THEN N'yes' ELSE N'no' END,
-             N' | station: ', @station);
+DECLARE @indexPresent NVARCHAR(3) =
+    CASE WHEN EXISTS (SELECT 1 FROM sys.indexes
+                      WHERE object_id = OBJECT_ID(N'trace.Batch') AND name = N'IX_Batch_FarmId')
+         THEN N'yes' ELSE N'no' END;
+PRINT CONCAT(N'index IX_Batch_FarmId present: ', @indexPresent, N' | station: ', @station);
 BEGIN TRY
     WHILE @run <= 5
     BEGIN
@@ -131,8 +133,10 @@ BEGIN CATCH
     IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
     THROW;
 END CATCH;
-PRINT CONCAT(N'batches before / after: ', @batchesBefore, N' / ', (SELECT COUNT(*) FROM trace.Batch));
-PRINT CONCAT(N'movements before / after: ', @movementsBefore, N' / ', (SELECT COUNT(*) FROM trace.Movement));
+DECLARE @batchesAfter INT = (SELECT COUNT(*) FROM trace.Batch);
+DECLARE @movementsAfter INT = (SELECT COUNT(*) FROM trace.Movement);
+PRINT CONCAT(N'batches before / after: ', @batchesBefore, N' / ', @batchesAfter);
+PRINT CONCAT(N'movements before / after: ', @movementsBefore, N' / ', @movementsAfter);
 GO
 
 /* ================================================================== */
@@ -210,6 +214,47 @@ SELECT COUNT(*) AS TotalCount
 FROM trace.Batch AS b
 WHERE (@Status IS NULL OR b.Status = @Status)
   AND (@FarmId IS NULL OR b.FarmId = @FarmId);
+GO
+
+/* ================================================================== */
+/* D1 - diagnostic of C2 (read only, Ctrl+M ON)                        */
+/* The total of farm F001 with OPTION (RECOMPILE), in the two forms:   */
+/* as in the loop of C2 (the result goes into a variable) and as in    */
+/* T3 (the result is returned). Two runs of each.                      */
+/* ================================================================== */
+
+/* ---------- D1: two forms, two runs each ---------- */
+SET NOCOUNT ON;
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+IF DB_NAME() <> N'TraceabilityDev' THROW 50001, N'Wrong database. Nothing was done.', 1;
+DECLARE @FarmId INT = (SELECT FarmId FROM trace.Farm WHERE Code = N'F001');
+DECLARE @Status NVARCHAR(20) = NULL;
+DECLARE @c INT;
+PRINT N'=== D1a run 1: the result goes into a variable, as in C2 ===';
+SELECT @c = COUNT(*)
+FROM trace.Batch AS b
+WHERE (@Status IS NULL OR b.Status = @Status)
+  AND (@FarmId IS NULL OR b.FarmId = @FarmId)
+OPTION (RECOMPILE);
+PRINT N'=== D1a run 2 ===';
+SELECT @c = COUNT(*)
+FROM trace.Batch AS b
+WHERE (@Status IS NULL OR b.Status = @Status)
+  AND (@FarmId IS NULL OR b.FarmId = @FarmId)
+OPTION (RECOMPILE);
+PRINT N'=== D1b run 1: the result is returned, as in T3 ===';
+SELECT COUNT(*) AS TotalCount
+FROM trace.Batch AS b
+WHERE (@Status IS NULL OR b.Status = @Status)
+  AND (@FarmId IS NULL OR b.FarmId = @FarmId)
+OPTION (RECOMPILE);
+PRINT N'=== D1b run 2 ===';
+SELECT COUNT(*) AS TotalCount
+FROM trace.Batch AS b
+WHERE (@Status IS NULL OR b.Status = @Status)
+  AND (@FarmId IS NULL OR b.FarmId = @FarmId)
+OPTION (RECOMPILE);
 GO
 
 SET STATISTICS IO OFF;
