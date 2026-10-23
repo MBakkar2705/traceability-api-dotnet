@@ -954,3 +954,54 @@ Le script `database/017_optimize_list_batches.sql` a été lancé sur `Traceabil
 ```
 
 - Les résultats s'ajoutent à la suite, sous « Résultat de H1 à H5 ».
+
+**Résultat de H1 à H5 (2026-10-23)**
+
+Conditions : `017` lancé sur `TraceabilityDev` à 18:40 (`IX_Batch_FarmId` créé, `ListBatches` remplacée). Mesures dans SSMS de 18:49 à 18:55 avec les blocs A1, A2, A3, B1 et B2 de `database/013_measure_lot5.sql` (plan réel actif pour A, désactivé pour B). API lancée par `dotnet run --project src/Traceability.Api --launch-profile https` vers 18:58, puis 10 appels de suite à 18:59.
+
+**H1 à H3 : les totaux** (lectures logiques de `Batch` pour le total ; page de 15 lignes)
+
+| Cas | Total, avant | Total, maintenant | Page : `Batch` / `Farm` |
+|---|---|---|---|
+| A1, sans filtre | 10 574 | **1 737** (1 analyse, un index `IX_Batch…` lu sans parallélisme ; 145 ms, 31 ms de processeur ; compilation 2 ms) | 3 / 30 |
+| A2a, ferme `F001` | 10 574 | **47** (1 analyse) | 9 / 30 |
+| A2b, ferme `F021` | 10 574 | **8** (1 analyse) | 58 / 30 |
+| A2c, statut `RECEIVED` | 10 574 | **10 574** (5 analyses) | 9 351 / 30 |
+
+**H4 : la page**
+
+| Mesure | Avant | Maintenant |
+|---|---|---|
+| A3, page 66 667 : lectures `Batch` / `Farm` / zone de travail | 10 574 / 2 / 10 539 | **10 424 / 20 / aucune** |
+| A3 : plan | parallèle, tri d'un million de lignes | boucles imbriquées, lecture de `PK_Batch` (1 000 000 de lignes lues, estimation 331 677), 10 recherches dans `Farm`, **aucun tri** |
+| A3 : durée de l'appel entier | 17 810 ms | 456 ms (page 306 ms, total 136 ms) |
+| B1, page 66 667, 5 exécutions de l'appel entier | 10 380, 20 005, 7 928, 121 832, 146 313 ms | **298, 286, 287, 277, 282 ms** (moyenne 286 ms) ; à chaque fois : `Batch` 10 424 puis 1 737, `Farm` 20, aucune zone de travail |
+| B2, page 1, 5 exécutions de l'appel entier | 218, 120, 262, 200, 248 ms | **113, 93, 124, 108, 125 ms** (moyenne 113 ms) ; à chaque fois : `Batch` 4 puis 1 737, `Farm` 30 |
+
+**H5 : « Fin » par l'API** (`GET /batches?pageNumber=66667&pageSize=15`, sans filtre, 10 appels de suite)
+
+| Appel | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Résultat | OK | OK | OK | OK | OK | OK | OK | OK | OK | OK |
+| Durée (s) | 1,59 | 0,71 | 0,45 | 0,63 | 0,52 | 0,56 | 0,46 | 0,53 | 0,54 | 0,54 |
+
+Mémoire disponible pour les requêtes (pool 2), lue avant et après la série : **5 Mo sur 5 Mo** les deux fois, RAM libre 571 Mo puis 569 Mo. Les 10 appels se sont donc déroulés avec un budget de 5 Mo, l'état où la requête de G2c avait attendu sa mémoire pendant plus de 8 minutes dans SSMS (section 9.5).
+
+**Verdicts**
+
+| Hypothèse | Seuil | Résultat |
+|---|---|---|
+| H1, total sans filtre | moins de 2 000 lectures | **confirmée** (1 737) |
+| H2, total par ferme | moins de 100 pour `F001`, moins de 30 pour `F021` | **confirmée** (47 et 8) |
+| H3, total par statut | de 10 000 à 11 100, ni mieux ni pire | **confirmée** (10 574) |
+| H4, la page | dernière page : `Batch` de 10 400 à 10 600, `Farm` sous 100, aucune zone de travail, 5 exécutions à 2 s ou moins ; page 1 : `Batch` au plus 10, `Farm` au plus 40, total sous 2 000 | **confirmée** (10 424, 20, aucune, 277 à 298 ms ; 4, 30, 1 737) |
+| H5, « Fin » par l'API | 10 appels réussis, chacun sous 5 s | **confirmée** (10 sur 10, le plus lent à 1,59 s, moyenne 0,65 s) |
+
+**Limites**
+
+- Dernière page et page 1 seulement pour la page ; filtres par ferme et par statut seulement sur la page 1 ; les lignes renvoyées ont été comparées sur 6 cas en G2c (section 9.5), sur `TraceabilityDev` avant `017`.
+- Les valeurs « avant » viennent des séances précédentes (sections 7, 9.1 et 9.5) ; l'ancienne version n'a pas été remesurée dans le même état de la machine. Les 10 appels de H5 n'ont pas de série « avant » dans le même état de mémoire.
+- Les échecs de « Fin » (3 sur 3 en début de séance, puis 7 réussites) ne se reproduisaient pas à volonté : l'absence d'échec dans les 10 appels de H5 est cohérente avec une correction, mais **ne la prouve pas**.
+- La demande de mémoire du nouveau plan (en kilo-octets) n'a pas été lue ; la mesure est celle d'un seul appel enchaîné de 10, dans une seule session de l'API (le premier appel, à 1,59 s, comprend le démarrage).
+- Le filtre par statut n'est pas amélioré (aucun index sur `Status`) : 10 574 pages pour le total, 9 351 pour la page 1 de `RECEIVED`.
+- Une seule machine (8 Go de RAM, mémoire utilisée à plus de 90 % pendant la séance).
