@@ -1,4 +1,4 @@
-# Mesures de recherche et index (lots 2b et 3a)
+# Mesures de recherche et index (lots 2b, 3a et 5)
 
 Ce document garde la trace des **hypothèses** posées avant de mesurer, puis des **mesures** avant et après chaque index.
 
