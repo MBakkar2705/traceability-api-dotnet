@@ -396,3 +396,29 @@ Première page (B2), temps écoulé de l'appel entier : 218 ms, 120 ms, 262 ms, 
 ### 7.6 Ce qui n'est pas encore fait
 
 Le test de l'ordre des appels (F1), la lecture du plan réellement utilisé par l'API (partie C du script), l'essai d'un index pour le total (T2), la décision, et le coût en écriture d'un index (section 5).
+
+## 8. Lot 5 : la dernière page sans parallélisme (hypothèse G1, 2026-10-23)
+
+Cette hypothèse est écrite **après** les mesures « avant » de la section 7. Elle vient de ces mesures et ne fait pas partie des hypothèses de la section 6, écrites avant toute mesure du lot. Elle est enregistrée dans Git avant le test qu'elle prévoit et n'est pas modifiée après coup : le résultat s'ajoute dans cette même section, sous 8.4.
+
+### 8.1 Ce qui la motive (faits, section 7)
+
+- La page demandée est triée par `BatchId`, qui est l'ordre de `PK_Batch` (section 1 : la table elle-même, triée par `BatchId`).
+- Pour la page 66 667, le plan observé (A3) est parallèle (4 fils) : lecture de `PK_Batch` en parallèle, puis tri de 1 000 000 de lignes par `BatchId`, avec déversement de 10 530 pages dans `tempdb` (section 7.2).
+- La même page a duré de 7 928 ms à 146 313 ms en B1, avec les mêmes lectures logiques (section 7.3). Les 2,2 à 2,7 s notées pour SSMS dans [verification.md](verification.md), section 11.3, venaient d'un plan non noté (section 7.5).
+- Raisonnement, non vérifié : une lecture parallèle ne livre pas les lignes dans l'ordre de la clé, ce qui obligerait à trier. Un plan sans parallélisme pourrait lire `PK_Batch` dans l'ordre et se passer du tri.
+
+### 8.2 Hypothèse G1
+
+- **Hypothèse :** avec `OPTION (MAXDOP 1)`, le plan de la page 66 667 n'a plus d'opérateur de tri, donc plus de déversement dans `tempdb`. Sur 5 exécutions, chacune dure 4 s ou moins et la plus lente dure au plus 2 fois la plus rapide.
+- **D'où viennent les chiffres :** 4 s est environ 1,5 fois les 2,7 s notées dans `verification.md`, section 11.3. Le rapport de 2 est volontairement serré par rapport aux 18 observés en B1.
+- **Lectures de `Batch` pour la page :** environ 10 400 à 10 600, comme en A3, parce que sauter 999 990 lignes oblige à lire presque toute la table. Le gain attendu est dans le tri et la durée, pas dans les lectures.
+- **Non prédit :** les lectures sur `Farm`. Le plan de A3 en fait 2 ; un plan sans tri pourrait en faire beaucoup plus (le cas R5, section 4.1, en avait 1 800 000).
+- **Fausse si :** une des 5 exécutions de la variante sans parallélisme dépasse 4 s, ou si le plan garde un tri qui déverse dans `tempdb`, ou si la plus lente dure plus de 2 fois la plus rapide.
+
+### 8.3 Méthode
+
+- Script `database/014_measure_lot5_trials.sql`, en lecture seule. La procédure et l'API ne sont pas modifiées : la requête de la page de `ListBatches` est rejouée par `sys.sp_executesql`, avec le même texte, les mêmes types de paramètres et `@FarmId` en variable locale, comme dans la procédure. Seule l'option `OPTION (MAXDOP 1)` distingue les deux variantes.
+- **Contrôle d'abord :** la variante par défaut doit montrer le plan de A3 (parallèle, tri qui déverse dans `tempdb`). Sinon le test ne dit rien sur la procédure.
+- Bloc G1a : le plan réel de chaque variante (une exécution chacune, Ctrl+M actif).
+- Bloc G1b : 5 paires d'exécutions, sans plan, les deux variantes alternées, pour les comparer dans la même période, puisque la durée de la même page varie dans le temps (section 7.3).
