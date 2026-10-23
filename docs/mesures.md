@@ -820,3 +820,46 @@ Conditions : bloc W1 de `database/016_measure_lot5_costs.sql`, plan réel désac
 | D1 : diagnostic de C2 | fausse telle qu'énoncée ; D1b conforme, D1a lisait toute la table |
 
 L'index `IX_Batch_FarmId` n'est plus dans `TraceabilityDev`. Il sera recréé par le script de modification si le changement est retenu.
+
+### 9.5 Décisions provisoires et hypothèse G2 (la page sans tri, écrite avant la mesure)
+
+**Décisions provisoires (2026-10-23)**, prises après la présentation des options et des mesures des sections 7 à 9.4 ; elles seront confirmées dans l'ADR :
+
+- **Le total :** option B, c'est-à-dire `OPTION (RECOMPILE)` sur le total avec l'index `IX_Batch_FarmId` (47 à 48 pages et environ 4 ms pour `F001`, 1 740 pages sans filtre ; coût à l'écriture : environ 0,12 ms et 118 octets de journal par `CreateBatch`, voir C1).
+- **« Fin » :** tester d'abord l'option C (paginer sur `Batch` avant de joindre `Farm`, hypothèse G2 ci-dessous), avec l'option B (`OPTION (MAXDOP 1)` sur la requête de la page) en repli.
+- Rien n'est modifié dans la procédure, l'API ni l'interface à ce stade.
+
+**Ce qui motive G2 (faits)**
+
+- Le plan actuel de la page joint `Batch` et `Farm`, puis trie 1 000 000 de lignes par `BatchId`, avec un déversement dans `tempdb` (sections 7.2, 8.4, 9.1) ; ce tri demande environ 93 Mo de mémoire (9.1).
+- L'ordre demandé, `BatchId`, est celui de `PK_Batch` (section 1). Sans parallélisme, le tri reste (8.4).
+- Raisonnement, non vérifié : si la page est découpée dans `Batch` seule avant la jointure avec `Farm`, SQL Server peut lire `PK_Batch` dans l'ordre sans trier, puis ne joindre que les 15 lignes de la page.
+
+**Requête candidate**, avec le même contrat que la requête actuelle (mêmes colonnes, mêmes filtres, mêmes lignes, même ordre) :
+
+```sql
+SELECT p.BatchCode, f.Code AS FarmCode, p.Variety, p.HarvestDate, p.QuantityKg, p.Status
+FROM (
+    SELECT b.BatchId, b.BatchCode, b.FarmId, b.Variety, b.HarvestDate, b.QuantityKg, b.Status
+    FROM trace.Batch AS b
+    WHERE (@Status IS NULL OR b.Status = @Status)
+      AND (@FarmId IS NULL OR b.FarmId = @FarmId)
+    ORDER BY b.BatchId
+    OFFSET (CAST(@PageNumber AS BIGINT) - 1) * @PageSize ROWS
+    FETCH NEXT @PageSize ROWS ONLY
+) AS p
+JOIN trace.Farm AS f ON f.FarmId = p.FarmId
+ORDER BY p.BatchId;
+```
+
+**Hypothèse G2** (les cinq conditions doivent toutes être remplies) :
+
+1. Page 66 667 de 15 lignes, sans filtre, dans SSMS : le plan candidat n'a aucun tri de 100 000 lignes ou plus et ne déverse pas dans `tempdb` ; la ligne `Worktable` des messages est absente ou lit moins de 100 pages.
+2. Lectures : `Batch` de 10 400 à 10 600 pages (toute la table, dans l'ordre), `Farm` moins de 100 pages.
+3. Sur 5 paires alternées avec la requête actuelle (bloc G2b), chaque exécution du candidat dure 2 s ou moins. Base : 1,4 à 1,6 s pour la variante `MAXDOP 1` (section 8.4).
+4. Les lignes renvoyées sont identiques, dans le même ordre, à celles de la requête actuelle pour 6 cas : page 1 ; page 66 667 ; statut `RECEIVED` page 2 ; ferme `F001` page 3 ; statut `SHIPPED` et ferme `F021` page 1 ; page 66 668 (vide).
+5. Page 1 sans filtre : le candidat lit au plus 10 pages de `Batch` et au plus 40 de `Farm` (la requête actuelle : 3 et 30, section 7.1).
+
+**Fausse si** l'une de ces conditions n'est pas remplie. **Non prédit :** la demande de mémoire en kilo-octets.
+
+**Méthode.** Blocs G2a (plans et lectures, plan réel actif : page 66 667 et page 1, requête actuelle puis candidate), G2b (5 paires alternées sur la page 66 667, plan désactivé) et G2c (identité des lignes pour les 6 cas) du script `database/014_measure_lot5_trials.sql`, en lecture seule. Le seul `INSERT` du script, dans G2c, écrit dans des variables de type table qui disparaissent à la fin du lot. La requête actuelle est celle de la page de `ListBatches`, envoyée par `sys.sp_executesql` comme en G1, avec `@FarmId` en variable locale dans G2a et G2b. Le résultat s'ajoute à la suite, sous « Résultat de G2 ».
