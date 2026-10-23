@@ -1,6 +1,6 @@
-# Vérification (lots 1, 2a, 2b, 3a, 3b, 3c, 4a et 4b)
+# Vérification (lots 1, 2a, 2b, 3a, 3b, 3c, 4a, 4b et 5)
 
-Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10) et l'interface web de lecture (lot 4a, section 11). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
+Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12) et l'optimisation de la liste des lots (lot 5, section 13). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
 
 Lot 1 : observé dans SQL Server (instance locale, base `TraceabilityDev`) le 2026-10-18, avec les scripts du dossier `database/`.
 
@@ -549,3 +549,80 @@ Décisions et écarts par rapport au plan :
 - Tests C#, à la racine, **API arrêtée** : `dotnet test Traceability.slnx` : attendu `total : 163; échec : 0; réussi : 163`. **Attention** : les tests d'intégration vident `TraceabilityTest` (jamais `TraceabilityDev`).
 - Essayer l'écriture sans toucher à `TraceabilityDev` : dans le terminal de l'API, mettre `$env:ConnectionStrings__Default` sur la chaîne de `TraceabilityTest`, puis `dotnet run --project src/Traceability.Api --launch-profile https` ; dans un autre terminal, `cd web` puis `npm run dev` ; ouvrir `http://localhost:5173/`. La variable ne vit que dans cette fenêtre de terminal.
 - Pour voir un test échouer : dans `web/src/lib/nextStep.ts`, remplacer `RECEIVED: 'SORTING'` par `RECEIVED: 'PACKING'`, lancer `npm test` (5 échecs : 1 dans `nextStep`, 4 dans `BatchPage`), puis rétablir la ligne. **Après avoir remis un fichier par copie**, mettre à jour sa date (`(Get-Item chemin).LastWriteTime = Get-Date` dans PowerShell), sinon `dotnet` peut ne pas recompiler (voir 11.2).
+
+## 13. Lot 5 : optimisation de la liste des lots
+
+Observé le 2026-10-23 sous Windows 11, avec le SDK .NET 10, SQL Server 2025 (instance locale) et SSMS, sur une machine d'environ 8 Go de mémoire. Les mesures sont faites sur `TraceabilityDev` (1 000 000 de lots inventés), les tests sur `TraceabilityTest`. Les mesures, leurs hypothèses écrites avant et leurs résultats sont dans [mesures.md](mesures.md) (sections 6 à 9.6) ; la décision est dans l'[ADR 0008](adr/0008-listbatches-page-avant-jointure-total-recompile.md).
+
+### 13.1 Ce qui a été construit
+
+| Script | Rôle |
+|---|---|
+| `013_measure_lot5.sql` | Mesure le total et la dernière page de `ListBatches` (lectures logiques, plans, 5 exécutions). Lecture seule. Vise `TraceabilityDev`. |
+| `014_measure_lot5_trials.sql` | Essais G1 (sans parallélisme) et G2 (page découpée avant la jointure). Lecture seule : son seul `INSERT` écrit dans des variables de type table. |
+| `015_measure_lot5_t2.sql` | Mesures de l'essai d'index pour le total : 4 totaux, 5 exécutions, taille des index. Lecture seule. |
+| `016_measure_lot5_costs.sql` | Coûts de l'index et du plan refait à chaque appel. **Le bloc W1 écrit dans la base** : 5 séries de 500 appels de `CreateBatch`, chacune annulée ; les autres blocs sont en lecture seule. |
+| `017_optimize_list_batches.sql` | Crée `IX_Batch_FarmId` s'il n'existe pas et remplace `ListBatches` : page découpée avant la jointure, total avec `OPTION (RECOMPILE)`. Rejouable ; mode SQLCMD ; à lancer sur `TraceabilityDev` et sur `TraceabilityTest`. |
+
+Décisions et écarts par rapport au plan :
+
+- **Hypothèses écrites avant leur mesure** : chacune a son commit, avant celui des mesures. Quelques-unes ont été ajoutées après des résultats (G1, M1, les coûts C1 à C3, D1, G2, T3) : le document le dit en toutes lettres pour chacune.
+- **L'ordre prévu** (G1, puis F1, puis T2) a changé : M1 a été ajoutée après F1, G2 après G1, et la mesure C2 a été refaite (C2b) après le diagnostic D1.
+- **Le contrat de `ListBatches` n'a pas changé** : mêmes paramètres, mêmes erreurs (50403, 50101, 50404), deux résultats dans le même ordre (la page, puis le total). L'API C# et l'interface web ne sont pas modifiées.
+
+### 13.2 Ce qui est prouvé
+
+- **Tests C#** : 163 réussis, 0 échec (75 unitaires, 88 d'intégration), sur `TraceabilityTest` avec la nouvelle `ListBatches` (`017` lancé à 18:24).
+- **`006`** sur `TraceabilityTest` : `38 / 34 / 4` comme avant. Les tests 32, 33 et 38 de `ListBatches`, vérifiés à l'œil, sont conformes : statut `SORTED` (4 lignes, total 4), ferme `ZZ-F02` (2 lignes, total 2), pages de `ZZ-F03` (`ZZ-P1` et `ZZ-P2`, puis `ZZ-P3` et `ZZ-P4`, puis `ZZ-P5`, total de 5 après chaque page).
+- **Mêmes lignes, même ordre** : l'ancienne requête de la page et la nouvelle renvoient les mêmes 70 lignes sur 6 cas (page 1, dernière page, statut, ferme, statut et ferme, page vide).
+- **Les deux bases ont la même structure** : `017` lancé sur `TraceabilityTest` (18:24:50) et sur `TraceabilityDev` (18:40:13), trois index sur `Batch` dans les deux, `ListBatches` modifiée.
+- **Mesures dans SSMS sur `TraceabilityDev`** (lectures logiques de `Batch` ; page de 15 lignes) :
+
+  | Mesure | Avant | Après |
+  |---|---|---|
+  | Total sans filtre | 10 574 | 1 737 |
+  | Total, ferme `F001` (25 000 lots) | 10 574 | 47 |
+  | Total, ferme `F021` (2 777 lots) | 10 574 | 8 |
+  | Total, statut `RECEIVED` | 10 574 | 10 574 (inchangé) |
+  | Dernière page (66 667) : `Batch` / `Farm` / zone de travail | 10 574 / 2 / environ 10 530 | 10 424 / 20 / aucune |
+  | Dernière page : plan | parallèle, tri d'un million de lignes | lecture de `PK_Batch` dans l'ordre, aucun tri |
+  | Dernière page : 5 exécutions de l'appel entier | de 7,9 s à 146 s | de 277 à 298 ms |
+  | Page 1 : `Batch` / `Farm` | 3 / 30 | 3 à 4 / 30 |
+
+- **Par l'API** : 10 appels de suite de la dernière page, tous réussis, de 0,45 à 1,59 s (moyenne 0,65 s), avec un budget de mémoire des requêtes de 5 Mo avant et après la série. Avant le lot 5 : de 1,9 à 11,7 s quand l'appel réussissait (section 11.3), et 3 échecs sur 3 après environ 30 s au début de la séance du 2026-10-23 (erreur SQL -2, délai).
+- **Coûts mesurés** : `IX_Batch_FarmId` pèse 1 737 pages (13,57 Mo) ; `CreateBatch` passe de 0,16 à 0,28 ms par appel et de 632 à 750 octets de journal (500 appels par série, 5 séries, dans SSMS) ; refaire le plan du total coûte environ 4 ms par appel (mesure C2b, 100 appels par tour, 5 tours, deux lancements).
+- **Observations sur la mémoire** : pendant un échec de « Fin » par l'API, la requête attendait sa mémoire (`RESOURCE_SEMAPHORE`, 0 Ko accordé, depuis 9,7 s). Dans SSMS, une requête a attendu environ 15 minutes quand le budget de mémoire des requêtes était de 5 Mo, puis a repris une minute après l'arrêt d'Edge (budget de 5 à 1 017 Mo).
+- **Hypothèses contredites ou non confirmées** (elles sont écrites telles quelles dans [mesures.md](mesures.md)) :
+
+  | Hypothèse | Verdict |
+  |---|---|
+  | T2 : un index sur `Batch (FarmId)` accélère le total (essai sur `F001`) | contredite : le plan commun de la procédure ne l'utilisait pas (10 574 lectures) |
+  | F1 : l'ordre des appels explique les échecs de l'API | contredite (4 appels sur la dernière page : 3 échecs, 1 réussite à 10,6 s) |
+  | F2 : lectures de `Farm` de l'ordre de 2 000 000 | en partie contredite (2 lectures) ; le tri d'un million de lignes et le déversement sont conformes |
+  | G1 : sans parallélisme, plus de tri | fausse (le tri reste ; la page est 4,7 à 5,9 fois plus rapide) |
+  | M1 : à 25 s d'un échec, la requête attend encore sa mémoire | ni confirmée ni infirmée (aucun échec en 6 appels) |
+  | C1 : l'index coûte moins de 25 % à l'écriture | fausse pour la durée (+74 %), conforme pour le journal (+19 %) |
+  | C2 : le plan refait coûte moins de 10 ms | mesure initiale non valable (mauvais plan, voir D1) ; confirmée par C2b |
+  | D1 : les deux écritures du total lisent 47 pages | fausse telle qu'énoncée (la forme avec une variable lisait toute la table) |
+
+### 13.3 Ce qui n'est pas prouvé
+
+- **La correction des échecs de « Fin » par l'API** : ils ne se reproduisaient pas à volonté (3 échecs sur 3 au début de la séance, puis 7 réussites avant tout changement). Les 10 appels réussis après `017` sont cohérents avec une correction mais ne la prouvent pas, et l'ancienne version n'a pas été remesurée dans le même état de mémoire.
+- **La cause des échecs** : une attente de mémoire est plausible (vue pendant un échec, à 9,7 s ; pas lue jusqu'à la coupure à 30 s), et la mémoire de la machine l'est aussi (une seule observation, sans essai témoin : l'arrêt d'Edge a coïncidé avec un budget qui passe de 5 à 1 017 Mo).
+- **La demande de mémoire du nouveau plan** : non lue. On suppose qu'elle est petite faute de tri.
+- **Le coût en écriture** : mesuré seulement par `CreateBatch` dans SSMS, deux mesures séparées de 27 minutes et non alternées ; pas dans l'application, pas sous charge.
+- **Le filtre par statut** : pas amélioré (10 574 lectures pour le total, 9 351 pour la page 1 de `RECEIVED`) ; aucun index sur `Status` n'a été essayé.
+- **La dernière page lit toujours toute la table** (10 424 pages) : la pagination par `OFFSET` reste linéaire ; la pagination par clé n'est pas essayée.
+- **Autres écritures du total et de la page** : les variantes par branches `IF` et le SQL dynamique ne sont pas mesurés ; les coûts avec filtre ne sont mesurés que pour la page 1 (les lignes des pages avec filtre ont été comparées, pas leur coût).
+- **L'interface web** n'a pas été essayée dans le navigateur avec la nouvelle procédure (le bouton « Fin » n'a été exercé que par l'API).
+- **Une seule machine** (environ 8 Go, plus de 90 % de mémoire utilisée pendant la séance), des données inventées, et des durées qui varient selon l'état de la machine : les lectures de pages sont la mesure de référence.
+
+### 13.4 Rejouer la vérification
+
+- Prérequis : le README, section « Base de données » ; les scripts `001` à `005`, `011` et `017` lancés sur les deux bases, et le million de lots sur `TraceabilityDev`.
+- Appliquer `017` (mode SQLCMD, `:setvar DbName` sur `TraceabilityTest` puis sur `TraceabilityDev`, API arrêtée) : attendu `Index IX_Batch_FarmId created.` (ou `already exists`), trois index sur `Batch`, `ListBatches` avec la date du jour.
+- `006` sur `TraceabilityTest` : attendu `38 / 34 / 4` ; vérifier à l'œil les tests 32, 33 et 38 à partir de leur « attendu ».
+- Tests C#, à la racine, **API arrêtée** : `dotnet test Traceability.slnx` : attendu `total : 163; échec : 0; réussi : 163`. **Attention** : les tests d'intégration vident `TraceabilityTest` (jamais `TraceabilityDev`).
+- Mesures sur `TraceabilityDev` : dans `013`, lancer d'abord le bloc de contrôles du début, puis les blocs A1, A2 et A3 (plan réel actif) et B1 et B2 (plan désactivé) : attendu un total sans filtre à 1 737 lectures, 47 pour `F001`, 8 pour `F021`, 10 574 pour `RECEIVED`, et la dernière page à 10 424 lectures de `Batch`, sans zone de travail.
+- Par l'API (lancée sur `TraceabilityDev`) : la boucle de 10 appels de [mesures.md](mesures.md), section 9.6 : attendu 10 réponses `OK`, de l'ordre de 0,5 s.
+- Revenir en arrière : relancer la partie `ListBatches` de `005`, puis supprimer l'index `IX_Batch_FarmId` de `trace.Batch`.

@@ -34,7 +34,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Procédure stockée** : un petit programme enregistré dans la base, qu'on appelle par son nom. Dans ce projet : elle porte les règles métier (voir ADR 0001).
 
-**Index** : comme l'index d'un livre, il aide SQL Server à retrouver des lignes plus vite. Les clés primaires et les contraintes `UNIQUE` en créent déjà. Dans ce projet : on en ajoute d'autres seulement après mesure (un seul retenu au lot 2b : `IX_Movement_BatchId`).
+**Index** : comme l'index d'un livre, il aide SQL Server à retrouver des lignes plus vite. Les clés primaires et les contraintes `UNIQUE` en créent déjà. Dans ce projet : on en ajoute d'autres seulement après mesure (deux retenus : `IX_Movement_BatchId` au lot 2b, `IX_Batch_FarmId` au lot 5).
 
 **Plan d'exécution** : la façon dont SQL Server compte exécuter une requête (quels index, dans quel ordre). Dans ce projet : on le lit pour comprendre pourquoi une requête est lente.
 
@@ -68,7 +68,15 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Garde `NOEXEC`** : `SET NOEXEC ON` fait ignorer le reste du script. Ici : utilisé quand la base n'est pas la bonne, pour que rien ne soit exécuté.
 
-**Pagination (`OFFSET` / `FETCH`)** : renvoyer les lignes par pages (la page 2 de 50 lignes, par exemple). Ici : `ListBatches`, `ListFarms` et `ListStations`, qui renvoient aussi le total ; l'API répond avec `items`, `totalCount`, `pageNumber` et `pageSize`. Limite observée au lot 4a : plus la page est loin, plus `OFFSET` fait lire de lignes sautées ; la dernière page des lots (999 990 lignes sautées) a pris de 1,9 à 11,7 s par l'API (contre 2,2 à 2,7 s dans SSMS) et a échoué 3 fois sur 7 par dépassement de délai (voir verification.md, section 11.3).
+**Pagination (`OFFSET` / `FETCH`)** : renvoyer les lignes par pages (la page 2 de 50 lignes, par exemple). Ici : `ListBatches`, `ListFarms` et `ListStations`, qui renvoient aussi le total ; l'API répond avec `items`, `totalCount`, `pageNumber` et `pageSize`. Limite observée au lot 4a : plus la page est loin, plus `OFFSET` fait lire de lignes sautées ; la dernière page des lots (999 990 lignes sautées) a pris de 1,9 à 11,7 s par l'API (contre 2,2 à 2,7 s dans SSMS) et a échoué 3 fois sur 7 par dépassement de délai (voir verification.md, section 11.3). Au lot 5, la page est découpée avant la jointure (voir l'[ADR 0008](adr/0008-listbatches-page-avant-jointure-total-recompile.md)) : la dernière page n'est plus triée, mais `OFFSET` reste linéaire.
+
+**Plan réutilisé et `OPTION (RECOMPILE)`** : SQL Server garde en mémoire le plan d'une requête et le réutilise pour les appels suivants, même si leurs valeurs sont très différentes. `OPTION (RECOMPILE)` lui fait refaire le plan à chaque appel, pour les valeurs de cet appel : cela coûte un peu de calcul (environ 4 ms mesurés ici) mais permet d'utiliser un index que le plan commun ne pouvait pas utiliser. Ici : le total de `ListBatches` (voir ADR 0008).
+
+**Parallélisme (`MAXDOP`)** : SQL Server peut répartir une requête sur plusieurs fils de travail (4 ici). `OPTION (MAXDOP 1)` l'en empêche. Ici : essayé sur la dernière page de `ListBatches` (4,7 à 5,9 fois plus rapide dans SSMS, le tri restant), puis écarté au profit d'une page sans tri (voir ADR 0008).
+
+**Tri et déversement dans `tempdb`** : pour trier beaucoup de lignes, SQL Server réserve de la mémoire ; s'il n'en a pas assez, il écrit des pages dans `tempdb` (une zone de travail sur le disque) et les relit, ce qui est lent. Ici : l'ancienne dernière page triait 1 000 000 de lignes, avec environ 10 530 pages déversées.
+
+**Mémoire accordée à une requête (`RESOURCE_SEMAPHORE`)** : une requête qui doit trier ou joindre beaucoup de lignes demande de la mémoire à SQL Server avant de commencer, et attend dans une file (`RESOURCE_SEMAPHORE`) tant qu'il ne lui en accorde pas. Ici : observée pendant un échec de « Fin » par l'API, et pendant environ 15 minutes dans SSMS quand le budget de mémoire des requêtes n'était que de 5 Mo, sur une machine à plus de 90 % de mémoire utilisée.
 
 ## .NET et C#
 

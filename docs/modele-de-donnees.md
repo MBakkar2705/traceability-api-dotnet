@@ -78,7 +78,7 @@ Le journal. On ajoute des lignes, on ne modifie ni n'efface jamais une ligne.
 
 `StationId` et `MovementType` forment ensemble une clé étrangère sur deux colonnes vers la clé primaire de `StationCapability`. La base accepte donc un mouvement seulement si la station a cette fonction.
 
-Un index non unique, `IX_Movement_BatchId` (sur `BatchId`), sert à retrouver les mouvements d'un lot. Il est créé par `database/010_create_indexes.sql`, pas par `002`.
+Un index non unique, `IX_Movement_BatchId` (sur `BatchId`), sert à retrouver les mouvements d'un lot. Il est créé par `database/010_create_indexes.sql`, pas par `002`. Un second index non unique, `IX_Batch_FarmId` (sur `Batch (FarmId)`), sert à compter les lots d'une ferme, ou tous les lots, sans lire toute la table (total de `ListBatches`) ; il est créé par `database/017_optimize_list_batches.sql`.
 
 ## 3. Choix de conception
 
@@ -91,7 +91,7 @@ Un index non unique, `IX_Movement_BatchId` (sur `BatchId`), sert à retrouver le
 - **`DECIMAL(10,2)` pour les quantités** : décimal exact, sans erreur d'arrondi (contrairement à `FLOAT`). Supérieur à 0.
 - **`DATETIME2` en UTC** : plus précis et plus étendu que `DATETIME`. L'UTC évite les ambiguïtés de fuseau et de changement d'heure.
 - **Schéma `trace`** : regroupe les objets du projet, séparés du schéma par défaut `dbo`.
-- **Un seul index supplémentaire, ajouté après mesure** : les clés primaires et les contraintes d'unicité créent déjà des index, et une clé étrangère ne crée pas d'index toute seule. Au lot 2b, sur 1 000 000 de lots inventés, `IX_Movement_BatchId` (sur `Movement (BatchId)`) a été ajouté : le parcours d'un lot passe de 25 412 à 15 lectures logiques. Deux autres index ont été essayés puis abandonnés, `Batch (Status)` et `Batch (FarmId)`, parce que SQL Server ne s'en servait pas ou qu'ils faisaient pire (voir [mesures.md](mesures.md)). Index simple plutôt que couvrant : voir l'[ADR 0004](adr/0004-index-simple-sur-mouvement-par-lot.md).
+- **Deux index supplémentaires, ajoutés après mesure** : les clés primaires et les contraintes d'unicité créent déjà des index, et une clé étrangère ne crée pas d'index toute seule. Au lot 2b, sur 1 000 000 de lots inventés, `IX_Movement_BatchId` (sur `Movement (BatchId)`) a été ajouté : le parcours d'un lot passe de 25 412 à 15 lectures logiques. Deux autres index ont été essayés puis abandonnés au même lot, `Batch (Status)` et `Batch (FarmId)`, parce que SQL Server ne s'en servait pas ou qu'ils faisaient pire (voir [mesures.md](mesures.md)). Index simple plutôt que couvrant : voir l'[ADR 0004](adr/0004-index-simple-sur-mouvement-par-lot.md). Au lot 5, `IX_Batch_FarmId` (sur `Batch (FarmId)`, 13,57 Mo) a été ajouté : SQL Server ne l'utilise que si le plan du total est refait à chaque appel (`OPTION (RECOMPILE)`) ; le total d'une ferme de 25 000 lots passe alors de 10 574 à 47 lectures logiques, pour environ 0,12 ms de plus par lot créé (voir l'[ADR 0008](adr/0008-listbatches-page-avant-jointure-total-recompile.md)).
 
 ## 4. Ce que garantit la base, ce que garantira la procédure
 
@@ -123,4 +123,4 @@ Le journal `Movement` n'est jamais modifié : les procédures n'ont pas de `UPDA
 - Pas de découpe ni de fusion de lots.
 - Pas de gestion des retours de marchandise : les règles réelles du métier ne sont pas connues (voir [fonctionnel.md](fonctionnel.md), section 9).
 - Pas de gestion d'utilisateurs.
-- Les index sont mesurés sur des données inventées et une seule machine, et leur coût en écriture n'est pas mesuré (voir [mesures.md](mesures.md), section 5).
+- Les index sont mesurés sur des données inventées et une seule machine. Le coût en écriture n'est mesuré que pour `IX_Batch_FarmId` (environ 0,12 ms par lot créé, dans SSMS, au lot 5) ; pour `IX_Movement_BatchId`, il ne l'est pas (voir [mesures.md](mesures.md), sections 5 et 9.4).
