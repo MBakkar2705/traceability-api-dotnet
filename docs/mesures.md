@@ -785,3 +785,38 @@ Conditions : bloc C2b de `database/016_measure_lot5_costs.sql`, plan réel désa
 **Verdict sur C2 : confirmée** (règle de 9.4 : moins de 10 ms par appel, compilation comprise). Avec `OPTION (RECOMPILE)` et l'index, le total de `F001` dure environ 4 ms par appel, contre 179,43 ms pour le total sans `OPTION (RECOMPILE)` qui relit toute la table (C2).
 
 **Limites :** mesure faite dans SSMS, sur le serveur, sans l'API ni le réseau ; ferme `F001` seulement ; le chiffre comprend un coût constant de capture du résultat (`INSERT … EXEC`) ; seule l'instruction du total est mesurée, pas la procédure complète ; le total sans filtre n'est mesuré qu'en exécution isolée (C3a : 1 740 lectures, 2 ms de compilation, 236 ms écoulés avec 346 lectures physiques).
+
+**Résultat de C1 (2026-10-23)**
+
+Conditions : bloc W1 de `database/016_measure_lot5_costs.sql`, plan réel désactivé, avec l'index (lancement de 16:42) puis sans l'index (lancement de 17:09, après `DROP INDEX IX_Batch_FarmId ON trace.Batch;` : la liste des index de `Batch` ne montre plus que `PK_Batch` et `UQ_Batch_BatchCode`). Le script affiche `index IX_Batch_FarmId present: no` pour le second lancement. Contrôle des deux lancements : 1 000 000 de lots et 3 250 000 mouvements avant et après ; rien n'est resté dans la base.
+
+**W1, sans l'index** (station `SITE-01`, ferme `F001`) :
+
+| Série de 500 appels | Durée | Journal utilisé | Journal par appel |
+|---|---|---|---|
+| 1 | 107 ms | 317 720 octets | 635 octets |
+| 2 | 76 ms | 315 264 octets | 630 octets |
+| 3 | 70 ms | 315 472 octets | 630 octets |
+| 4 | 72 ms | 315 472 octets | 630 octets |
+| 5 | 75 ms | 315 472 octets | 630 octets |
+| Moyenne | 80,0 ms (0,16 ms par appel) | 315 880 octets | environ 632 octets |
+
+**Comparaison** (moyennes des 5 séries) :
+
+| | Avec l'index | Sans l'index | Rapport |
+|---|---|---|---|
+| Durée de 500 appels | 139,0 ms | 80,0 ms | 1,74 (+74 %) |
+| Journal par appel | environ 750 octets | environ 632 octets | 1,19 (+19 %) |
+
+**Verdict sur C1 : fausse telle qu'énoncée** (règle de 9.4 : fausse si la durée ou le journal dépasse 1,25 fois la valeur sans l'index) : le journal est conforme (+19 %), la durée ne l'est pas (+74 %). En valeur absolue, l'écart est d'environ 0,12 ms et 118 octets de journal par appel de `CreateBatch`. **Limites :** les deux mesures sont séparées de 27 minutes et non alternées, alors que la machine varie d'un moment à l'autre ; les séries avec l'index vont de 94 à 189 ms, celles sans l'index de 70 à 107 ms ; mesure faite dans SSMS, sans l'API, sur 500 appels par série.
+
+**Bilan de l'étape 1 (hypothèses C1 à C3 et diagnostic D1)**
+
+| Hypothèse | Verdict |
+|---|---|
+| C1 : coût de l'index à l'écriture, moins de 25 % de plus | fausse pour la durée (+74 %), conforme pour le journal (+19 %) |
+| C2 : plan refait à chaque appel, moins de 10 ms | mesure initiale non valable (mauvais plan, voir D1) ; **confirmée par C2b** (environ 4 ms) |
+| C3 : total sans filtre, moins de 2 000 lectures | confirmée (1 740) |
+| D1 : diagnostic de C2 | fausse telle qu'énoncée ; D1b conforme, D1a lisait toute la table |
+
+L'index `IX_Batch_FarmId` n'est plus dans `TraceabilityDev`. Il sera recréé par le script de modification si le changement est retenu.
