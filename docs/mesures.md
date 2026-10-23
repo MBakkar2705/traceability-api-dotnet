@@ -345,3 +345,54 @@ Un index d'essai est gardé seulement si les trois conditions sont réunies : SQ
 - Pas d'hypothèse sur une réécriture du total ni sur un autre type de pagination : à décider après l'examen des plans, et seulement avec accord, car cela changerait une procédure ou le contrat de l'API.
 - L'API et l'interface ne sont pas modifiées par ce lot à ce stade.
 - La lenteur propre à `OFFSET` n'est pas supposée corrigeable par un index (section 3, R5).
+
+## 7. Lot 5 : mesures « avant » (2026-10-23)
+
+Conditions : script `database/013_measure_lot5.sql` exécuté dans SSMS sur `TraceabilityDev` (1 000 000 de lots), pages de 15 lignes, appels par `EXEC trace.ListBatches` (page et total ensemble). Partie A : une exécution par cas, avec le plan d'exécution réel. Partie B : 5 exécutions de suite, sans plan, avec la durée de chaque exécution. Les lectures logiques sont la mesure de référence ; les temps sont indicatifs. Pendant les mesures, VS Code, Edge, Chrome et le Bloc-notes étaient ouverts ; ils n'ont ni été fermés ni examinés. Les sections 1 à 6 ne sont pas modifiées.
+
+### 7.1 Partie A : un appel par cas
+
+| Cas | Page : `Batch` | Page : `Farm` | Total : `Batch` | Temps : page, total, appel entier |
+|---|---|---|---|---|
+| A1 : sans filtre, page 1 | 3 | 30 | 10 574 (5 analyses) | 473 ms, 2 048 ms, 2 565 ms |
+| A2a : ferme `F001`, page 1 | 9 | 30 | 10 574 (5 analyses) | 301 ms, 296 ms, 628 ms |
+| A2b : ferme `F021`, page 1 | 58 | 30 | 10 574 (5 analyses) | 322 ms, 301 ms, 661 ms |
+| A2c : statut `RECEIVED`, page 1 | 9 351 | 30 | 10 574 (5 analyses) | 614 ms, 365 ms, 1 010 ms |
+| A3 : sans filtre, page 66 667 | 10 574 (5 analyses) | 2 | 10 574 (5 analyses) | 17 332 ms, 452 ms, 17 810 ms |
+
+Remarques sur ce tableau :
+- A1 a été exécuté à froid : le total a lu 761 pages sur disque et 10 448 en lecture anticipée. Les autres cas ont lu peu ou pas de pages sur disque pour le total, ce qui explique en partie le temps de 2 048 ms de A1.
+- A3 : temps de processeur de 3 842 ms pour la page (17 332 ms écoulées), 141 ms pour le total (452 ms) et 3 998 ms pour l'appel entier (17 810 ms). Le plan d'exécution était actif.
+- A3 a aussi lu 10 539 pages de zone de travail (`Worktable`, en lecture anticipée).
+
+### 7.2 Plans observés
+
+- **Total, dans les quatre cas** : *Scan* parallèle de `PK_Batch` (4 fils), puis agrégations et regroupement des flux. Lignes retournées par l'analyse : 1 000 000 sans filtre (A1), 25 000 pour `F001` (A2a), 2 778 pour `F021` (A2b), 100 000 pour `RECEIVED` (A2c). SQL Server estime 331 677 lignes pour `F001` et pour `F021` : la même estimation pour deux fermes de tailles différentes.
+- **Page 1 et pages proches du début (A1, A2)** : lecture de `PK_Batch` dans l'ordre, arrêt à 15 lignes, puis une recherche dans `Farm` par ligne (2 lectures par ligne, 30 pour 15 lignes). Pour `RECEIVED`, la lecture de `Batch` passe devant environ 900 000 lots avant d'en trouver 15 (9 351 lectures).
+- **Dernière page (A3)** : plan parallèle. Lecture de `PK_Batch` (1 000 000 de lignes), lecture de `Farm` par `UQ_Farm_Code` (200 lignes), jointure interne (nom de l'opérateur tronqué à l'écran), **tri de 1 000 000 de lignes par `BatchId`**, regroupement des flux, puis 10 lignes. Estimation de SQL Server pour le tri : 331 677 lignes (réel : 1 000 000). Avertissement lu dans l'infobulle de l'opérateur de tri : le tri a utilisé `tempdb` pour déverser les données (niveau de déversement 1, 4 fils) ; il a écrit 10 530 pages dans `tempdb` et en a relu 10 530, avec 89 632 Ko de mémoire allouée et 75 624 Ko utilisés. Index absent proposé par SQL Server : `Batch (FarmId)` avec `BatchCode`, `Variety`, `HarvestDate`, `QuantityKg` et `Status` en colonnes incluses, impact annoncé 40,146 (le même que celui du cas R5, section 4.1).
+
+### 7.3 Partie B : 5 exécutions de suite
+
+Dernière page (B1), temps écoulé de l'appel entier : 10 380 ms, 20 005 ms, 7 928 ms, 121 832 ms et 146 313 ms (306 458 ms en tout). À chaque exécution : `Batch` 10 574 lectures logiques pour la page et 10 574 pour le total, `Farm` 2, zone de travail d'environ 10 530 pages (de 10 530 à 10 536). Les lectures logiques sont identiques d'une exécution à l'autre ; la durée varie dans un rapport d'environ 18.
+
+Première page (B2), temps écoulé de l'appel entier : 218 ms, 120 ms, 262 ms, 200 ms et 248 ms. À chaque exécution : page `Batch` 3 et `Farm` 30, total 10 574 lectures logiques. Le total a lu sur disque, à chaque exécution, un nombre de pages non nul : 351, 94, 406, 614 et 470.
+
+### 7.4 Écart avec les hypothèses de la section 6
+
+| Hypothèse | Résultat |
+|---|---|
+| T1 | **conforme** : *Scan* parallèle de `PK_Batch`, 10 574 lectures dans les quatre cas, et `UQ_Batch_BatchCode`, plus petit, n'est pas utilisé. L'écart de 150 pages avec les 10 424 pages de la table reste non expliqué |
+| T2 | mesure « avant » faite : 10 574 lectures pour `F001`, `F021` et `RECEIVED`, contre environ 53, 6 et 385 attendues avec un index. L'essai d'index n'est pas fait |
+| F1 | non testée |
+| F2 | **en partie conforme** : le tri d'environ 1 000 000 de lignes et le déversement dans `tempdb` sont observés. **Contredite** pour les lectures sur `Farm` : 2, et non environ 2 000 000. Le plan observé lit `Farm` une seule fois (200 lignes), ce n'est pas celui de R5 (1 800 000 lectures sur `Farm`) |
+
+### 7.5 Observations non expliquées
+
+- La même page (66 667) a duré de 7 928 ms à 146 313 ms en B1, avec des lectures logiques identiques. Les 2,2 à 2,7 s notées pour SSMS dans [verification.md](verification.md), section 11.3 (avec 0,9 s de processeur), ne sont pas retrouvées : le plan de ces essais n'est pas noté, et la différence n'est pas expliquée.
+- En A3, le temps écoulé (17 332 ms) est très supérieur au temps de processeur (3 842 ms) : l'exécution a passé du temps à attendre. Ce que l'exécution attendait n'a pas été examiné.
+- En B2, le total lit des pages sur disque à chaque exécution, alors que les mêmes pages viennent d'être lues. Non examiné.
+- La partie A a été faite avec le plan réel actif, la partie B sans : les durées de A3 (17 332 ms) et de B1 ne sont pas strictement comparables.
+
+### 7.6 Ce qui n'est pas encore fait
+
+Le test de l'ordre des appels (F1), la lecture du plan réellement utilisé par l'API (partie C du script), l'essai d'un index pour le total (T2), la décision, et le coût en écriture d'un index (section 5).
