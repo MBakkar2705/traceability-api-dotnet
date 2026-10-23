@@ -47,3 +47,4 @@ Négatives :
 ## Notes
 
 - 2026-10-23 : décision validée après mesure. Observé : lectures logiques et plans (« avant » : sections 7 à 9.5 de [mesures.md](../mesures.md) ; « après » : 9.6), durées de 5 exécutions, 10 appels par l'API, lignes identiques sur 6 cas, 163 tests C# réussis et `006` à 38 / 34 / 4 sur `TraceabilityTest`. Non observé : le coût en écriture dans l'application (mesuré seulement par `CreateBatch` dans SSMS), les échecs de « Fin » reproduits à volonté, la demande de mémoire du nouveau plan, d'autres machines, d'autres volumes.
+- 2026-10-23 : correction d'unité. La demande de mémoire de la variante `OPTION (MAXDOP 1)`, citée plus haut comme « environ 88 Mo », est de 88 104 Ko, soit environ 86 Mo (1 Mo = 1 024 Ko, comme pour les 95 296 Ko, soit environ 93 Mo, du plan parallèle). Les valeurs en kilo-octets sont dans [mesures.md](../mesures.md), sections 8.4 et 9.1.
