@@ -1005,3 +1005,7 @@ Mémoire disponible pour les requêtes (pool 2), lue avant et après la série :
 - La demande de mémoire du nouveau plan (en kilo-octets) n'a pas été lue ; la mesure est celle d'un seul appel enchaîné de 10, dans une seule session de l'API (le premier appel, à 1,59 s, comprend le démarrage).
 - Le filtre par statut n'est pas amélioré (aucun index sur `Status`) : 10 574 pages pour le total, 9 351 pour la page 1 de `RECEIVED`.
 - Une seule machine (8 Go de RAM, mémoire utilisée à plus de 90 % pendant la séance).
+
+**Précision sur H5 (2026-10-23)**
+
+Le contexte de H5, écrit plus haut avant les mesures, donne « 8 à 12 s avant quand l'appel réussissait ». Les réussites de l'API notées avant le lot 5 vont en réalité de 1,9 s à 11,7 s ([verification.md](verification.md), section 11.3 : 8,88 s, 11,73 s, 9,72 s et 1,90 s), plus 10,6 s le 2026-10-23 (section 9.1). Le seuil de H5 (chaque appel sous 5 s) et son verdict ne changent pas.
