@@ -590,3 +590,70 @@ FROM sys.dm_exec_query_resource_semaphores;
 **État de la mémoire après l'essai 6** (lectures à 11:08 et 11:10) : SQL Server utilise 258 Mo (`physical_memory_in_use`) pour un maximum autorisé de 5 120 Mo ; mémoire engagée et cible de mémoire : 386 Mo ; budget de mémoire des requêtes (pool 2) : 140 Mo, dont 140 Mo disponibles ; la plus grosse part (`MEMORYCLERK_SQLBUFFERPOOL`) fait 84 Mo. RAM totale 8 108 Mo, libre 699 Mo ; Windows annonce « Physical memory usage is steady » et SQL Server ne se déclare pas en manque de mémoire (`process_physical_memory_low` à 0). Gestionnaire des tâches de Windows : mémoire utilisée à 90-92 %, processeur à 38-44 %. Plus gros processus visibles : Visual Studio Code 969 Mo, Claude 698 Mo, Google Chrome 318 Mo, SSMS 300 Mo, Edge 271 Mo, un processus `language_server` 231 Mo, Microsoft Defender 149 Mo, SQL Server 141,5 Mo. Ces processus font environ 3,3 Go ; pour environ 7,3 Go utilisés, le reste n'a pas été identifié (la liste n'a pas été parcourue en entier).
 
 **Ce qui n'est pas établi.** Que la mémoire limitée de la machine (8 Go, presque pleine) explique la variation de la mémoire disponible pour les requêtes, et par elle les échecs de 9.1, n'est pas démontré : aucun échec n'a été observé pendant la surveillance. C'est une raison de plus de lire les mesures de ce lot comme faites sur une seule machine (section 5).
+
+### 9.3 T2 : un index pour le total, et T3 (hypothèse écrite après le résultat de T2 pour `F001`)
+
+T2 est l'essai prévu en section 6 (un index sur `Batch (FarmId)`, puis un sur `Batch (Status)`, un à la fois). T3 n'était pas prévue : elle est issue du résultat de T2 pour `F001`, et son hypothèse est écrite ici avant son test, qui est lancé après un commit de cette section.
+
+**Essai 1 : `IX_Batch_FarmId`**
+
+Conditions : API arrêtée, mesures dans SSMS avec `database/015_measure_lot5_t2.sql`. L'index d'essai est créé dans une fenêtre jetable, non enregistrée :
+
+```sql
+CREATE NONCLUSTERED INDEX IX_Batch_FarmId ON trace.Batch (FarmId);
+```
+
+Avant l'index (blocs T2c et T2b) : seuls `PK_Batch` (10 424 pages, 81,44 Mo) et `UQ_Batch_BatchCode` (7 489 pages, 58,51 Mo) existent. Le total lit 10 574 pages de `Batch` dans les 20 exécutions (4 cas, 5 exécutions chacun). Durées de l'appel entier, en ms :
+
+| Cas | Durées |
+|---|---|
+| sans filtre | 204, 219, 365, 146, 244 |
+| ferme `F001` | 130, 221, 151, 276, 209 |
+| ferme `F021` | 103, 257, 151, 237, 446 |
+| statut `RECEIVED` | 1 198, 1 232, 1 042, 1 019, 1 538 |
+
+Pour `RECEIVED`, la page lit de 2 591 à 4 178 pages sur disque à chaque exécution (2 591, 2 911, 2 958, 3 102, 4 178). Pour mémoire, la plus grosse part du cache de pages faisait 84 Mo à 11:08 (section 9.2).
+
+Après l'index : la création a pris environ 1 min 30 (indication de la personne qui l'a lancée). Taille mesurée : 1 737 pages, 13,57 Mo (calcul de la section 6.3 : environ 2 100 pages, 16 Mo) ; `PK_Batch` et `UQ_Batch_BatchCode` sont inchangés. Après `EXEC sp_recompile N'trace.ListBatches';`, le bloc T2a-2 (ferme `F001`, plan réel) donne :
+
+- total : 10 574 lectures logiques de `Batch` (5 analyses), 0 lecture physique, 196 ms (234 ms de processeur), appel entier 653 ms, compilation 25 ms ;
+- plan du total : analyse parallèle de **`PK_Batch`** (pas de `IX_Batch_FarmId`), 25 000 lignes retournées pour 331 677 estimées, comme sans l'index ;
+- page : 9 lectures de `Batch` et 30 de `Farm`, inchangées.
+
+Non mesuré avec cet index : les cas sans filtre, `F021` et `RECEIVED`, et les 5 exécutions.
+
+**Verdict sur T2 pour `F001`** (règles des sections 6.3 et 6.4) : SQL Server n'utilise pas l'index sans qu'on le force et le total reste à 10 574 lectures. L'hypothèse T2 est **contredite pour `F001`**, et la première condition de la règle de décision 6.4 n'est pas remplie. L'index reste en place dans la base le temps de T3, puis il est supprimé. L'essai sur `Batch (Status)` n'est pas fait.
+
+**T3 : ce qui la motive (faits)**
+
+- Le plan du total garde l'estimation de 331 677 lignes pour `F001` avec et sans l'index, et pour `F021` sans l'index (sections 7.2 et ci-dessus).
+- La section 6.3 signalait un point à examiner : la condition `(@FarmId IS NULL OR b.FarmId = @FarmId)` de la procédure peut empêcher l'accès par l'index ; l'essai A de la section 4.2 l'avait écarté pour la page, pas pour le total.
+
+**Hypothèse T3.** Avec `IX_Batch_FarmId` présent et pour la ferme `F001` :
+- (a) un comptage écrit avec une égalité simple, `WHERE b.FarmId = @FarmId`, utilise l'index (*Seek*) et lit moins de 100 pages de `Batch` ;
+- (b) le texte du total de la procédure (avec le « OU ») complété par `OPTION (RECOMPILE)` utilise aussi l'index et lit moins de 100 pages de `Batch`.
+- D'où vient le chiffre : 100 pages, environ le double des 53 pages calculées en 6.3.
+- **Fausse si** (a) ou (b) continue à lire `PK_Batch` (de l'ordre de 10 574 lectures) ou lit 100 pages ou plus.
+- **Non prédit :** `F021`, `RECEIVED` (aucun index sur `Status`), les durées. Les lectures logiques étant déterministes, une exécution de chaque suffit.
+
+**Méthode.** Fenêtre SSMS jetable, non enregistrée, plan réel actif, lecture seule :
+
+```sql
+USE TraceabilityDev;
+GO
+SET STATISTICS IO ON;
+DECLARE @FarmId INT = (SELECT FarmId FROM trace.Farm WHERE Code = N'F001');
+DECLARE @Status NVARCHAR(20) = NULL;
+
+-- (a) égalité simple
+SELECT COUNT(*) AS TotalCount FROM trace.Batch AS b WHERE b.FarmId = @FarmId;
+
+-- (b) texte du total de la procédure, avec OPTION (RECOMPILE)
+SELECT COUNT(*) AS TotalCount
+FROM trace.Batch AS b
+WHERE (@Status IS NULL OR b.Status = @Status)
+  AND (@FarmId IS NULL OR b.FarmId = @FarmId)
+OPTION (RECOMPILE);
+```
+
+Le résultat s'ajoute à la suite, sous « Résultat de T3 ». La procédure et l'API ne sont pas modifiées.
