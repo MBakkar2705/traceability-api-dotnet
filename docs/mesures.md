@@ -924,3 +924,33 @@ Lectures à chaque exécution : actuelle, `Batch` 10 574 (10 534 à la paire 3),
 **Limites.** Mesures dans SSMS, sans l'API ni le réseau. Le budget de mémoire était confortable pendant les mesures (926 Mo) : le comportement de la candidate quand la mémoire manque n'est pas mesuré, et la demande de mémoire de son plan (kilo-octets) n'a pas été lue. Les cas avec filtre ne sont comparés que sur leurs lignes (G2c), pas sur leur coût. La candidate lit toute la table pour la dernière page (10 424 pages) : elle supprime le tri, pas la lecture.
 
 **Conséquence pour la décision (9.5)** : l'option C de la décision provisoire pour « Fin » est confirmée par G2 dans SSMS ; l'option B (`OPTION (MAXDOP 1)`), prévue en repli, n'a pas été utilisée. La décision finale sera dans l'ADR, après les mesures avec l'API.
+
+### 9.6 Mesures « après » : hypothèses H1 à H5, écrites avant les mesures
+
+Le script `database/017_optimize_list_batches.sql` a été lancé sur `TraceabilityTest` à 18:24 (`IX_Batch_FarmId` créé, `ListBatches` remplacée). Les 163 tests C# (75 unitaires, 88 d'intégration) sont réussis, et `006` donne `38 / 34 / 4` comme avant, avec les tests 32, 33 et 38 vérifiés à l'œil et conformes (page de `ZZ-F03` : `ZZ-P1` et `ZZ-P2`, puis `ZZ-P3` et `ZZ-P4`, puis `ZZ-P5`, total de 5 après chaque page). Il est lancé ensuite sur `TraceabilityDev`, avec l'API arrêtée. Les hypothèses ci-dessous sont écrites avant les mesures sur `TraceabilityDev` ; elles ne sont pas modifiées après coup. Valeurs de départ : sections 7, 9.3, 9.4 et 9.5.
+
+**Hypothèses** (mesures dans SSMS par `EXEC trace.ListBatches`, page de 15 lignes, avec les scripts `013` et `015`) :
+
+- **H1, le total sans filtre :** il lit moins de 2 000 pages de `Batch` (1 740 en C3a ; 10 574 avant). **Fausse si** 2 000 pages ou plus.
+- **H2, le total filtré par ferme :** il lit moins de 100 pages de `Batch` pour `F001` (47 à 48 en T3 et C2b) et moins de 30 pour `F021` (calcul de 6.3 : environ 6 pages). **Fausse si** l'un des deux dépasse son seuil.
+- **H3, le total filtré par statut :** `RECEIVED` n'est pas amélioré (aucun index sur `Status`) mais n'est pas aggravé : de 10 000 à 11 100 pages de `Batch` (10 574 avant, plus 5 %). **Fausse si** la lecture sort de cette fourchette.
+- **H4, la page :**
+  - dernière page (66 667) : `Batch` de 10 400 à 10 600 pages, `Farm` moins de 100, aucune zone de travail (`Worktable`) ; sur 5 exécutions de l'appel entier (page et total), chacune dure 2 s ou moins (G2b : 178 à 349 ms pour la page seule) ;
+  - page 1 : `Batch` au plus 10 pages et `Farm` au plus 40 pour la page, et moins de 2 000 pour le total.
+  - **Fausse si** l'une de ces conditions n'est pas remplie.
+- **H5, le bouton « Fin » par l'API** (`GET /batches?pageNumber=66667&pageSize=15`, sans filtre, API lancée après `017`) : 10 appels de suite réussissent tous (code 200) et chacun dure moins de 5 s (8 à 12 s avant quand l'appel réussissait ; 3 échecs sur 3 au début de la séance du 2026-10-23, puis 7 réussites). La mémoire disponible pour les requêtes (pool 2) est lue avant et après la série. **Fausse si** un appel échoue ou dépasse 5 s. **Non prédit :** le comportement quand la mémoire manque (non reproduit à volonté), et la durée des appels de la page 1 par l'API.
+
+**Méthode.**
+- H1 à H4 : les blocs A1, A2a, A2b, A2c et A3 de `013` (plan réel actif, une exécution chacun), puis B1 et B2 de `013` (5 exécutions, plan désactivé), sur `TraceabilityDev`.
+- H5 : une boucle PowerShell de 10 appels, avec la durée de chacun :
+
+```powershell
+1..10 | ForEach-Object {
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    try { Invoke-RestMethod -Uri "https://localhost:7080/batches?pageNumber=66667&pageSize=15" | Out-Null; $r = "OK" } catch { $r = "ERREUR : " + $_.Exception.Message }
+    $sw.Stop()
+    "{0} : {1} en {2:N2} s" -f $_, $r, $sw.Elapsed.TotalSeconds
+}
+```
+
+- Les résultats s'ajoutent à la suite, sous « Résultat de H1 à H5 ».
