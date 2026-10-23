@@ -472,3 +472,33 @@ La règle « fausse si le plan garde un tri qui déverse dans `tempdb` » est re
 - `Batch` est lu en 10 424 pages sans parallélisme (la taille de la table, section 1) et en 10 574 pages avec le plan parallèle : les 150 pages en plus coïncident avec le plan parallèle, sans que la cause soit examinée.
 
 **Ce qui n'est pas fait.** Rien n'a été mesuré par l'API. La procédure et l'API ne sont pas modifiées, et aucune décision n'est prise : adopter `OPTION (MAXDOP 1)` reviendrait à modifier `ListBatches`, avec ses tests, et demanderait de comparer les alternatives. Prochain essai : le plan réellement utilisé par l'API (section 9.1).
+
+## 9. Lot 5 : résultats des essais prévus en section 6 (2026-10-23)
+
+Cette section contient les résultats des essais dont l'hypothèse est dans la section 6 (F1 ici, T2 ensuite). Les hypothèses de la section 6 ne sont pas modifiées.
+
+### 9.1 F1 : l'ordre des appels et le plan de l'API
+
+Conditions : API lancée par `dotnet run --project src/Traceability.Api --launch-profile https` sur `TraceabilityDev`, après un redémarrage de l'ordinateur (allumé depuis plus de deux heures à ce moment, indication de la personne qui a fait les essais). Appels par `Invoke-RestMethod` sur `GET /batches?pageNumber=66667&pageSize=15`, sans filtre, un à la fois, durée mesurée par un chronomètre PowerShell. Entre les appels, des requêtes en lecture seule sur les plans en mémoire et sur la mémoire du serveur ont été lancées dans SSMS.
+
+**Écart avec le protocole de la section 6.3 :** pas de `EXEC sp_recompile 'trace.ListBatches';`, pas de séries de 3 essais, et la série B (premier appel sur la page 1) n'a pas été faite. Les quatre appels ont tous porté sur la page 66 667. Le plan de `ListBatches` n'était pas en mémoire avant le premier appel (l'ordinateur venait de redémarrer) ; après les appels, les lectures du cache de plans n'ont montré aucun plan de `ListBatches` (0 ligne, plusieurs lectures). Un `EXEC trace.ListBatches` lancé depuis SSMS a en revanche laissé une ligne de type `Proc` avec `usecounts` à 1.
+
+| Appel | Résultat | Observé pendant l'appel |
+|---|---|---|
+| 1 | 500 après 31,30 s | rien lu ; le journal de l'API note l'erreur SQL numéro -2, « Le délai d'exécution a expiré », levée dans `ListBatchesAsync` |
+| 2 | 500 après 30,10 s | rien lu |
+| 3 | 500 après 30,05 s | une lecture environ 9,7 s après le début de la requête : session de l'API (`Core Microsoft SqlClient Data Provider`, `ARITHABORT` désactivé), état `suspended`, attente `RESOURCE_SEMAPHORE` de 9 690 ms, 15 ms de processeur, mémoire accordée 0, 502 lectures logiques ; c'était la seule requête de la grille |
+| 4 | réussite après 10,63 s | une lecture : mémoire demandée 95 296 Ko et accordée 95 296 Ko (requise : 6 912 Ko), 4 fils, aucune attente (`wait_time_ms` vide), pool 2 : 795 Mo au total, 702 Mo disponibles, 93 Mo accordés, 0 requête en attente |
+
+**Plan lu pendant l'appel 3** (plan de l'API, compilé avec `@PageNumber` = 66667, `@PageSize` = 15, `@Status` = NULL, `ARITHABORT` désactivé) : plan parallèle ; lecture de `PK_Batch` (1 000 000 de lignes lues, estimation 331 677), lecture de `Farm` par `UQ_Farm_Code`, jointure par hachage, **tri par `BatchId`** (estimation 331 677 lignes), regroupement des flux, puis les lignes de la page. Mémoire estimée : 1 536 Ko au minimum en série, 89 912 Ko souhaités en série. Coût estimé de la requête de la page : 30,3769. Index absent proposé : `Batch (FarmId)` avec colonnes incluses, impact 40,146. Les statistiques de `Batch` utilisées datent du 2026-10-19, avec un échantillon d'environ 12,97 %. Le total (seconde requête) a le plan de A1 : lecture parallèle de `PK_Batch`, agrégations. Le plan de l'API a donc la même forme que le plan par défaut de SSMS (sections 7.2 et 8.4).
+
+**État de la mémoire du serveur au repos** (API et SSMS inactifs) : mémoire de travail des requêtes disponible de 563 à 746 Mo selon la ligne lue ; 0 mémoire accordée, 0 requête en attente, 0 erreur de délai ; mémoire maximale du serveur 5 120 Mo, RAM 8 108 Mo dont 1 292 Mo libres. Le compteur `forced_grant_count` vaut 4 sur une des lignes (pool 2) depuis le démarrage de l'ordinateur ; ce que ces 4 cas représentent n'a pas été examiné.
+
+**Verdict sur F1** (règle de la section 6.3 : fausse si la série A a un essai de plus de 4 s) : sur les 4 appels dont le plan est compilé avec la page 66 667 (équivalent de la série A), les 4 dépassent 4 s : 3 échecs à environ 30 s et une réussite à 10,63 s. **F1 est contredite telle qu'elle a été énoncée.** La série B n'est pas faite ; elle ne changerait pas ce verdict.
+
+**Observations non expliquées**
+
+- Pendant l'appel 3, la requête attendait sa mémoire de travail alors que le serveur en avait largement de disponible au repos (563 à 795 Mo, contre environ 93 Mo demandés), et aucune autre requête n'était visible. La mémoire disponible n'a pas été lue pendant cet appel : la cause de l'attente n'est pas établie.
+- Une seule lecture pendant un échec (à environ 9,7 s) : on ne sait pas si l'attente dure jusqu'aux 30 s qui coupent l'appel.
+- Quand l'appel réussit, la mémoire est accordée tout de suite et la durée reste d'environ 10 s, proche des 7,7 à 9,0 s de la variante par défaut dans SSMS (section 8.4) et très loin des 1,4 à 1,6 s sans parallélisme.
+- Sur 4 appels, 3 échecs ; l'irrégularité de la section 7.5 existe aussi dans l'API, avec le même plan.
