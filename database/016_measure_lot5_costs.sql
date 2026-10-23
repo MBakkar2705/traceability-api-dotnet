@@ -6,6 +6,9 @@
     - C3: the total without filter with OPTION (RECOMPILE).
     - D1: a diagnostic of the result of C2 (docs/mesures.md, section 9.4): the same statement,
       two forms, with the reads and the compile time.
+    - C2b: the corrected measure of C2 (docs/mesures.md, section 9.4): the result is returned,
+      as in the procedure, so that the index plan is measured. It inserts into a table variable
+      only (nothing persists).
 
   !!! W1 IS NOT READ ONLY !!!
   W1 calls trace.CreateBatch 500 times in ONE transaction, 5 times in a row, and every
@@ -255,6 +258,51 @@ FROM trace.Batch AS b
 WHERE (@Status IS NULL OR b.Status = @Status)
   AND (@FarmId IS NULL OR b.FarmId = @FarmId)
 OPTION (RECOMPILE);
+GO
+
+/* ================================================================== */
+/* C2b - corrected measure of C2 (Ctrl+M OFF). Only a table variable   */
+/* is written (it disappears at the end of the batch).                 */
+/* The statement of the total of farm F001 returns its result (as in   */
+/* the procedure and as in D1b) and is sent by sp_executesql; its      */
+/* result is captured with INSERT ... EXEC so that no grid is filled.  */
+/* ================================================================== */
+
+/* ---------- C2b: one check, then 5 rounds of 100 calls with OPTION (RECOMPILE) ---------- */
+SET NOCOUNT ON;
+SET STATISTICS IO OFF;
+SET STATISTICS TIME OFF;
+IF DB_NAME() <> N'TraceabilityDev' THROW 50001, N'Wrong database. Nothing was done.', 1;
+DECLARE @sql NVARCHAR(MAX) = N'DECLARE @FarmId INT = (SELECT FarmId FROM trace.Farm WHERE Code = N''F001'');
+DECLARE @Status NVARCHAR(20) = NULL;
+SELECT COUNT(*) AS TotalCount
+FROM trace.Batch AS b
+WHERE (@Status IS NULL OR b.Status = @Status)
+  AND (@FarmId IS NULL OR b.FarmId = @FarmId)
+OPTION (RECOMPILE);';
+DECLARE @t TABLE (TotalCount INT);
+DECLARE @round INT = 1;
+DECLARE @i INT;
+DECLARE @start DATETIME2(7);
+DECLARE @us INT;
+PRINT N'=== check: one call with the reads shown; Batch must show about 48 reads (index plan), not 10574 ===';
+SET STATISTICS IO ON;
+INSERT INTO @t EXEC sys.sp_executesql @sql;
+SET STATISTICS IO OFF;
+WHILE @round <= 5
+BEGIN
+    SET @i = 1;
+    SET @start = SYSDATETIME();
+    WHILE @i <= 100
+    BEGIN
+        INSERT INTO @t EXEC sys.sp_executesql @sql;
+        SET @i += 1;
+    END;
+    SET @us = DATEDIFF(MICROSECOND, @start, SYSDATETIME());
+    PRINT CONCAT(N'round ', @round, N': with RECOMPILE, result returned: ',
+                 CAST(@us / 1000.0 / 100 AS DECIMAL(10, 3)), N' ms per call (100 calls)');
+    SET @round += 1;
+END;
 GO
 
 SET STATISTICS IO OFF;

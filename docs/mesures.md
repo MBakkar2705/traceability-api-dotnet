@@ -735,3 +735,34 @@ Contrôle : 1 000 000 de lots avant et après, 3 250 000 mouvements avant et apr
 - **Fausse si** l'une des deux écritures lit 100 pages ou plus, ou dure 15 ms ou plus à sa deuxième exécution.
 - **Sens des deux issues :** si D1 est vraie, la durée de 179 ms de C2 ne vient pas de l'instruction elle-même ; la boucle de C2 est alors une méthode inadaptée, ce qu'on écrit comme limite. Si D1 est fausse, la lecture ou la compilation explique C2, et `OPTION (RECOMPILE)` n'est pas gratuit.
 - **Méthode :** bloc D1 du script `016` (2 exécutions de chaque forme, plan réel actif, lectures et temps affichés), lecture seule. Le résultat s'ajoute à la suite.
+
+**Résultat de D1 (2026-10-23)**
+
+Conditions : bloc D1 de `database/016_measure_lot5_costs.sql`, plan réel actif, `IX_Batch_FarmId` présent, ferme `F001`. Un premier lancement a été arrêté par le garde-fou (« Wrong database », la fenêtre n'était pas sur `TraceabilityDev`) : rien n'a été lu ni écrit. Il a été relancé après l'exécution du bloc de contrôles du début du fichier.
+
+| Exécution | Plan | Lectures de `Batch` | Compilation | Exécution |
+|---|---|---|---|---|
+| D1a run 1 (résultat dans une variable) | analyse parallèle de `PK_Batch`, 25 000 lignes estimées et trouvées | 10 574 (5 analyses, 445 lectures physiques) | 6 ms | 403 ms (110 ms de processeur) |
+| D1a run 2 | même plan | 10 574 (5 analyses, 647 lectures physiques) | 18 ms | 269 ms (78 ms de processeur) |
+| D1b run 1 (résultat renvoyé) | recherche d'index sur un index `IX_Batch…` (nom tronqué à l'écran), 25 000 lignes estimées et trouvées | 48 (1 analyse, 3 lectures physiques) | 14 ms | 135 ms |
+| D1b run 2 | même plan | 48 (0 lecture physique) | 3 ms | 9 ms |
+
+**Verdict sur D1 : fausse telle qu'énoncée** (règle de 9.4 : fausse si l'une des deux écritures lit 100 pages ou plus, ou dure 15 ms ou plus à sa deuxième exécution) : D1a lit 10 574 pages et dure 269 ms. D1b est conforme à la prévision : 48 lectures (47 en T3) et 9 ms d'exécution plus 3 ms de compilation à la deuxième exécution.
+
+**Conséquences**
+
+- Dans la boucle de C2, l'instruction mettait son résultat dans une variable (`SELECT @c = COUNT(*)`) : SQL Server a alors lu `PK_Batch`, même avec `OPTION (RECOMPILE)` et une estimation exacte, au lieu de l'index. La mesure de C2 portait donc sur ce plan et non sur celui qui utilise l'index. Son verdict (« fausse », règle littéralement remplie) reste tel qu'il est écrit ci-dessus, mais **il ne dit rien du coût de `OPTION (RECOMPILE)` quand l'index est utilisé**. Ce coût doit être mesuré avec la forme qui renvoie le résultat, comme la procédure.
+- Éléments disponibles en attendant : temps de compilation de 2 à 18 ms par exécution (C3a : 2 ms ; D1a : 6 et 18 ms ; D1b : 14 et 3 ms) et 9 ms d'exécution en D1b run 2. Ce sont des exécutions isolées, non répétées.
+- La procédure `ListBatches` renvoie son total par `SELECT COUNT(*) AS TotalCount` (forme D1b).
+
+**Non expliqué :** pourquoi la forme avec une variable choisit `PK_Batch` alors que l'estimation est exacte.
+
+**Méthode corrigée de C2 (C2b), écrite avant la mesure**
+
+L'hypothèse C2 et son seuil ne sont pas modifiés : le total de `F001` avec `IX_Batch_FarmId` et `OPTION (RECOMPILE)` dure **moins de 10 ms par appel**, compilation comprise (moyenne de 100 appels par tour), et elle est fausse si la moyenne dépasse 10 ms. Seule la méthode change, parce que celle de C2 mesurait un autre plan (résultat de D1).
+
+- Bloc **C2b** du script `database/016_measure_lot5_costs.sql`, plan réel désactivé. L'instruction est celle de D1b (le résultat est renvoyé, comme dans la procédure) ; elle est envoyée par `sys.sp_executesql`, et son résultat est capturé par `INSERT … EXEC` dans une variable de type table, pour ne pas remplir la grille de résultats. Seule cette variable est écrite : elle disparaît à la fin du lot, rien ne persiste.
+- **Vérification préalable :** un premier appel est lancé avec `SET STATISTICS IO ON`. Il doit lire environ 48 pages de `Batch` (plan par l'index). S'il en lit 100 ou plus, la mesure est invalide et le résultat l'indique.
+- Puis 5 tours de 100 appels, avec la durée moyenne par appel de chaque tour.
+- Valeur de comparaison : le total sans `OPTION (RECOMPILE)` de C2 (moyenne de 179,43 ms par appel, lecture de toute la table, comme le plan par défaut de la procédure).
+- Le résultat s'ajoute à la suite, sous « Résultat de C2b ».
