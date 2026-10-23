@@ -670,3 +670,21 @@ Conditions : fenêtre SSMS jetable, plan réel actif, `IX_Batch_FarmId` présent
 **Verdict sur T3 : confirmée.** Les deux écritures utilisent l'index et lisent 47 pages, soit moins de 100. Le calcul de la section 6.3 donnait environ 53 pages ; l'écart n'est pas examiné. Avec le même index et la même ferme, le total passe de 10 574 à 47 lectures (T2a-2 ci-dessus) quand SQL Server construit le plan pour la valeur réelle de `@FarmId` ; le plan de la procédure, construit une fois et réutilisé pour tous les appels (avec ou sans filtre), lit toute la table. Cette explication est cohérente avec les trois mesures ; elle n'a pas été démontrée séparément. Les estimations de lignes diffèrent aussi : 5 000 pour (a) et 25 000 pour (b), contre 331 677 dans la procédure.
 
 **Non testé :** `F021` ; le statut (aucun index sur `Status`) ; le total sans filtre avec `OPTION (RECOMPILE)` (`IX_Batch_FarmId` pourrait servir à compter toute la table, ce qui n'a pas été mesuré) ; le coût de refaire le plan à chaque appel ; le coût de l'index en écriture ; une réécriture de la procédure (aucune n'est faite). Aucune décision n'est prise : `IX_Batch_FarmId` reste en place, en attendant.
+
+### 9.4 Les coûts de l'index et du plan refait à chaque appel (hypothèses C1 à C3, écrites avant les mesures)
+
+Ces hypothèses sont écrites après les résultats de T3 et avant les mesures qu'elles prévoient. Elles ne sont pas modifiées après coup : le résultat s'ajoute à la suite, sous « Résultat ». Elles portent sur un changement candidat : garder `IX_Batch_FarmId` et refaire le plan du total à chaque appel (`OPTION (RECOMPILE)`), que T3 a montré efficace en lectures (47 pages au lieu de 10 574 pour `F001`) mais dont les coûts ne sont pas mesurés. Aucun changement de la procédure n'est fait à ce stade.
+
+**Hypothèses**
+
+- **C1, le coût à l'écriture.** Avec `IX_Batch_FarmId`, un appel de `trace.CreateBatch` consomme moins de 25 % de journal en plus et dure moins de 25 % de plus que sans l'index (moyennes des 5 séries de 500 appels). D'où vient le seuil : l'index ajoute une structure à mettre à jour, 6 au lieu de 5 pour un lot et son premier mouvement (`PK_Batch`, `UQ_Batch_BatchCode`, `PK_Movement`, `IX_Movement_BatchId`, plus le nouvel index), soit environ 20 % si chacune coûte autant. **Fausse si** la durée ou le journal dépasse 1,25 fois la valeur sans l'index.
+- **C2, le coût du plan refait à chaque appel.** Avec `IX_Batch_FarmId`, le total de `F001` écrit comme dans la procédure et complété par `OPTION (RECOMPILE)` dure moins de 10 ms par appel, compilation comprise (moyenne de 100 appels par tour), contre environ 200 ms sans `OPTION (RECOMPILE)` (total de 196 ms en T2a-2). **Fausse si** la moyenne par appel dépasse 10 ms. Les 200 ms sont une valeur de comparaison, pas une prédiction précise.
+- **C3, le total sans filtre.** Avec `OPTION (RECOMPILE)`, SQL Server lit le plus petit index (`IX_Batch_FarmId`, 1 737 pages) et non toute la table : moins de 2 000 lectures de `Batch`, au lieu de 10 574. C'est le cas le plus courant, la liste sans filtre. **Fausse si** la lecture atteint 2 000 pages ou plus.
+- **Non prédit :** les durées absolues de C1, la durée du total avec le plan par défaut, le statut (aucun index sur `Status`).
+
+**Méthode**
+
+- Script `database/016_measure_lot5_costs.sql`. **Son bloc W1 n'est pas en lecture seule** : 5 séries de 500 appels à `trace.CreateBatch` (ferme `F001`, première station ayant la fonction `RECEPTION`, codes `ZZ-LOT5-…`), chaque série dans une transaction **annulée** à la fin. Il compte les lots et les mouvements avant et après (ils doivent être égaux). Ce qui n'est pas annulé : les numéros internes (`BatchId` et `MovementId`) avancent de 2 500 chacun, et le journal de transactions grossit un peu. Les blocs C2 et C3 sont en lecture seule.
+- Mesures de W1 : durée des 500 appels, quantité de journal utilisée par la transaction (`sys.dm_tran_database_transactions`), journal par appel.
+- Mesures de C2 : 5 tours, chacun de 100 appels avec `OPTION (RECOMPILE)` puis 20 appels sans, en boucle, sur l'instruction du total (pas sur la procédure).
+- Ordre : W1, C2 et C3 avec `IX_Batch_FarmId` en place ; puis `DROP INDEX IX_Batch_FarmId` à la main (annoncé avant), et W1 de nouveau **sans** l'index. L'index est recréé plus tard seulement si le changement est retenu.
