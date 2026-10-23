@@ -863,3 +863,64 @@ ORDER BY p.BatchId;
 **Fausse si** l'une de ces conditions n'est pas remplie. **Non prédit :** la demande de mémoire en kilo-octets.
 
 **Méthode.** Blocs G2a (plans et lectures, plan réel actif : page 66 667 et page 1, requête actuelle puis candidate), G2b (5 paires alternées sur la page 66 667, plan désactivé) et G2c (identité des lignes pour les 6 cas) du script `database/014_measure_lot5_trials.sql`, en lecture seule. Le seul `INSERT` du script, dans G2c, écrit dans des variables de type table qui disparaissent à la fin du lot. La requête actuelle est celle de la page de `ListBatches`, envoyée par `sys.sp_executesql` comme en G1, avec `@FarmId` en variable locale dans G2a et G2b. Le résultat s'ajoute à la suite, sous « Résultat de G2 ».
+
+**Résultat de G2c (2026-10-23)**
+
+Conditions : bloc G2c de `database/014_measure_lot5_trials.sql`, lancé à 17:48 dans SSMS sur `TraceabilityDev` (sans `IX_Batch_FarmId`), plan réel désactivé. L'exécution a duré 16 min 22 s (barre d'état de SSMS), dont une longue attente de mémoire (voir l'observation ci-dessous). Dernière ligne affichée, à 18:05:18 : `cases: 6 | rows default: 70 | rows candidate: 70 | identical, same order: yes`.
+
+**Verdict sur la condition 4 de G2 : remplie.** La requête candidate renvoie les mêmes 70 lignes, dans le même ordre, que la requête actuelle pour les 6 cas. Les conditions 1, 2, 3 et 5 restent à mesurer (G2a et G2b).
+
+**Observation hors protocole : la mémoire du serveur pendant G2c**
+
+Aucune hypothèse n'était écrite avant cette observation : ce n'est pas un test d'hypothèse. M1 n'est pas concernée (la requête venait de SSMS, pas de l'API).
+
+- **17:57**, 9 min après le lancement : la session de G2c est `suspended`, en attente `RESOURCE_SEMAPHORE` depuis 522 552 ms, avec 0 Ko accordé et 47 848 Ko demandés (4 fils), 4 317 ms de processeur et 2 043 068 lectures logiques. Budget de mémoire des requêtes (pool 2) : 5 Mo au total, 4 Mo disponibles, une requête en attente. La session de l'aide à la saisie de SSMS détenait 1 024 Ko.
+- **18:00** : cible de mémoire de SQL Server 248 Mo (247 Mo engagés), 103 Mo en mémoire physique, RAM libre 848 Mo sur 8 108 Mo, Windows « Physical memory usage is steady ». Gestionnaire des tâches : 92 % de mémoire utilisée ; plus gros processus : Claude 603 Mo, Visual Studio Code 556 Mo, Edge 518 Mo, gestionnaire de fenêtres du Bureau 393 Mo, SSMS 363 Mo, un `language_server` 212 Mo, Defender 201 Mo, `Vmmem` 147 Mo, SQL Server 72 Mo.
+- **18:02**, après 839 s d'attente : délai d'attente de la demande de mémoire (`timeout_sec`) de 4 244 s, soit environ 71 min.
+- **18:04**, après 906 s d'attente : budget des requêtes 5 Mo sur 5 Mo, cible de SQL Server 250 Mo, RAM libre 503 Mo. Edge a alors été arrêté par « Fin de tâche » dans le Gestionnaire des tâches (la ligne Edge seule).
+- **Une minute plus tard (18:05)** : budget des requêtes 1 017 Mo sur 1 017 Mo, cible de SQL Server 1 460 Mo, RAM libre 1 499 Mo, plus aucune attente ; G2c a repris et s'est terminé à 18:05:18. Les lectures prévues à +3 min et +5 min n'ont pas été prises (la requête était finie).
+- **Prédiction notée dans la conversation avant la fermeture d'Edge** (non commitée) : la mémoire disponible remonte au-dessus de 50 Mo dans les 5 minutes et la requête obtient sa mémoire. Observé.
+
+**Limites.** Une seule observation, sans essai témoin (sans fermer Edge). Edge n'est pas isolé des autres changements de la machine pendant ces minutes. Les chiffres vont dans le sens d'une mémoire de machine qui limite le budget de mémoire de SQL Server, sans le démontrer, et ils ne disent rien de l'API.
+
+**Résultat de G2a et G2b (2026-10-23)**
+
+Conditions : blocs G2a (plan réel actif) et G2b (plan désactivé) de `database/014_measure_lot5_trials.sql`, dans SSMS sur `TraceabilityDev`, sans `IX_Batch_FarmId`. Avant G2a, le budget de mémoire des requêtes (pool 2) était de 926 Mo, tous disponibles, et la RAM libre de 1 415 Mo (Edge arrêté depuis l'observation précédente).
+
+**G2a, une exécution de chaque (page de 15 lignes)**
+
+| Exécution | Compilation | `Farm` | `Batch` | Zone de travail | Processeur / écoulé |
+|---|---|---|---|---|---|
+| G2a-1 actuelle, page 66 667 | 27 ms | 2 | 10 574 (5 analyses) | 10 531 | 3 810 ms / 9 842 ms |
+| G2a-2 candidate, page 66 667 | 11 ms | 20 | 10 424 (1 analyse) | aucune | 94 ms / 901 ms |
+| G2a-3 actuelle, page 1 | 0 ms | 2 | 10 574 (5 analyses) | 186 | 735 ms / 972 ms |
+| G2a-4 candidate, page 1 | 0 ms | 30 | 4 (1 analyse) | aucune | 0 ms / 135 ms |
+
+Plans : G2a-1, plan parallèle avec un tri de 1 000 000 de lignes (estimation 331 677, triangle d'avertissement). G2a-2 : boucles imbriquées, un opérateur de tête (10 lignes), analyse de `PK_Batch` (1 000 000 de lignes lues, estimation 331 677), puis 10 recherches dans `PK_Farm` ; **aucun tri**. G2a-3 : le plan parallèle avec tri de la dernière page est réutilisé pour la page 1 (compilation 0 ms) et lit 10 574 pages. G2a-4 : le plan candidat compilé pour la dernière page est réutilisé pour la page 1 et lit 4 pages. La durée affichée dans le plan de G2a-2 (0,266 s) et la durée mesurée (901 ms) diffèrent ; non examiné.
+
+**G2b, 5 paires sur la page 66 667, durée écoulée en ms**
+
+| Paire | Actuelle | Candidate |
+|---|---|---|
+| 1 | 7 753 | 178 |
+| 2 | 8 386 | 208 |
+| 3 | 14 349 | 332 |
+| 4 | 13 108 | 254 |
+| 5 | 10 413 | 349 |
+| Moyenne | 10 802 | 264 |
+
+Lectures à chaque exécution : actuelle, `Batch` 10 574 (10 534 à la paire 3), `Farm` 2, zone de travail de 10 530 à 10 531 ; candidate, `Batch` 10 424, `Farm` 20, aucune zone de travail. Dans chaque paire, l'actuelle est 30 à 52 fois plus lente que la candidate.
+
+**Verdict sur G2 : confirmée.**
+
+| Condition | Résultat |
+|---|---|
+| 1. Aucun tri de 100 000 lignes ou plus, aucun déversement, zone de travail absente ou sous 100 pages | remplie (G2a-2 et les 5 paires de G2b) |
+| 2. `Batch` de 10 400 à 10 600 pages, `Farm` sous 100 | remplie (10 424 et 20) |
+| 3. Chaque exécution du candidat à 2 s ou moins sur 5 paires | remplie (de 178 à 349 ms) |
+| 4. Mêmes lignes dans le même ordre, 6 cas | remplie (G2c : 70 lignes identiques) |
+| 5. Page 1 : `Batch` à 10 pages ou moins, `Farm` à 40 ou moins | remplie (4 et 30) |
+
+**Limites.** Mesures dans SSMS, sans l'API ni le réseau. Le budget de mémoire était confortable pendant les mesures (926 Mo) : le comportement de la candidate quand la mémoire manque n'est pas mesuré, et la demande de mémoire de son plan (kilo-octets) n'a pas été lue. Les cas avec filtre ne sont comparés que sur leurs lignes (G2c), pas sur leur coût. La candidate lit toute la table pour la dernière page (10 424 pages) : elle supprime le tri, pas la lecture.
+
+**Conséquence pour la décision (9.5)** : l'option C de la décision provisoire pour « Fin » est confirmée par G2 dans SSMS ; l'option B (`OPTION (MAXDOP 1)`), prévue en repli, n'a pas été utilisée. La décision finale sera dans l'ADR, après les mesures avec l'API.
