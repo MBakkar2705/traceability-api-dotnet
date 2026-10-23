@@ -473,9 +473,9 @@ La règle « fausse si le plan garde un tri qui déverse dans `tempdb` » est re
 
 **Ce qui n'est pas fait.** Rien n'a été mesuré par l'API. La procédure et l'API ne sont pas modifiées, et aucune décision n'est prise : adopter `OPTION (MAXDOP 1)` reviendrait à modifier `ListBatches`, avec ses tests, et demanderait de comparer les alternatives. Prochain essai : le plan réellement utilisé par l'API (section 9.1).
 
-## 9. Lot 5 : résultats des essais prévus en section 6 (2026-10-23)
+## 9. Lot 5 : essais sur « Fin » et sur le total (2026-10-23)
 
-Cette section contient les résultats des essais dont l'hypothèse est dans la section 6 (F1 ici, T2 ensuite). Les hypothèses de la section 6 ne sont pas modifiées.
+Cette section contient les essais prévus par la section 6 (F1, puis T2) et un essai qui n'était pas prévu : M1 (9.2) est issue des observations faites pendant F1, essai lui prévu, et son hypothèse est écrite ici, avant son test. Les hypothèses de la section 6 ne sont pas modifiées.
 
 ### 9.1 F1 : l'ordre des appels et le plan de l'API
 
@@ -502,3 +502,62 @@ Conditions : API lancée par `dotnet run --project src/Traceability.Api --launch
 - Une seule lecture pendant un échec (à environ 9,7 s) : on ne sait pas si l'attente dure jusqu'aux 30 s qui coupent l'appel.
 - Quand l'appel réussit, la mémoire est accordée tout de suite et la durée reste d'environ 10 s, proche des 7,7 à 9,0 s de la variante par défaut dans SSMS (section 8.4) et très loin des 1,4 à 1,6 s sans parallélisme.
 - Sur 4 appels, 3 échecs ; l'irrégularité de la section 7.5 existe aussi dans l'API, avec le même plan.
+
+### 9.2 M1 : l'attente de mémoire de l'API (hypothèse écrite après les mesures de 9.1)
+
+M1 n'était pas prévue en section 6 : elle est issue de ce qui a été observé pendant l'essai F1 (9.1), qui était lui prévu. Elle est écrite **après** les mesures de 9.1, c'est-à-dire après avoir vu l'attente de mémoire une seule fois. Elle est enregistrée dans Git avant le test qu'elle prévoit et n'est pas modifiée après coup : le résultat s'ajoute à la suite, sous « Résultat ».
+
+**Ce qui la motive (faits, 9.1)**
+
+- Pendant l'appel 3 (un échec), une lecture à environ 9,7 s montre la requête de l'API en attente `RESOURCE_SEMAPHORE` depuis 9 690 ms, avec 0 Ko de mémoire accordée, 15 ms de processeur, et pas d'autre requête dans la grille.
+- Pendant l'appel 4 (une réussite), la mémoire demandée, 95 296 Ko, est accordée tout de suite.
+- Au repos, le serveur dispose de 563 à 795 Mo de mémoire de travail pour les requêtes.
+- On ignore si l'attente dure jusqu'au délai de 30 s qui coupe l'appel, et ce que contient la mémoire du serveur pendant l'attente : une seule lecture, faite à environ 9,7 s, sans la lecture des mémoires disponibles.
+
+**Hypothèse M1**
+
+- À environ 25 s après le début d'un appel de l'API sur la page 66 667 qui finira en échec, la requête est toujours en attente de mémoire : attente `RESOURCE_SEMAPHORE` depuis au moins 20 000 ms, mémoire accordée nulle.
+- Au même moment, la mémoire disponible du pool de la requête (`sys.dm_exec_query_resource_semaphores`) est inférieure à la mémoire demandée, 95 296 Ko (valeur lue en 9.1, appel 4).
+- D'où viennent les chiffres : 25 s laisse environ 5 s avant la coupure à 30 s. Le seuil de 20 000 ms laisse de la marge pour le départ de l'appel et pour la lecture lancée à la main.
+- **Fausse si**, sur un échec observé : la requête a de la mémoire accordée ou s'exécute à ce moment, ou son attente est inférieure à 20 000 ms, ou la mémoire disponible du pool est supérieure ou égale à 95 296 Ko pendant qu'elle attend.
+- **Non prédit :** ce qui retient la mémoire, la cause de l'attente, et le comportement en cas de réussite.
+
+**Méthode**
+
+- L'API tourne sur `TraceabilityDev` (commande de la section 9.1). Un script PowerShell, collé dans le terminal, lance l'appel de la page 66 667 sans filtre en tâche de fond et affiche « MAINTENANT » à environ 25 s :
+
+```powershell
+$sw = [Diagnostics.Stopwatch]::StartNew()
+$job = Start-Job { try { Invoke-RestMethod -Uri "https://localhost:7080/batches?pageNumber=66667&pageSize=15" | Out-Null; "OK" } catch { "ERREUR : " + $_.Exception.Message } }
+Start-Sleep -Seconds 25
+"MAINTENANT : lance F5 dans SSMS"
+Wait-Job $job | Out-Null
+$sw.Stop()
+Receive-Job $job
+"Durée : " + $sw.Elapsed.TotalSeconds + " s"
+```
+
+- À ce moment, une requête en lecture seule, lancée dans une fenêtre SSMS, lit les requêtes en cours, les demandes de mémoire et les sémaphores de mémoire :
+
+```sql
+USE TraceabilityDev;
+GO
+SELECT r.session_id, r.status, r.wait_type, r.wait_time AS wait_ms, r.cpu_time AS cpu_ms,
+       r.total_elapsed_time AS elapsed_ms, r.dop, r.granted_query_memory * 8 AS granted_kb,
+       s.program_name
+FROM sys.dm_exec_requests AS r
+JOIN sys.dm_exec_sessions AS s ON s.session_id = r.session_id
+WHERE s.is_user_process = 1 AND r.session_id <> @@SPID;
+
+SELECT session_id, dop, requested_memory_kb, granted_memory_kb, required_memory_kb,
+       wait_time_ms, timeout_sec, resource_semaphore_id, pool_id, is_small
+FROM sys.dm_exec_query_memory_grants;
+
+SELECT pool_id, resource_semaphore_id, total_memory_kb / 1024 AS total_mb,
+       available_memory_kb / 1024 AS disponible_mb, granted_memory_kb / 1024 AS accorde_mb,
+       grantee_count, waiter_count, forced_grant_count
+FROM sys.dm_exec_query_resource_semaphores;
+```
+
+- On recommence jusqu'à observer 3 échecs, avec 6 appels au plus. Un essai dont la grille est vide, ou prise après la fin de l'appel, ne compte pas ; les réussites sont notées. M1 est confirmée si les 3 échecs respectent tous les critères ci-dessus, et fausse si au moins un échec en viole un.
+- Lecture seule : la procédure, l'API et la base ne sont pas modifiées.
