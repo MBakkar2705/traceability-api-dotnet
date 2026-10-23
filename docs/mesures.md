@@ -657,3 +657,16 @@ OPTION (RECOMPILE);
 ```
 
 Le résultat s'ajoute à la suite, sous « Résultat de T3 ». La procédure et l'API ne sont pas modifiées.
+
+**Résultat de T3 (2026-10-23)**
+
+Conditions : fenêtre SSMS jetable, plan réel actif, `IX_Batch_FarmId` présent (13,57 Mo), ferme `F001` (25 000 lots), requêtes de la méthode ci-dessus lancées dans un seul lot.
+
+| | Plan (opérateur de lecture de `Batch`) | Lignes retournées / estimées | Lectures logiques de `Batch` |
+|---|---|---|---|
+| (a) égalité simple | recherche d'index (*Seek*) sur `IX_Batch_FarmId` (nom tronqué à l'écran), sans parallélisme | 25 000 / 5 000 | **47** (1 analyse, 0 lecture physique) |
+| (b) texte de la procédure avec `OPTION (RECOMPILE)` | recherche d'index sur `IX_Batch_FarmId` (nom tronqué à l'écran), sans parallélisme | 25 000 / 25 000 | **47** (1 analyse, 0 lecture physique) |
+
+**Verdict sur T3 : confirmée.** Les deux écritures utilisent l'index et lisent 47 pages, soit moins de 100. Le calcul de la section 6.3 donnait environ 53 pages ; l'écart n'est pas examiné. Avec le même index et la même ferme, le total passe de 10 574 à 47 lectures (T2a-2 ci-dessus) quand SQL Server construit le plan pour la valeur réelle de `@FarmId` ; le plan de la procédure, construit une fois et réutilisé pour tous les appels (avec ou sans filtre), lit toute la table. Cette explication est cohérente avec les trois mesures ; elle n'a pas été démontrée séparément. Les estimations de lignes diffèrent aussi : 5 000 pour (a) et 25 000 pour (b), contre 331 677 dans la procédure.
+
+**Non testé :** `F021` ; le statut (aucun index sur `Status`) ; le total sans filtre avec `OPTION (RECOMPILE)` (`IX_Batch_FarmId` pourrait servir à compter toute la table, ce qui n'a pas été mesuré) ; le coût de refaire le plan à chaque appel ; le coût de l'index en écriture ; une réécriture de la procédure (aucune n'est faite). Aucune décision n'est prise : `IX_Batch_FarmId` reste en place, en attendant.
