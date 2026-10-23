@@ -766,3 +766,22 @@ L'hypothèse C2 et son seuil ne sont pas modifiés : le total de `F001` avec `IX
 - Puis 5 tours de 100 appels, avec la durée moyenne par appel de chaque tour.
 - Valeur de comparaison : le total sans `OPTION (RECOMPILE)` de C2 (moyenne de 179,43 ms par appel, lecture de toute la table, comme le plan par défaut de la procédure).
 - Le résultat s'ajoute à la suite, sous « Résultat de C2b ».
+
+**Résultat de C2b (2026-10-23)**
+
+Conditions : bloc C2b de `database/016_measure_lot5_costs.sql`, plan réel désactivé, `IX_Batch_FarmId` présent, ferme `F001`. Deux lancements de suite. Pour le premier, un doute a été noté en séance sur l'état du plan d'exécution (il était peut-être actif) ; le second a été fait sans plan, avec un résultat identique.
+
+**Vérification préalable** (les deux lancements) : `Batch` est lu en 48 pages logiques (1 analyse, 3 lectures physiques, 44 en lecture anticipée), donc le plan utilise l'index et la mesure est valide. Les lectures de la table temporaire (1) et de la zone de travail (5) viennent de la capture du résultat par `INSERT … EXEC`.
+
+| Tour | Lancement 1 | Lancement 2 |
+|---|---|---|
+| 1 | 4,003 ms | 4,175 ms |
+| 2 | 3,930 ms | 4,067 ms |
+| 3 | 3,753 ms | 3,905 ms |
+| 4 | 3,949 ms | 3,879 ms |
+| 5 | 4,057 ms | 3,798 ms |
+| Moyenne | 3,94 ms par appel | 3,96 ms par appel |
+
+**Verdict sur C2 : confirmée** (règle de 9.4 : moins de 10 ms par appel, compilation comprise). Avec `OPTION (RECOMPILE)` et l'index, le total de `F001` dure environ 4 ms par appel, contre 179,43 ms pour le total sans `OPTION (RECOMPILE)` qui relit toute la table (C2).
+
+**Limites :** mesure faite dans SSMS, sur le serveur, sans l'API ni le réseau ; ferme `F001` seulement ; le chiffre comprend un coût constant de capture du résultat (`INSERT … EXEC`) ; seule l'instruction du total est mesurée, pas la procédure complète ; le total sans filtre n'est mesuré qu'en exécution isolée (C3a : 1 740 lectures, 2 ms de compilation, 236 ms écoulés avec 346 lectures physiques).
