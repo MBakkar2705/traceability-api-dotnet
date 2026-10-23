@@ -291,3 +291,57 @@ Décision : le total est gardé tel quel dans `ListBatches`, pour que les trois 
 - Le résultat s'énonce « mesuré sur 1 million de lots inventés », pas « valable en production ».
 - Les index ne sont mesurés que sur les recherches listées ci-dessus. Leur effet sur la vitesse des écritures (`CreateBatch`, `AddMovement`) n'est pas mesuré, sauf si une section ajoutée plus tard le dit.
 - Le total de `ListBatches` (section 4.3) n'a été mesuré qu'une fois, sans hypothèse écrite avant, sans examiner son plan, et aucun index n'a été essayé pour lui.
+
+## 6. Lot 5 : le total des listes et le bouton « Fin » (hypothèses, 2026-10-23)
+
+Même règle qu'à la section 3 : les hypothèses ci-dessous sont écrites et enregistrées dans Git **avant** la moindre mesure du lot 5. Aucune n'est modifiée après coup : si une mesure la contredit, on l'écrit dans une section ultérieure. Toutes sont **non vérifiées** au moment de leur écriture. Les tailles sont des calculs approximatifs, comparés ensuite aux tailles mesurées.
+
+### 6.1 Ce qui est observé avant les mesures (faits, pas hypothèses)
+
+- **Le total de `ListBatches`** lit 10 574 pages de `Batch` en 5 analyses, quel que soit le filtre (section 4.3). Son plan n'a jamais été examiné et aucun index n'a été essayé pour lui. `PK_Batch` occupe environ 10 424 pages et `UQ_Batch_BatchCode` environ 7 489 (section 1).
+- **La procédure** (`database/005_create_batch_procedures.sql`) : la page est lue avec `JOIN Farm`, `ORDER BY b.BatchId` et `OFFSET (CAST(@PageNumber AS BIGINT) - 1) * @PageSize ROWS` ; le total est un `COUNT(*)` sur `Batch` avec les mêmes filtres, écrits `(@Status IS NULL OR b.Status = @Status)` et `(@FarmId IS NULL OR b.FarmId = @FarmId)`.
+- **L'API** (`src/Traceability.Data/TraceabilityDb.cs`) : `ListBatchesAsync` appelle la procédure comme procédure stockée, avec `@Status` et `@FarmCode` en `NVARCHAR`, `@PageNumber` et `@PageSize` en `INT`, lit les lignes de la page puis le total dans la même commande, et ne fixe aucun `CommandTimeout` (30 s par défaut du pilote).
+- **« Fin »** ([verification.md](verification.md), section 11 et 11.3) : l'interface affiche 15 lots par page ; sur 1 000 000 de lots, « Fin » est la page 66 667 (999 990 lots sautés). Par l'API : 8,88 s, 11,73 s, 9,72 s, 1,90 s et trois échecs (dépassement de délai SQL, dont un mesuré à 30,15 s). Dans SSMS, la durée de la procédure entière (page et total ensemble) est de 335 ms (page 1000), 662 ms (page 10 000), 1 274 ms (page 30 000) et 2 744 ms (page 66 667). Pendant une réussite de 9,72 s, la requête de l'API avait un plan parallèle à 4 fils et un temps de processeur environ 14 fois supérieur à celui mesuré dans SSMS pour la même page. La cause n'est pas trouvée.
+- **R5** (section 4.1) : le plan d'une page lointaine (page 900 de 1 000 lignes) trie 900 048 lignes avec débordement dans `tempdb` et lit 1 800 000 pages de `Farm`. La cause de ce chiffre n'a jamais été établie.
+
+### 6.2 Méthode
+
+- Mesure de référence : lectures logiques (`SET STATISTICS IO ON`) et plan d'exécution réel (Ctrl+M), comme à la section 2. Les temps restent indicatifs.
+- **Mesures répétées** : 5 exécutions par cas, toutes les valeurs sont notées (pas seulement une moyenne), parce que l'incident à expliquer est irrégulier (de 1,90 s à plus de 30 s).
+- Mesures dans SSMS, sur `TraceabilityDev`, en lecture seule. Un index d'essai est créé dans une fenêtre SSMS jetable, non enregistrée, puis supprimé (comme pour les index 2 et 3). Avant une série dont on veut un plan neuf : `EXEC sp_recompile 'trace.ListBatches';`.
+- Le plan réellement utilisé par l'API est lu dans le cache de plans de SQL Server, après un appel de l'API, par une requête en lecture seule. Une lecture de `sys.dm_exec_procedure_stats` avait renvoyé 0 ligne au lot 4a ([verification.md](verification.md), section 11.3) : cette lecture peut échouer.
+
+### 6.3 Hypothèses
+
+**T1. Le plan du total sans filtre.**
+- Hypothèse : le total lit toute la clé primaire `PK_Batch` (analyse parallèle), soit environ 10 424 pages (10 574 observées ; l'écart de 150 pages n'est pas expliqué), même si `UQ_Batch_BatchCode` est plus petit (environ 7 489 pages).
+- Vérification : plan réel de la seconde requête de `EXEC trace.ListBatches` sans filtre.
+- Fausse si : le plan lit un autre index, ou n'est pas un parcours complet.
+
+**T2. Un index pour le total filtré.**
+- Hypothèse : un index simple sur `Batch (FarmId)` ou sur `Batch (Status)` ramène le total filtré de 10 574 lectures à quelques dizaines ou centaines, parce qu'un `COUNT(*)` n'a pas besoin de lire la table (contrairement à la page, où chaque ligne trouvée oblige à retourner dans la table : section 4.2, index 2 et 3).
+- Calcul approximatif : environ 15 à 17 octets par ligne d'index sur `FarmId` (environ 476 lignes par page, environ 2 100 pages en tout) donne environ 53 pages pour `F001` (25 000 lots) et environ 6 pages pour `F021` (2 777 lots). Environ 31 octets par ligne d'index sur `Status` (environ 260 lignes par page) donne environ 385 pages pour les 100 000 lots `RECEIVED`.
+- Vérification : créer l'index d'essai, puis mesurer le total filtré par `EXEC` de la procédure, après `sp_recompile`, dans les mêmes conditions que la mesure « avant ».
+- Fausse si : SQL Server n'utilise pas l'index sans qu'on le force (comme `IX_Batch_Status` pour la page, section 4.2), ou si le total filtré reste au-dessus de 1 000 lectures. Si l'index n'est pas utilisé, un point à examiner : la condition `(@FarmId IS NULL OR …)` peut empêcher l'accès direct par l'index ; l'essai A de la section 4.2 l'avait écarté pour la page, pas pour le total.
+- Non prédit : le total sans filtre avec ces index (cela dépend de T1).
+
+**F1. Le plan gardé en mémoire pour l'API dépend du premier appel.**
+- Hypothèse : SQL Server construit le plan avec les valeurs du premier appel, ici le nombre de lignes sautées par `OFFSET`, puis le réutilise. Un plan construit pour une page proche du début (peu de lignes sautées) est mauvais pour la dernière page. C'est le mécanisme de R6 (section 3, resté non conclu), appliqué à `@PageNumber` au lieu de `@Status` et `@FarmId`.
+- Vérification, par l'API (`GET /batches?pageNumber=…&pageSize=15`, sans filtre) : 3 essais de « Fin » (page 66 667) par série, avec `EXEC sp_recompile 'trace.ListBatches';` avant chaque série. Série A : le premier appel après `sp_recompile` est la page 66 667. Série B : le premier appel après `sp_recompile` est la page 1.
+- Prévision : série A, les 3 essais durent 4 s ou moins (environ 1,5 fois les 2,7 s de SSMS) ; série B, au moins un des 3 essais dure plus de 8 s (un échec par dépassement de délai compte comme plus de 8 s).
+- Fausse si : la série A a un essai de plus de 4 s, ou si la série B a ses 3 essais à 4 s ou moins.
+
+**F2. Le plan de la dernière page.**
+- Hypothèse : dans SSMS, avec les réglages par défaut, le plan de la page 66 667 (15 lignes par page) a la forme de R5 : tri d'environ 1 000 000 de lignes avec débordement dans `tempdb`, et environ 2 000 000 de lectures sur `Farm` (2 par ligne traitée, comme les 1 800 000 lectures de R5 pour 900 048 lignes).
+- Vérification : plan réel et `STATISTICS IO` de `EXEC trace.ListBatches @PageNumber = 66667, @PageSize = 15`, 5 exécutions.
+- Fausse si : le plan est une lecture ordonnée qui s'arrête à la fin de la page, ou si les lectures sur `Farm` sont très inférieures à 2 000 000.
+
+### 6.4 Règle de décision pour un index (fixée avant la mesure)
+
+Un index d'essai est gardé seulement si les trois conditions sont réunies : SQL Server l'utilise sans qu'on le force ; le total filtré visé passe sous 1 000 lectures ; sa taille est mesurée et notée. Sinon il est supprimé (`DROP INDEX`) et l'essai est noté comme abandonné. Le coût en écriture n'est pas mesuré (section 5).
+
+### 6.5 Hors de ces hypothèses
+
+- Pas d'hypothèse sur une réécriture du total ni sur un autre type de pagination : à décider après l'examen des plans, et seulement avec accord, car cela changerait une procédure ou le contrat de l'API.
+- L'API et l'interface ne sont pas modifiées par ce lot à ce stade.
+- La lenteur propre à `OFFSET` n'est pas supposée corrigeable par un index (section 3, R5).
