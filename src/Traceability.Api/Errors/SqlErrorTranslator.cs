@@ -31,7 +31,7 @@ public static class SqlErrorTranslator
         return number switch
         {
             >= 50100 and <= 50199 => new ApiError(404, number, message),
-            >= 50200 and <= 50299 => new ApiError(409, number, message),
+            >= 50200 and <= 50299 => new ApiError(400, number, message),
             >= 50300 and <= 50399 => new ApiError(422, number, message),
             >= 50400 and <= 50499 => new ApiError(400, number, message),
             _ => Unexpected(),
