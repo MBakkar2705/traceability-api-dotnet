@@ -715,3 +715,33 @@ Hypothèse **ajoutée après le deuxième lancement**, donc après avoir vu le d
 | C10 | `sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18` réussit sur le runner en moins de 90 s, et `/opt/mssql-tools18/bin/sqlcmd` existe ensuite. | `apt-get` renvoie une erreur, dépasse 90 s, ou le fichier est absent après l'installation. |
 
 Le conteneur contient aussi `sqlcmd`, donc lancer les scripts depuis le conteneur reste possible. La prochaine étape prévue est l'installation de `mssql-tools18` sur le runner (C10), avec `/opt/mssql-tools18/bin` ajouté au `PATH` des étapes suivantes.
+
+### 14.4 Troisième lancement : la CI complète
+
+Exécution n° 3 de la CI, sur le commit `92da86f`, lancée par un push vers 10:09 le 2026-10-26 (heure locale = UTC). Statut : réussie, 1 min 6 s au total (`backend` 1 min 3 s, `frontend` 19 s). Runner : `ubuntu-24.04`, image `20261012.334.1`, Ubuntu 24.04.5 LTS, agent 2.338.0, comme pour la première exécution.
+
+Observé, tâche `backend` :
+
+- « Install sqlcmd (mssql-tools18) » : 15 s. `apt-get install` a installé 6 paquets (`libodbcinst2`, `msodbcsql18`, `mssql-tools18` 18.7.1.1-1, `odbcinst`, `unixodbc`, `unixodbc-common`), sans `apt-get update` préalable. `ls -l` montre `/opt/mssql-tools18/bin/sqlcmd` (491 792 octets).
+- « Wait for SQL Server » : 0 s. Le message « SQL Server answered after about 2 s » correspond à la première tentative de la boucle (le calcul `i * 2` donne 2 pour `i = 1`) : le serveur a répondu dès le premier essai.
+- « Build TraceabilityTest from the SQL scripts » : 1 s, sans erreur. `001` : `Database TraceabilityTest created.` (classement `SQL_Latin1_General_CP1_CI_AS`, récupération `SIMPLE`). `002` : schéma `trace` et 5 tables. `004` : 3 procédures. `005` : 7 procédures. `011` : 10 procédures. `017` : `Index IX_Batch_FarmId created.`, et `ListBatches` modifiée le 2026-10-26 à 10:09:35.
+- « List what was created (read only) » : 10 procédures du schéma `trace` ; 3 index sur `trace.Batch` (`IX_Batch_FarmId`, `PK_Batch`, `UQ_Batch_BatchCode`).
+- « Build » : 11 s, `Build succeeded`, 0 avertissement, 0 erreur (`Time Elapsed 00:00:11.24`).
+- « Test » : 7 s. Tests unitaires : 75 réussis sur 75 (191 ms). Tests d'intégration : 88 réussis sur 88 (1 s). Total : 163 réussis, 0 échec. Le texte est en anglais sur le runner (`Passed! - Failed: 0, Passed: 75, …`), alors que C4 était écrite avec la formulation française : seuls les nombres comptent.
+
+Observé, tâche `frontend` (19 s) : lint (`oxlint`) « Found 0 warnings and 0 errors » sur 69 fichiers ; build de 61 modules, JS 293,21 ko et CSS 14,55 ko (mêmes chiffres qu'au lot 4b) ; Vitest 5.0.5 : 22 fichiers réussis sur 22 et 178 tests réussis sur 178 (7,14 s). Le rapport de la page de l'exécution indique « 22 passes · 22 total » et « 178 passes · 178 total ».
+
+Annotations : 2 notices, une par tâche, avec le même texte : « The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19, 2026. For more information, see https://github.com/actions/runner-images/issues/14748 ». Les deux exécutions observées ont encore tourné sur Ubuntu 24.04.5 ; ce qui se passera après la migration n'a pas été observé.
+
+Résultat des hypothèses :
+
+| N° | Résultat | Observation |
+|---|---|---|
+| C1 | **Vraie** | Le serveur a répondu dès la première tentative de la boucle (étape de 0 s), en authentification SQL avec le secret. |
+| C3 | **Vraie** | Les 6 scripts se sont exécutés sans erreur sur une base vierge, et la base créée est `TraceabilityTest`. |
+| C4 | **Vraie** | 75 + 88 = 163 tests réussis, 0 échec. |
+| C5 | **Vraie** | Déjà relevée en 14.2 ; mêmes chiffres dans cette exécution. |
+| C6 | **Vraie** | La tâche `backend` a duré 1 min 3 s, pour une limite de 10 minutes. |
+| C10 | **Vraie** | Installation en 15 s, pour une limite de 90 s ; `/opt/mssql-tools18/bin/sqlcmd` existe ensuite. |
+
+Bilan des hypothèses du lot : C1, C3, C4, C5, C6 et C10 sont vraies ; C2 et C7 sont fausses ; C8 et C9 n'ont pas été fausses mais n'ont pas été essayées jusqu'au bout (C9 : le téléchargement de `go-sqlcmd` n'a pas été tenté, la solution retenue passe par `apt`).
