@@ -815,7 +815,9 @@ Durées des exécutions réussies (page « Actions ») : n° 3 1 min 6 s, n° 4 
 - **La migration d'`ubuntu-latest`** (annoncée vers Ubuntu 26 à partir du 2026-10-19) : le runner est fixé à `ubuntu-24.04`, mais la différence n'a pas été observée.
 - **L'étiquette `2025-latest`** : elle se déplace avec le temps ; seule l'image des exécutions relevées (digest au 14.5) est connue. Une version plus récente du moteur peut changer un résultat.
 - **Une pull request venant d'un fork** : selon la documentation de GitHub (« secrets are not passed to the runner when a workflow is triggered from a forked repository »), le secret ne serait pas transmis et la tâche `backend` échouerait. Non essayé.
-- **Une CI exigée avant fusion** : je n'ai pas vérifié si une règle de protection de `main` exige que la CI soit verte.
+- **Une CI exigée avant fusion** : une règle `protect-main` l'exige depuis le 2026-10-26 (constat en 14.10). Qu'elle empêche réellement de fusionner une CI rouge n'est pas observé : l'essai est décrit en 14.11.
+- **L'application lancée à la main contre le SQL Server de la CI** : la CI ne lance que les tests ; l'API y démarre à l'intérieur des tests d'intégration. Ni `dotnet run`, ni Swagger UI, ni l'interface (Vite) n'ont été essayés contre un SQL Server en conteneur. Aucun Dockerfile n'existe dans le dépôt.
+- **Le réglage « Workflow permissions » du dépôt** (Settings, Actions, General) n'a pas été regardé. Il n'a pas d'effet sur cette CI, car `ci.yml` déclare lui-même `permissions: contents: read`.
 - **L'effet du cache npm** : la durée avec et sans cache n'est pas mesurée.
 - **Les annotations** de l'exécution n° 7 n'ont pas été relevées, et le détail des étapes de l'exécution n° 6 non plus.
 - **Seules les exécutions du 2026-10-26 sont observées** : rien n'est dit de leur comportement à une autre date.
@@ -832,3 +834,58 @@ Durées des exécutions réussies (page « Actions ») : n° 3 1 min 6 s, n° 4 
 
   Résultat observé : le hash `13f2078…` suivi de ses deux parents. Ce hash est celui relevé le 2026-10-26 : je n'ai pas vérifié à quel moment GitHub recalcule la fusion, ni si « Re-run all jobs » reteste le même commit de fusion ou un nouveau.
 - Pour comparer avec la machine de développement : `dotnet test Traceability.slnx` (résumé attendu `total : 163; échec : 0; réussi : 163`) et, dans `web/`, `npm run lint`, `npm run build`, `npm test`.
+
+### 14.10 Protection de `main` : constat
+
+Observé le 2026-10-26 sur GitHub, par captures d'écran de Mohamed. Décision et alternatives : [ADR 0010](adr/0010-protection-de-main-par-ruleset.md).
+
+**Avant** (vers 19:48 et 19:52) : la page d'accueil du dépôt affichait « Your main branch isn't protected », et la page Settings, Branches (« Branch protection rules ») ne listait aucune règle. Elle proposait « Add branch ruleset » et « Add classic branch protection rule », en indiquant que les rulesets sont la méthode recommandée.
+
+**Création** : le ruleset `protect-main` a été créé entre 20:00 et 20:02 (heure locale = UTC). GitHub a affiché « Ruleset created » et l'état « Active ».
+
+**Réglages relevés sur la page du ruleset après création** :
+
+- État **Active**, bypass list **vide**, cible : la branche par défaut (« Applies to 1 target: `main` »).
+- Cochées : « Restrict deletions », « Block force pushes », « Require a pull request before merging » et « Require status checks to pass ».
+- Pull request obligatoire : 0 approbation requise ; modes de fusion autorisés : Merge, Squash, Rebase. Parmi les réglages de cette règle, seul « Require an additional approval for unattributed Copilot pull requests » est coché (valeur par défaut de GitHub) ; son libellé dit qu'il ne joue que si un nombre d'approbations non nul est exigé.
+- Vérifications exigées : `backend` et `frontend`, source GitHub Actions. « Require branches to be up to date before merging » et « Do not require status checks on creation » sont décochées.
+- Décochées : « Restrict creations », « Restrict updates », « Require linear history », « Require deployments to succeed », « Require signed commits », « Require code scanning results », « Require code quality results », « Restrict code coverage », « Automatically request Copilot code review ».
+
+**Effet vu sur la pull request n° 12** (vers 20:03 et 20:04, encore en brouillon, dernier commit `ba39c34`) :
+
+- « All checks have passed » (4 vérifications réussies) et « No conflicts with base branch ».
+- « This pull request is still a work in progress : Draft pull requests cannot be merged » : le bouton « Merge pull request » est grisé, à cause du brouillon.
+- Détail des quatre vérifications, toutes marquées « Required » :
+
+| Vérification | Durée |
+|---|---|
+| `CI / backend (pull_request)` | 1 min |
+| `CI / backend (push)` | 54 s |
+| `CI / frontend (pull_request)` | 22 s |
+| `CI / frontend (push)` | 30 s |
+
+Ce que ce constat montre : la règle existe, elle est active sur `main`, et la pull request rattache `backend` et `frontend` aux vérifications exigées, pour les deux déclenchements. Ce qu'il ne montre pas : qu'une vérification en échec empêche la fusion, ni qu'une poussée directe sur `main` est refusée (14.11). Le brouillon masque l'effet de la règle sur le bouton de fusion.
+
+### 14.11 Essai du test cassé : hypothèses écrites avant
+
+Écrit le 2026-10-26 (soir), avant la création de la branche jetable et avant tout lancement de l'essai. Rien n'est encore observé.
+
+**But** : voir un test en échec rendre la CI rouge, et voir la règle `protect-main` empêcher la fusion.
+
+**Méthode prévue** :
+
+1. Mohamed crée la branche jetable `test/ci-red-check` à partir de `feature/lot-6-ci`, une fois les commits de la documentation poussés.
+2. Une seule ligne change : dans `src/Traceability.Api/Errors/SqlErrorTranslator.cs`, la ligne qui traduit la famille d'erreurs 502xx passe de 409 à 400. C'est le même défaut que la « casse volontaire » du lot 3b (section 9.2).
+3. Mohamed commite et pousse, puis ouvre une pull request de cette branche vers `main`, **pas en brouillon** : le message « Draft pull requests cannot be merged » masquerait l'effet de la règle. Cette pull request affichera aussi les commits de `feature/lot-6-ci`, puisque la branche en part.
+4. On regarde l'onglet Actions (exécutions `push` et `pull_request`) et le cadre de fusion de la pull request.
+5. La pull request n'est **jamais fusionnée** : elle est fermée sans fusion, la branche est supprimée, et on vérifie que `main` n'a pas bougé.
+
+| N° | Prédiction | Fausse si… |
+|---|---|---|
+| E1 | Avec la ligne de `SqlErrorTranslator.cs` qui traduit la famille 502xx passée de 409 à 400, la tâche `backend` est rouge, à l'étape « Test », avec 4 échecs unitaires et 3 d'intégration. | La tâche est verte, ou l'étape rouge est une autre, ou les nombres diffèrent. |
+| E2 | La tâche `frontend` reste verte : le changement ne touche pas `web/`. | Elle est rouge. |
+| E3 | La pull request vers `main` montre `backend` en échec, signalé « Required », et le bouton de fusion n'est pas utilisable. | Le bouton de fusion reste utilisable malgré la tâche rouge. |
+
+Remarque écrite avant l'essai : les nombres de E1 (4 et 3) viennent du lot 3b ; depuis, des tests ont été ajoutés (lots 3c à 5), et E1 est écrite telle quelle, avec ces nombres.
+
+Résultats : à venir.
