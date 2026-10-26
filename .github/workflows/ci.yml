@@ -1,0 +1,115 @@
+name: CI
+
+# Lot 6: continuous integration. Two independent jobs:
+#   backend  - builds TraceabilityTest from the SQL scripts in a throwaway SQL Server
+#              container (SQL authentication), then runs the C# tests.
+#   frontend - lint, build and tests of the web interface.
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2025-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
+        ports:
+          - 1433:1433
+
+    env:
+      # sqlcmd reads the password from this variable, so it never appears on a command line.
+      SQLCMDPASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Check that sqlcmd is available
+        run: |
+          command -v sqlcmd
+          sqlcmd -? 2>&1 | head -n 3 || true
+
+      - name: Wait for SQL Server (60 s at most)
+        run: |
+          for i in $(seq 1 30); do
+            if sqlcmd -C -S localhost,1433 -U sa -b -Q "SELECT 1" > /dev/null 2>&1; then
+              echo "SQL Server answered after about $((i * 2)) s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "SQL Server did not answer within 60 s"
+          exit 1
+
+      - name: Build TraceabilityTest from the SQL scripts
+        run: |
+          mkdir -p "$RUNNER_TEMP/db"
+          for f in 001_create_database 002_create_schema_and_tables 004_create_reference_procedures 005_create_batch_procedures 011_create_list_procedures 017_optimize_list_batches; do
+            # Work on a temporary copy: only the :setvar line changes, the repository files do not.
+            sed 's/^:setvar DbName .*/:setvar DbName TraceabilityTest/' "database/$f.sql" > "$RUNNER_TEMP/db/$f.sql"
+            if ! grep -q '^:setvar DbName TraceabilityTest' "$RUNNER_TEMP/db/$f.sql"; then
+              echo "The :setvar DbName line was not replaced in $f.sql"
+              exit 1
+            fi
+            echo "=== $f.sql"
+            sqlcmd -C -S localhost,1433 -U sa -b -i "$RUNNER_TEMP/db/$f.sql"
+          done
+
+      - name: List what was created (read only)
+        run: |
+          sqlcmd -C -S localhost,1433 -U sa -b -d TraceabilityTest -Q "SELECT s.name AS schema_name, p.name AS procedure_name FROM sys.procedures AS p JOIN sys.schemas AS s ON s.schema_id = p.schema_id ORDER BY s.name, p.name"
+          sqlcmd -C -S localhost,1433 -U sa -b -d TraceabilityTest -Q "SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID(N'trace.Batch') AND name IS NOT NULL ORDER BY name"
+
+      - name: Build
+        run: dotnet build Traceability.slnx
+
+      - name: Test
+        env:
+          ConnectionStrings__Test: Server=localhost,1433;Database=TraceabilityTest;User Id=sa;Password=${{ secrets.MSSQL_SA_PASSWORD }};TrustServerCertificate=True
+        run: dotnet test Traceability.slnx --no-build
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
