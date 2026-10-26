@@ -24,12 +24,14 @@ Depuis la racine du dépôt, dans PowerShell (la solution est `Traceability.slnx
 - Variables d'environnement, définies par Mohamed au niveau de son compte Windows : `ConnectionStrings__Default` (base `TraceabilityDev`) et `ConnectionStrings__Test` (base `TraceabilityTest`). Authentification Windows, aucun mot de passe. Avec .NET, `TrustServerCertificate=True` est nécessaire en local (le certificat de SQL Server n'est pas approuvé, observé le 2026-10-20) : jamais pour un serveur distant. Les valeurs ne sont écrites nulle part dans le dépôt. Un programme déjà ouvert ne voit pas une variable créée après son démarrage : rouvrir VS Code.
 - Interface web, dans `web/`, lancée par Mohamed (le texte affiché est en français) : `npm install` (une fois), `npm run dev` (serveur Vite sur `http://localhost:5173/`, port fixé ; il demande l'API lancée dans un autre terminal), `npm run lint`, `npm run build` (vérifie les types, écrit `dist/`) et `npm test` (Vitest, 178 tests, sans API ni base). Aucun fichier `.env` n'est créé par Claude ; l'adresse de l'API est `https://localhost:7080`, ou `VITE_API_URL`.
 - Arrêter l'API (Ctrl+C) avant `dotnet test`, qui doit pouvoir recompiler. Après avoir remis un fichier par copie (casse volontaire), mettre à jour sa date de modification, sinon `dotnet` peut ne pas recompiler (observé au lot 4a).
+- CI : `.github/workflows/ci.yml`, lancée à chaque push et à chaque pull request (tâches `backend` et `frontend`). Pour la rejouer : onglet Actions de GitHub, « Re-run all jobs ». Une CI verte ne remplace pas les essais à la main décrits dans `docs/verification.md`.
 Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
 
 ## Secrets
 - Ne jamais lire, créer ni afficher : `.env`, `appsettings.*.json` locaux, user-secrets,
   chaînes de connexion avec identifiants.
-- Connexion locale en authentification Windows (pas de mot de passe).
+- Connexion locale en authentification Windows (pas de mot de passe). La CI utilise l'authentification SQL (voir ci-dessous).
+- La CI (`.github/workflows/ci.yml`) se connecte à SQL Server avec le secret de dépôt `MSSQL_SA_PASSWORD`. Claude ne lit, ne crée, ne modifie ni n'affiche jamais ce secret ni sa valeur : Mohamed le gère dans les réglages de GitHub.
 
 ## Vérité
 - Ne jamais dire que ça marche sans l'avoir exécuté et observé.
@@ -46,6 +48,7 @@ Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
 - Pas de `git commit` ni `git push` par Claude (lecture seule OK : status, diff, log).
 - Rester sur la branche courante : Mohamed crée et supprime les branches.
 - Ne pas toucher à `.github/` ni à la config racine sans demande explicite et nommée.
+- `main` est protégée (ruleset `protect-main`, voir l'ADR 0010) : pas de poussée directe, tout passe par une pull request, et `backend` et `frontend` doivent être verts pour fusionner. Mohamed fusionne.
 - Messages de commit : courts, impératif, anglais, sans Co-Authored-By.
 
 ## Langues
