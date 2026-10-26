@@ -654,3 +654,33 @@ Remarques écrites avant le lancement :
 - Les chiffres 163 (tests C#) et 178 (tests de l'interface) ont été observés le 2026-10-23 pour le premier et au lot 4b pour le second. Ils n'ont pas été remesurés aujourd'hui.
 - L'image `mssql/server:2025-latest` n'est confirmée que par un listing tiers (releasealert.dev, étiquette datée du 2026-10-20), pas par le registre de Microsoft. Elle sera constatée au premier téléchargement : ce n'est pas une hypothèse.
 - Une hypothèse fausse reste écrite telle quelle. Les résultats s'ajoutent à la suite, et une hypothèse ajoutée après un lancement le dit en toutes lettres.
+
+### 14.2 Premier lancement
+
+Exécution n° 1 de la CI, le 2026-10-26 vers 09:33 (heure locale = UTC), sur le commit `6cf5573`. Elle s'est déclenchée sur un push de la branche, avant la création de la pull request : le workflow se déclenche à chaque push et à chaque pull request. Runner : `ubuntu-24.04`, image `20261012.334.1`, Ubuntu 24.04.5 LTS.
+
+Observé :
+
+- Tâche `backend` : échec en 30 s à l'étape « Check that sqlcmd is available » : la commande `command -v sqlcmd` s'est terminée avec le code 1. Les étapes d'avant ont réussi : « Initialize containers » (16 s : l'image `mssql/server:2025-latest` a été téléchargée et le conteneur démarré), « Check out the repository » (1 s) et « Set up .NET » (8 s). Les étapes suivantes n'ont pas été exécutées. Aucune connexion au conteneur n'a été essayée.
+- Tâche `frontend` : réussie en 22 s, toutes les étapes en vert (Install dependencies 3 s, Lint 0 s, Build 3 s, Test 8 s). Chiffres relevés ensuite dans le journal : lint (`oxlint`) « Found 0 warnings and 0 errors » sur 69 fichiers ; build réussi, 61 modules, JS 293,21 ko et CSS 14,55 ko (mêmes chiffres qu'au lot 4b) ; Vitest 5.0.5 : 22 fichiers réussis sur 22, 178 tests réussis sur 178. L'annotation (1 notice) n'a pas été lue.
+
+Résultat des hypothèses de 14.1 :
+
+| N° | Résultat | Observation |
+|---|---|---|
+| C1 | Non testée | Aucune connexion au conteneur n'a été essayée. |
+| C2 | **Fausse** | `sqlcmd` est absent du runner : `command -v sqlcmd` a renvoyé le code 1. |
+| C3 | Non testée | La tâche s'est arrêtée avant la construction de la base. |
+| C4 | Non testée | La tâche s'est arrêtée avant `dotnet test`. |
+| C5 | **Vraie** | Lint : 0 avertissement et 0 erreur ; build réussi ; 22 fichiers et 178 tests réussis sur 178. |
+| C6 | Non mesurable | La tâche `backend` s'est arrêtée au bout de 30 s. |
+
+Hypothèses **ajoutées après le premier lancement**, donc après avoir su que `sqlcmd` manque sur le runner. Elles portent sur des faits qu'aucun lancement n'a encore montrés :
+
+| N° | Prédiction | Fausse si… |
+|---|---|---|
+| C7 | Le conteneur `mssql/server:2025-latest` ne contient pas `sqlcmd` dans `/opt/mssql-tools18/bin`. | Un exécutable `sqlcmd` y est listé. |
+| C8 | Un paquet `sqlcmd` ou `mssql-tools18` est installable par `apt` sur le runner sans configurer de dépôt supplémentaire. | `apt-cache policy` n'en trouve aucun. |
+| C9 | La dernière version de `go-sqlcmd` sur GitHub propose une archive Linux amd64 téléchargeable depuis le runner. | Aucun fichier de ce type n'est listé, ou la liste est inaccessible depuis le runner. |
+
+La prochaine étape est une étape de diagnostic dans `ci.yml` qui affiche ces trois sources, sans rien installer.
