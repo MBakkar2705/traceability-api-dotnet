@@ -806,16 +806,17 @@ Durées des exécutions réussies (page « Actions ») : n° 3 1 min 6 s, n° 4 
 - **Secret** : `MSSQL_SA_PASSWORD` est lu depuis les secrets du dépôt et apparaît masqué (`***`) dans le journal de l'exécution n° 7.
 - **Une CI peut être rouge** : les exécutions n° 1 et 2 ont échoué, pour une cause d'environnement (`sqlcmd` absent du runner), pas à cause d'un test.
 - **Versions** : outils, moteur SQL Server et image du conteneur relevés au 14.5 (digest de l'image inclus).
+- **Un test en échec rend la CI rouge, et la règle bloque la fusion** : observé le 2026-10-26 sur une branche jetable (14.12). La tâche `backend` est rouge à l'étape de test, `frontend` reste verte, et GitHub affiche « Merging is blocked due to failing merge requirements ».
 
 ### 14.8 Ce qui n'est pas prouvé
 
-- **Un test en échec fait passer la CI au rouge** : aucun test n'a été fait échouer dans la CI. Les exécutions rouges (n° 1 et 2) ont une autre cause. Le comportement attendu (code de sortie non nul de `dotnet test`, étape en échec, tâche rouge) n'est pas observé.
+- **Les refus de la règle `protect-main` autres que la fusion** : une poussée directe sur `main`, sa suppression et une poussée forcée n'ont pas été essayées (si la règle avait échoué, l'essai aurait abîmé `main`). Seul le blocage d'une fusion avec une CI rouge est observé (14.12).
 - **Les scripts `006` et `012`** (données d'exemple) ne sont pas exécutés par la CI : leur effet n'y est pas vérifié.
 - **L'authentification Windows** : la CI ne prouve que l'authentification SQL. Le chemin utilisé en local (authentification Windows) n'est pas couvert.
 - **La migration d'`ubuntu-latest`** (annoncée vers Ubuntu 26 à partir du 2026-10-19) : le runner est fixé à `ubuntu-24.04`, mais la différence n'a pas été observée.
 - **L'étiquette `2025-latest`** : elle se déplace avec le temps ; seule l'image des exécutions relevées (digest au 14.5) est connue. Une version plus récente du moteur peut changer un résultat.
 - **Une pull request venant d'un fork** : selon la documentation de GitHub (« secrets are not passed to the runner when a workflow is triggered from a forked repository »), le secret ne serait pas transmis et la tâche `backend` échouerait. Non essayé.
-- **Une CI exigée avant fusion** : une règle `protect-main` l'exige depuis le 2026-10-26 (constat en 14.10). Qu'elle empêche réellement de fusionner une CI rouge n'est pas observé : l'essai est décrit en 14.11.
+- **Une CI exigée avant fusion** : une règle `protect-main` l'exige depuis le 2026-10-26 (constat en 14.10). Qu'elle empêche de fusionner une CI rouge est observé : voir 14.11 (hypothèses) et 14.12 (résultats).
 - **L'application lancée à la main contre le SQL Server de la CI** : la CI ne lance que les tests ; l'API y démarre à l'intérieur des tests d'intégration. Ni `dotnet run`, ni Swagger UI, ni l'interface (Vite) n'ont été essayés contre un SQL Server en conteneur. Aucun Dockerfile n'existe dans le dépôt.
 - **Le réglage « Workflow permissions » du dépôt** (Settings, Actions, General) n'a pas été regardé. Il n'a pas d'effet sur cette CI, car `ci.yml` déclare lui-même `permissions: contents: read`.
 - **L'effet du cache npm** : la durée avec et sans cache n'est pas mesurée.
@@ -864,7 +865,7 @@ Observé le 2026-10-26 sur GitHub, par captures d'écran de Mohamed. Décision e
 | `CI / frontend (pull_request)` | 22 s |
 | `CI / frontend (push)` | 30 s |
 
-Ce que ce constat montre : la règle existe, elle est active sur `main`, et la pull request rattache `backend` et `frontend` aux vérifications exigées, pour les deux déclenchements. Ce qu'il ne montre pas : qu'une vérification en échec empêche la fusion, ni qu'une poussée directe sur `main` est refusée (14.11). Le brouillon masque l'effet de la règle sur le bouton de fusion.
+Ce que ce constat montre : la règle existe, elle est active sur `main`, et la pull request rattache `backend` et `frontend` aux vérifications exigées, pour les deux déclenchements. Ce qu'il ne montre pas : qu'une vérification en échec empêche la fusion, ni qu'une poussée directe sur `main` est refusée ; l'essai du test cassé est en 14.11 et 14.12. Le brouillon masque l'effet de la règle sur le bouton de fusion.
 
 ### 14.11 Essai du test cassé : hypothèses écrites avant
 
@@ -888,4 +889,34 @@ Ce que ce constat montre : la règle existe, elle est active sur `main`, et la p
 
 Remarque écrite avant l'essai : les nombres de E1 (4 et 3) viennent du lot 3b ; depuis, des tests ont été ajoutés (lots 3c à 5), et E1 est écrite telle quelle, avec ces nombres.
 
-Résultats : à venir.
+Résultats : voir 14.12.
+
+### 14.12 Essai du test cassé : résultats
+
+Observé le 2026-10-26 entre 20:59 et 21:12 (heure locale = UTC), par les captures d'écran et les journaux copiés par Mohamed. Les hypothèses E1 à E3 sont écrites en 14.11 (commit `2edf254`), avant l'essai ; elles ne sont pas modifiées.
+
+**Ce qui a été fait** : la branche `test/ci-red-check`, créée à partir de `feature/lot-6-ci`, ne contient qu'un commit de plus, `2b53981` (« Break the 502xx status on purpose to see the CI fail »), poussé vers 20:59. Il change la ligne 34 de `SqlErrorTranslator.cs` : `>= 50200 and <= 50299 => new ApiError(409, …)` devient `new ApiError(400, …)`. Les lignes 49, 54 et 59 (doublons détectés par la base, aussi en 409) ne sont pas touchées.
+
+**Exécution du push (`2b53981`)** : échec, 56 s au total. `backend` rouge (54 s), `frontend` vert (30 s).
+
+Journal de l'étape `dotnet test Traceability.slnx --no-build` de la tâche `backend`, terminée par « Error: Process completed with exit code 1 » :
+
+- Tests unitaires : `Failed: 4, Passed: 71, Total: 75` (118 ms). Les 4 échecs sont `Procedure_errors_map_to_the_status_of_their_family` pour les numéros 50200, 50201, 50202 et 50203 : « Expected: 409, Actual: 400 ».
+- Tests d'intégration : `Failed: 5, Passed: 83, Total: 88` (1 s). Les 5 échecs sont `StationsTests.A_code_that_differs_only_by_case_is_already_taken`, `StationsTests.A_function_already_declared_gives_409`, `StationsTests.A_code_already_taken_gives_409`, `FarmsTests.A_code_already_taken_gives_409` et `BatchesTests.A_batch_code_already_taken_gives_409` : « Expected: Conflict, Actual: BadRequest ».
+- Au total : 9 échecs et 154 réussis sur 163.
+- La compilation avait réussi : l'étape de test lance les binaires déjà compilés (`--no-build`). C'est une déduction, le journal de l'étape de compilation n'a pas été relevé.
+- Le journal copié est celui du push ; celui des exécutions de la pull request n'a pas été relevé.
+
+**Pull request n° 13** (« Test only: break the 502xx status to see the CI fail (do not merge) », de `test/ci-red-check` vers `main`, 14 commits, pas en brouillon : l'écran affiche « Still in progress? Convert to draft »). Ses exécutions `pull_request` : `backend` rouge (1 min), `frontend` vert (26 s).
+
+Cadre de fusion, état final (capture vers 21:08) : « Some checks were not successful : 2 failing, 2 successful checks » ; `backend (pull_request)` et `backend (push)` en échec, `frontend (pull_request)` et `frontend (push)` réussies, les quatre étiquetées « Required » ; le bouton « Merge pull request » est grisé. La capture suivante (vers 21:09), faite sur le bouton, affiche l'infobulle « Merging is blocked due to failing merge requirements », sans zone de confirmation de fusion.
+
+| N° | Verdict | Observé |
+|---|---|---|
+| E1 | **Fausse** | `backend` rouge à l'étape de test, comme prévu, avec 4 échecs unitaires comme prévu. Mais 5 échecs d'intégration au lieu de 3 : la condition « les nombres diffèrent » est remplie. Les nombres 4 et 3 venaient du lot 3b ; des tests ajoutés depuis couvrent le même cas (remarque écrite avant l'essai en 14.11). |
+| E2 | **Vraie** | `frontend` vert sur le push (30 s) et sur la pull request (26 s). |
+| E3 | **Vraie** | `backend` en échec, signalé « Required », et fusion bloquée : « Merging is blocked due to failing merge requirements ». |
+
+**Nettoyage** : la pull request n° 13 a été fermée sans fusion (« Closed with unmerged commits »), sa branche supprimée sur GitHub puis en local. Après `git fetch origin --prune`, `origin/main` vaut `45e3f600cc509ce5fe89dd3cf91a1ed71c67f82c`, comme avant l'essai : rien du test n'est entré dans `main`.
+
+**Ce que l'essai ne montre pas** : une poussée directe sur `main`, sa suppression et une poussée forcée n'ont pas été essayées, car si la règle avait échoué l'essai aurait abîmé `main`. Il ne montre pas non plus ce qui arrive quand `frontend` seul est rouge, ni quand seule la vérification du déclencheur `push` ou celle de `pull_request` échoue.

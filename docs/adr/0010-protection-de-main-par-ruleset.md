@@ -45,3 +45,4 @@ Négatives :
 ## Notes
 
 - 2026-10-26 : règle créée entre 20:00 et 20:02 (heure locale = UTC). Constat sur la pull request n° 12 vers 20:04 : les quatre vérifications sont « Required » et réussies (`backend` 54 s et 1 min, `frontend` 30 s et 22 s).
+- 2026-10-26 (soir) : essai du test cassé sur une branche jetable (pull request n° 13, fermée sans fusion). Observé : `backend` rouge, et GitHub affiche « Merging is blocked due to failing merge requirements » : la dernière conséquence négative ci-dessus (blocage non observé) est levée pour la fusion. Une poussée directe, la suppression de `main` et une poussée forcée n'ont pas été essayées. Détail : [verification.md](../verification.md), section 14.12.
