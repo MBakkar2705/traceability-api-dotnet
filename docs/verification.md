@@ -745,3 +745,29 @@ Résultat des hypothèses :
 | C10 | **Vraie** | Installation en 15 s, pour une limite de 90 s ; `/opt/mssql-tools18/bin/sqlcmd` existe ensuite. |
 
 Bilan des hypothèses du lot : C1, C3, C4, C5, C6 et C10 sont vraies ; C2 et C7 sont fausses ; C8 et C9 n'ont pas été fausses mais n'ont pas été essayées jusqu'au bout (C9 : le téléchargement de `go-sqlcmd` n'a pas été tenté, la solution retenue passe par `apt`).
+
+### 14.5 Quatrième et cinquième lancements : runner fixé et versions
+
+**Exécution n° 4**, commit `61ea27c`, lancée par un push le 2026-10-26 vers 10:25 (heure locale = UTC) : les deux tâches demandent maintenant `ubuntu-24.04` au lieu de `ubuntu-latest`. Statut : réussie, 1 min 12 s au total (`backend` 1 min 8 s, `frontend` 26 s).
+
+- Runner, sur les deux tâches : Ubuntu 24.04.5 LTS, image `ubuntu-24.04` version `20261012.334.1`, agent 2.338.0. C'est la même image que pour les exécutions n° 1 et n° 3 : le journal montre que le runner fixé fonctionne, mais il n'a pas pu montrer de différence avec `ubuntu-latest`, qui désignait encore cette image. L'intérêt de la fixation ne se verra qu'après la migration annoncée.
+- `backend`, étape Test (5 s) : 75 réussis sur 75 (120 ms) et 88 réussis sur 88 (1 s), soit 163 tests, 0 échec.
+- `frontend`, étape Test (11 s) : 22 fichiers réussis sur 22, 178 tests réussis sur 178 (Vitest 9,99 s).
+- Les annotations de cette exécution n'ont pas été relevées.
+
+**Exécution n° 5**, commit `20e1cd87df7ad7e41dacd33a0b4d5e781a749ab4` (`20e1cd8`), lancée par un push le 2026-10-26 vers 10:35 (Vitest a démarré à 10:35:22). Elle ajoute des étapes qui affichent les versions des outils, sans changer ce qui est construit ni testé. Statut : réussie, 56 s au total (`backend` 53 s, `frontend` 25 s). Aucune annotation n'est affichée sur la page de l'exécution, alors que celle de l'exécution n° 3 en affichait deux, sur l'étiquette `ubuntu-latest`.
+
+Versions relevées dans les journaux :
+
+| Élément | Dans la CI (exécution n° 5) | Sur la machine de développement (README ; section 7 pour le moteur) |
+|---|---|---|
+| SDK .NET | 10.0.403 | 10.0.402 |
+| `sqlcmd` | 18.7.0001.1 Linux (paquet `mssql-tools18` 18.7.1.1-1) | non relevé |
+| Moteur SQL Server | 2025 (RTM-CU10), KB5125471, 17.0.5035.5, Enterprise Developer Edition sous Ubuntu 24.04.5 LTS, compilé le 2026-10-15 | 17.0.1145.4 |
+| Image du conteneur | `mcr.microsoft.com/mssql/server@sha256:245f6b1c8903edae52cb20fa31419cefcde1a49938bb8c3447099011fc871ca3` (étiquette `2025-latest`) | sans objet |
+| Node.js | v22.23.3 | 22.23.4 |
+| npm | 10.9.9 | 10.9.9 |
+
+Tests de l'exécution n° 5 : `backend` 75 réussis sur 75 (123 ms) et 88 réussis sur 88 (1 s), soit 163 tests, 0 échec ; `frontend` 22 fichiers réussis sur 22 et 178 tests réussis sur 178 (Vitest 12,44 s).
+
+Le moteur de la CI est donc une version plus récente que celle de la machine de développement (17.0.5035.5 contre 17.0.1145.4) : les tests passent sur les deux. L'étiquette `2025-latest` se déplace avec le temps : le digest ci-dessus identifie l'image de cette exécution.
