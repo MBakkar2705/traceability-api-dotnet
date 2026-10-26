@@ -47,6 +47,12 @@ jobs:
           echo "/opt/mssql-tools18/bin" >> "$GITHUB_PATH"
           ls -l /opt/mssql-tools18/bin/sqlcmd
 
+      - name: Show tool versions
+        run: |
+          dotnet --version
+          sqlcmd -? 2>&1 | head -n 3 || true
+          docker image inspect mcr.microsoft.com/mssql/server:2025-latest --format '{{index .RepoDigests 0}}' || true
+
       - name: Wait for SQL Server (60 s at most)
         run: |
           last_error=""
@@ -77,6 +83,7 @@ jobs:
 
       - name: List what was created (read only)
         run: |
+          sqlcmd -C -S localhost,1433 -U sa -b -Q "SELECT @@VERSION AS engine_version, SERVERPROPERTY('ProductVersion') AS product_version"
           sqlcmd -C -S localhost,1433 -U sa -b -d TraceabilityTest -Q "SELECT s.name AS schema_name, p.name AS procedure_name FROM sys.procedures AS p JOIN sys.schemas AS s ON s.schema_id = p.schema_id ORDER BY s.name, p.name"
           sqlcmd -C -S localhost,1433 -U sa -b -d TraceabilityTest -Q "SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID(N'trace.Batch') AND name IS NOT NULL ORDER BY name"
 
@@ -106,6 +113,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
+
+      - name: Show tool versions
+        run: |
+          node --version
+          npm --version
 
       - name: Install dependencies
         run: npm ci
