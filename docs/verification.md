@@ -1,6 +1,6 @@
-# Vérification (lots 1, 2a, 2b, 3a, 3b, 3c, 4a, 4b et 5)
+# Vérification (lots 1, 2a, 2b, 3a, 3b, 3c, 4a, 4b, 5 et 6)
 
-Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12) et l'optimisation de la liste des lots (lot 5, section 13). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
+Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12), l'optimisation de la liste des lots (lot 5, section 13) et l'intégration continue (lot 6, section 14). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
 
 Lot 1 : observé dans SQL Server (instance locale, base `TraceabilityDev`) le 2026-10-18, avec les scripts du dossier `database/`.
 
@@ -309,7 +309,7 @@ Paquets principaux : `Microsoft.Data.SqlClient` 7.1.1, `System.Security.Cryptogr
   ```
 
   Résultats observés : 404 avec `errorCode` 50102, puis deux 400 avec un champ `errors` et sans `errorCode`.
-- Pour voir un test échouer : dans `src/Traceability.Api/Errors/SqlErrorTranslator.cs`, passer le 409 de la famille 502xx à 400, lancer `dotnet test Traceability.slnx` (4 échecs unitaires, 3 d'intégration), puis rétablir la ligne.
+- Pour voir un test échouer : dans `src/Traceability.Api/Errors/SqlErrorTranslator.cs`, passer le 409 de la famille 502xx à 400, lancer `dotnet test Traceability.slnx` (au lot 3b : 4 échecs unitaires et 3 d'intégration ; au 2026-10-26 : 4 et 5, voir 14.12), puis rétablir la ligne.
 
 ## 10. Lot 3c : API pour les lots
 
@@ -626,3 +626,297 @@ Décisions et écarts par rapport au plan :
 - Mesures sur `TraceabilityDev` : dans `013`, lancer d'abord le bloc de contrôles du début, puis les blocs A1, A2 et A3 (plan réel actif) et B1 et B2 (plan désactivé) : attendu un total sans filtre à 1 737 lectures, 47 pour `F001`, 8 pour `F021`, 10 574 pour `RECEIVED`, et la dernière page à 10 424 lectures de `Batch`, sans zone de travail.
 - Par l'API (lancée sur `TraceabilityDev`) : la boucle de 10 appels de [mesures.md](mesures.md), section 9.6 : attendu 10 réponses `OK`, de l'ordre de 0,5 s.
 - Revenir en arrière : relancer la partie `ListBatches` de `005`, puis supprimer l'index `IX_Batch_FarmId` de `trace.Batch`.
+
+## 14. Lot 6 : intégration continue
+
+Statut : **Terminé** (2026-10-26). Seul ce que liste 14.7 est prouvé ; ce qui ne l'est pas est en 14.8. Les hypothèses sont en 14.1 et 14.11, écrites avant les lancements ; les résultats sont en 14.2 à 14.6, 14.10 et 14.12 ; pour rejouer, voir 14.9.
+
+### 14.1 Hypothèses écrites avant le premier lancement
+
+Écrites le 2026-10-26, avant tout lancement de la CI. Aucune n'a été essayée.
+
+La CI prévue est un fichier de workflow GitHub Actions avec deux tâches :
+
+- `backend` (Linux) : un conteneur SQL Server 2025 en authentification SQL, la base `TraceabilityTest` construite par les scripts `001`, `002`, `004`, `005`, `011` et `017` (sur des copies temporaires où la ligne `:setvar DbName` est remplacée), puis `dotnet build` et `dotnet test Traceability.slnx` ;
+- `frontend` : Node 22, `npm ci`, puis lint, build et tests dans `web/`.
+
+| N° | Prédiction | Fausse si… |
+|---|---|---|
+| C1 | Le conteneur SQL Server 2025 démarre et accepte une connexion en authentification SQL avec le secret, en moins de 60 s. | La tâche expire sans première connexion réussie. |
+| C2 | `sqlcmd` est disponible sur le runner sans installation. | « command not found » à la première utilisation. |
+| C3 | Les scripts `001`, `002`, `004`, `005`, `011` et `017` s'exécutent sans erreur sur une base vierge, avec la ligne `:setvar` remplacée dans une copie temporaire. | Un script renvoie une erreur, ou la base créée n'est pas `TraceabilityTest`. |
+| C4 | `dotnet test Traceability.slnx` donne `total : 163; échec : 0; réussi : 163` (75 unitaires, 88 d'intégration). | Le total diffère de 163, ou un test échoue. |
+| C5 | Côté interface : lint à 0 avertissement, build réussi, 178 tests réussis. | Un de ces trois résultats diffère. |
+| C6 | La tâche `backend` dure moins de 10 minutes. | Elle dépasse 10 minutes. |
+
+Remarques écrites avant le lancement :
+
+- Les chiffres 163 (tests C#) et 178 (tests de l'interface) ont été observés le 2026-10-23 pour le premier et au lot 4b pour le second. Ils n'ont pas été remesurés aujourd'hui.
+- L'image `mssql/server:2025-latest` n'est confirmée que par un listing tiers (releasealert.dev, étiquette datée du 2026-10-20), pas par le registre de Microsoft. Elle sera constatée au premier téléchargement : ce n'est pas une hypothèse.
+- Une hypothèse fausse reste écrite telle quelle. Les résultats s'ajoutent à la suite, et une hypothèse ajoutée après un lancement le dit en toutes lettres.
+
+### 14.2 Premier lancement
+
+Exécution n° 1 de la CI, le 2026-10-26 vers 09:33 (heure locale = UTC), sur le commit `6cf5573`. Elle s'est déclenchée sur un push de la branche, avant la création de la pull request : le workflow se déclenche à chaque push et à chaque pull request. Runner : `ubuntu-24.04`, image `20261012.334.1`, Ubuntu 24.04.5 LTS.
+
+Observé :
+
+- Tâche `backend` : échec en 30 s à l'étape « Check that sqlcmd is available » : la commande `command -v sqlcmd` s'est terminée avec le code 1. Les étapes d'avant ont réussi : « Initialize containers » (16 s : l'image `mssql/server:2025-latest` a été téléchargée et le conteneur démarré), « Check out the repository » (1 s) et « Set up .NET » (8 s). Les étapes suivantes n'ont pas été exécutées. Aucune connexion au conteneur n'a été essayée.
+- Tâche `frontend` : réussie en 22 s, toutes les étapes en vert (Install dependencies 3 s, Lint 0 s, Build 3 s, Test 8 s). Chiffres relevés ensuite dans le journal : lint (`oxlint`) « Found 0 warnings and 0 errors » sur 69 fichiers ; build réussi, 61 modules, JS 293,21 ko et CSS 14,55 ko (mêmes chiffres qu'au lot 4b) ; Vitest 5.0.5 : 22 fichiers réussis sur 22, 178 tests réussis sur 178. L'annotation (1 notice) n'a pas été lue.
+
+Résultat des hypothèses de 14.1 :
+
+| N° | Résultat | Observation |
+|---|---|---|
+| C1 | Non testée | Aucune connexion au conteneur n'a été essayée. |
+| C2 | **Fausse** | `sqlcmd` est absent du runner : `command -v sqlcmd` a renvoyé le code 1. |
+| C3 | Non testée | La tâche s'est arrêtée avant la construction de la base. |
+| C4 | Non testée | La tâche s'est arrêtée avant `dotnet test`. |
+| C5 | **Vraie** | Lint : 0 avertissement et 0 erreur ; build réussi ; 22 fichiers et 178 tests réussis sur 178. |
+| C6 | Non mesurable | La tâche `backend` s'est arrêtée au bout de 30 s. |
+
+Hypothèses **ajoutées après le premier lancement**, donc après avoir su que `sqlcmd` manque sur le runner. Elles portent sur des faits qu'aucun lancement n'a encore montrés :
+
+| N° | Prédiction | Fausse si… |
+|---|---|---|
+| C7 | Le conteneur `mssql/server:2025-latest` ne contient pas `sqlcmd` dans `/opt/mssql-tools18/bin`. | Un exécutable `sqlcmd` y est listé. |
+| C8 | Un paquet `sqlcmd` ou `mssql-tools18` est installable par `apt` sur le runner sans configurer de dépôt supplémentaire. | `apt-cache policy` n'en trouve aucun. |
+| C9 | La dernière version de `go-sqlcmd` sur GitHub propose une archive Linux amd64 téléchargeable depuis le runner. | Aucun fichier de ce type n'est listé, ou la liste est inaccessible depuis le runner. |
+
+La prochaine étape est une étape de diagnostic dans `ci.yml` qui affiche ces trois sources, sans rien installer.
+
+### 14.3 Deuxième lancement : diagnostic de `sqlcmd`
+
+Deuxième exécution de la CI, sur le commit `9da02bb`, lancée par le push de 09:59 (heure locale = UTC). Elle contenait une étape de diagnostic en lecture seule à la place de la vérification de `sqlcmd`.
+
+Observé dans le journal du diagnostic :
+
+1. Runner : `sqlcmd` est absent du `PATH`, et les dossiers `/opt/mssql-tools18/bin` et `/opt/mssql-tools/bin` n'existent pas.
+2. Conteneur `mssql/server:2025-latest` (identifiant `4f7821024f64`) : `/opt/mssql-tools18/bin` contient `bcp` et `sqlcmd` (491 792 octets, daté du 27 août) ; `/opt/mssql-tools/bin` n'existe pas ; `command -v sqlcmd` n'a rien affiché, donc `sqlcmd` n'est pas dans le `PATH` du conteneur.
+3. `apt` sur le runner : `mssql-tools18` a un candidat `18.7.1.1-1` (versions `18.6.2.1-1`, `18.6.1.1-1` et `18.4.1.1-1` aussi listées), dans `packages.microsoft.com/ubuntu/24.04/prod noble/main amd64` ; `mssql-tools` a un candidat `17.11.1.1-1` ; aucune ligne pour un paquet nommé `sqlcmd`. Aucun des deux n'est installé. Le fichier `/etc/apt/sources.list.d/microsoft-prod.list` mentionne `packages.microsoft.com`.
+4. GitHub : la dernière version de `go-sqlcmd` est `v1.10.0`, avec une archive `sqlcmd-linux-amd64.tar.bz2` (et des fichiers pour Windows, macOS et d'autres architectures Linux). L'API GitHub est accessible depuis le runner.
+
+L'étape suivante, « Wait for SQL Server (60 s at most) », a échoué après 1 min 0 s avec « SQL Server did not answer within 60 s ». Ce n'est pas un résultat sur C1 : `sqlcmd` étant absent du `PATH`, chaque tentative a échoué faute de commande, et l'étape redirige les messages d'erreur vers `/dev/null`, donc la cause n'apparaissait pas dans le journal. Cette étape devra afficher la dernière erreur quand elle échoue.
+
+Résultat des hypothèses de 14.2 :
+
+| N° | Résultat | Observation |
+|---|---|---|
+| C7 | **Fausse** | `/opt/mssql-tools18/bin/sqlcmd` existe dans le conteneur. |
+| C8 | Non fausse | Un candidat `mssql-tools18` existe dans un dépôt déjà configuré sur le runner. L'installation elle-même n'a pas été essayée. |
+| C9 | Non fausse | Une archive Linux amd64 est listée et la liste est accessible depuis le runner. Le téléchargement n'a pas été essayé. |
+
+Toujours non testées : C1 (aucune connexion possible sans `sqlcmd`), C3, C4 et C6. C2 reste fausse.
+
+Hypothèse **ajoutée après le deuxième lancement**, donc après avoir vu le diagnostic :
+
+| N° | Prédiction | Fausse si… |
+|---|---|---|
+| C10 | `sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18` réussit sur le runner en moins de 90 s, et `/opt/mssql-tools18/bin/sqlcmd` existe ensuite. | `apt-get` renvoie une erreur, dépasse 90 s, ou le fichier est absent après l'installation. |
+
+Le conteneur contient aussi `sqlcmd`, donc lancer les scripts depuis le conteneur reste possible. La prochaine étape prévue est l'installation de `mssql-tools18` sur le runner (C10), avec `/opt/mssql-tools18/bin` ajouté au `PATH` des étapes suivantes.
+
+### 14.4 Troisième lancement : la CI complète
+
+Exécution n° 3 de la CI, sur le commit `92da86f`, lancée par un push vers 10:09 le 2026-10-26 (heure locale = UTC). Statut : réussie, 1 min 6 s au total (`backend` 1 min 3 s, `frontend` 19 s). Runner : `ubuntu-24.04`, image `20261012.334.1`, Ubuntu 24.04.5 LTS, agent 2.338.0, comme pour la première exécution.
+
+Observé, tâche `backend` :
+
+- « Install sqlcmd (mssql-tools18) » : 15 s. `apt-get install` a installé 6 paquets (`libodbcinst2`, `msodbcsql18`, `mssql-tools18` 18.7.1.1-1, `odbcinst`, `unixodbc`, `unixodbc-common`), sans `apt-get update` préalable. `ls -l` montre `/opt/mssql-tools18/bin/sqlcmd` (491 792 octets).
+- « Wait for SQL Server » : 0 s. Le message « SQL Server answered after about 2 s » correspond à la première tentative de la boucle (le calcul `i * 2` donne 2 pour `i = 1`) : le serveur a répondu dès le premier essai.
+- « Build TraceabilityTest from the SQL scripts » : 1 s, sans erreur. `001` : `Database TraceabilityTest created.` (classement `SQL_Latin1_General_CP1_CI_AS`, récupération `SIMPLE`). `002` : schéma `trace` et 5 tables. `004` : 3 procédures. `005` : 7 procédures. `011` : 10 procédures. `017` : `Index IX_Batch_FarmId created.`, et `ListBatches` modifiée le 2026-10-26 à 10:09:35.
+- « List what was created (read only) » : 10 procédures du schéma `trace` ; 3 index sur `trace.Batch` (`IX_Batch_FarmId`, `PK_Batch`, `UQ_Batch_BatchCode`).
+- « Build » : 11 s, `Build succeeded`, 0 avertissement, 0 erreur (`Time Elapsed 00:00:11.24`).
+- « Test » : 7 s. Tests unitaires : 75 réussis sur 75 (191 ms). Tests d'intégration : 88 réussis sur 88 (1 s). Total : 163 réussis, 0 échec. Le texte est en anglais sur le runner (`Passed! - Failed: 0, Passed: 75, …`), alors que C4 était écrite avec la formulation française : seuls les nombres comptent.
+
+Observé, tâche `frontend` (19 s) : lint (`oxlint`) « Found 0 warnings and 0 errors » sur 69 fichiers ; build de 61 modules, JS 293,21 ko et CSS 14,55 ko (mêmes chiffres qu'au lot 4b) ; Vitest 5.0.5 : 22 fichiers réussis sur 22 et 178 tests réussis sur 178 (7,14 s). Le rapport de la page de l'exécution indique « 22 passes · 22 total » et « 178 passes · 178 total ».
+
+Annotations : 2 notices, une par tâche, avec le même texte : « The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19, 2026. For more information, see https://github.com/actions/runner-images/issues/14748 ». Les deux exécutions observées ont encore tourné sur Ubuntu 24.04.5 ; ce qui se passera après la migration n'a pas été observé.
+
+Résultat des hypothèses :
+
+| N° | Résultat | Observation |
+|---|---|---|
+| C1 | **Vraie** | Le serveur a répondu dès la première tentative de la boucle (étape de 0 s), en authentification SQL avec le secret. |
+| C3 | **Vraie** | Les 6 scripts se sont exécutés sans erreur sur une base vierge, et la base créée est `TraceabilityTest`. |
+| C4 | **Vraie** | 75 + 88 = 163 tests réussis, 0 échec. |
+| C5 | **Vraie** | Déjà relevée en 14.2 ; mêmes chiffres dans cette exécution. |
+| C6 | **Vraie** | La tâche `backend` a duré 1 min 3 s, pour une limite de 10 minutes. |
+| C10 | **Vraie** | Installation en 15 s, pour une limite de 90 s ; `/opt/mssql-tools18/bin/sqlcmd` existe ensuite. |
+
+Bilan des hypothèses du lot : C1, C3, C4, C5, C6 et C10 sont vraies ; C2 et C7 sont fausses ; C8 et C9 n'ont pas été fausses mais n'ont pas été essayées jusqu'au bout (C9 : le téléchargement de `go-sqlcmd` n'a pas été tenté, la solution retenue passe par `apt`).
+
+### 14.5 Quatrième et cinquième lancements : runner fixé et versions
+
+**Exécution n° 4**, commit `61ea27c`, lancée par un push le 2026-10-26 vers 10:25 (heure locale = UTC) : les deux tâches demandent maintenant `ubuntu-24.04` au lieu de `ubuntu-latest`. Statut : réussie, 1 min 12 s au total (`backend` 1 min 8 s, `frontend` 26 s).
+
+- Runner, sur les deux tâches : Ubuntu 24.04.5 LTS, image `ubuntu-24.04` version `20261012.334.1`, agent 2.338.0. C'est la même image que pour les exécutions n° 1 et n° 3 : le journal montre que le runner fixé fonctionne, mais il n'a pas pu montrer de différence avec `ubuntu-latest`, qui désignait encore cette image. L'intérêt de la fixation ne se verra qu'après la migration annoncée.
+- `backend`, étape Test (5 s) : 75 réussis sur 75 (120 ms) et 88 réussis sur 88 (1 s), soit 163 tests, 0 échec.
+- `frontend`, étape Test (11 s) : 22 fichiers réussis sur 22, 178 tests réussis sur 178 (Vitest 9,99 s).
+- Les annotations de cette exécution n'ont pas été relevées.
+
+**Exécution n° 5**, commit `20e1cd87df7ad7e41dacd33a0b4d5e781a749ab4` (`20e1cd8`), lancée par un push le 2026-10-26 vers 10:35 (Vitest a démarré à 10:35:22). Elle ajoute des étapes qui affichent les versions des outils, sans changer ce qui est construit ni testé. Statut : réussie, 56 s au total (`backend` 53 s, `frontend` 25 s). Aucune annotation n'est affichée sur la page de l'exécution, alors que celle de l'exécution n° 3 en affichait deux, sur l'étiquette `ubuntu-latest`.
+
+Versions relevées dans les journaux :
+
+| Élément | Dans la CI (exécution n° 5) | Sur la machine de développement (README ; section 7 pour le moteur) |
+|---|---|---|
+| SDK .NET | 10.0.403 | 10.0.402 |
+| `sqlcmd` | 18.7.0001.1 Linux (paquet `mssql-tools18` 18.7.1.1-1) | non relevé |
+| Moteur SQL Server | 2025 (RTM-CU10), KB5125471, 17.0.5035.5, Enterprise Developer Edition sous Ubuntu 24.04.5 LTS, compilé le 2026-10-15 | 17.0.1145.4 |
+| Image du conteneur | `mcr.microsoft.com/mssql/server@sha256:245f6b1c8903edae52cb20fa31419cefcde1a49938bb8c3447099011fc871ca3` (étiquette `2025-latest`) | sans objet |
+| Node.js | v22.23.3 | 22.23.4 |
+| npm | 10.9.9 | 10.9.9 |
+
+Tests de l'exécution n° 5 : `backend` 75 réussis sur 75 (123 ms) et 88 réussis sur 88 (1 s), soit 163 tests, 0 échec ; `frontend` 22 fichiers réussis sur 22 et 178 tests réussis sur 178 (Vitest 12,44 s).
+
+Le moteur de la CI est donc une version plus récente que celle de la machine de développement (17.0.5035.5 contre 17.0.1145.4) : les tests passent sur les deux. L'étiquette `2025-latest` se déplace avec le temps : le digest ci-dessus identifie l'image de cette exécution.
+
+### 14.6 Sixième et septième exécutions : push de documentation et pull request
+
+Écrit le 2026-10-26 après observation. Aucune hypothèse n'avait été écrite avant pour le déclenchement par pull request : ce qui suit est un constat, pas une hypothèse confirmée après coup. Statuts et durées des exécutions : page publique « Actions » du dépôt ; détail des étapes : journaux du run n° 7 copiés par Mohamed.
+
+**Exécution n° 6**, commit `7615535f7140884326366bb6948f4c1b2621fe09` (`7615535`), lancée par un push (modification de ce fichier seulement). Statut : réussie, 1 min 4 s. Le détail de ses étapes n'a pas été relevé.
+
+**Exécution n° 7**, lancée par la pull request n° 12 « Add the continuous integration (lot 6) » : `feature/lot-6-ci` vers `main`, 10 commits, **en brouillon** au moment de l'exécution. Statut : réussie, 1 min 3 s. Le workflow n'a aucune condition sur l'état « brouillon » : il s'est donc exécuté sur une pull request en brouillon.
+
+Commit testé par l'exécution n° 7 :
+
+- Le journal de l'étape « Check out the repository » (tâche `backend`) récupère le commit `13f2078ff3156542fad0e60dab80cb32cfc9e581` (`13f2078`), avec `fetch --depth=1`, sous le nom `pull/12/merge` ; `git log -1 --format=%H` affiche le même hash.
+- Relevé en local le 2026-10-26 vers 10:55 (`git fetch origin "refs/pull/12/merge"` puis `git log -1 --format="%H %P" FETCH_HEAD`) : `13f2078` a deux parents, `45e3f600cc509ce5fe89dd3cf91a1ed71c67f82c` et `7615535f7140884326366bb6948f4c1b2621fe09`.
+- Relevé vers 10:57 (`git fetch origin main` puis `git rev-parse origin/main`) : la pointe de `main` est `45e3f600cc509ce5fe89dd3cf91a1ed71c67f82c`, le premier parent.
+- Une pull request teste donc la fusion temporaire de la branche avec `main`, pas le dernier commit de la branche seul. Ce commit de fusion est calculé par GitHub ; il n'est pas dans l'historique de la branche.
+
+Tests de l'exécution n° 7 :
+
+- `backend`, étape Test : 75 réussis sur 75 (181 ms) et 88 réussis sur 88 (1 s), soit 163 tests, 0 échec.
+- `frontend`, étape Test : 22 fichiers réussis sur 22, 178 tests réussis sur 178 (Vitest 10,14 s, démarré à 10:46:54). Vitest affiche un conseil (isolation : environ 4,80 s gagnées avec `isolate: false`) ; il n'est pas appliqué.
+- Le journal montre `SQLCMDPASSWORD: ***` : le secret est masqué.
+- Les annotations de cette exécution n'ont pas été relevées.
+
+Durées des exécutions réussies (page « Actions ») : n° 3 1 min 6 s, n° 4 1 min 12 s, n° 5 56 s, n° 6 1 min 4 s, n° 7 1 min 3 s. Exécutions en échec : n° 1 (33 s) et n° 2 (1 min 34 s), voir 14.2 et 14.3.
+
+### 14.7 Ce qui est prouvé
+
+- **Déclenchement** : la CI se lance à chaque push de la branche (exécutions n° 1 à 6) et sur une pull request (n° 7), y compris en brouillon.
+- **Commit testé en pull request** : la fusion de la branche avec `main` (`13f2078`, parents `45e3f60` et `7615535`).
+- **Backend sous Linux** : un conteneur SQL Server 2025 en authentification SQL, la base `TraceabilityTest` construite par les scripts `001`, `002`, `004`, `005`, `011` et `017`, puis 163 tests réussis (75 unitaires et 88 d'intégration). Observé dans les journaux des exécutions n° 3, 4, 5 et 7. Le code C# n'a pas changé : la méthode d'authentification dépend seulement du contenu de la chaîne de connexion.
+- **Frontend** : lint à 0 avertissement, build réussi et 178 tests réussis (22 fichiers) sous Node 22.
+- **Durée** : de 56 s à 1 min 12 s pour les exécutions réussies, très en dessous des limites (20 min pour `backend`, 15 min pour `frontend`).
+- **Secret** : `MSSQL_SA_PASSWORD` est lu depuis les secrets du dépôt et apparaît masqué (`***`) dans le journal de l'exécution n° 7.
+- **Une CI peut être rouge** : les exécutions n° 1 et 2 ont échoué, pour une cause d'environnement (`sqlcmd` absent du runner), pas à cause d'un test.
+- **Versions** : outils, moteur SQL Server et image du conteneur relevés au 14.5 (digest de l'image inclus).
+- **Un test en échec rend la CI rouge, et la règle bloque la fusion** : observé le 2026-10-26 sur une branche jetable (14.12). La tâche `backend` est rouge à l'étape de test, `frontend` reste verte, et GitHub affiche « Merging is blocked due to failing merge requirements ».
+
+### 14.8 Ce qui n'est pas prouvé
+
+- **Les refus de la règle `protect-main` autres que la fusion** : une poussée directe sur `main`, sa suppression et une poussée forcée n'ont pas été essayées (si la règle avait échoué, l'essai aurait abîmé `main`). Seul le blocage d'une fusion avec une CI rouge est observé (14.12).
+- **Les scripts `006` et `012`** (données d'exemple) ne sont pas exécutés par la CI : leur effet n'y est pas vérifié.
+- **L'authentification Windows** : la CI ne prouve que l'authentification SQL. Le chemin utilisé en local (authentification Windows) n'est pas couvert.
+- **La migration d'`ubuntu-latest`** (annoncée vers Ubuntu 26 à partir du 2026-10-19) : le runner est fixé à `ubuntu-24.04`, mais la différence n'a pas été observée.
+- **L'étiquette `2025-latest`** : elle se déplace avec le temps ; seule l'image des exécutions relevées (digest au 14.5) est connue. Une version plus récente du moteur peut changer un résultat.
+- **Une pull request venant d'un fork** : selon la documentation de GitHub (« secrets are not passed to the runner when a workflow is triggered from a forked repository »), le secret ne serait pas transmis et la tâche `backend` échouerait. Non essayé.
+- **Une CI exigée avant fusion** : une règle `protect-main` l'exige depuis le 2026-10-26 (constat en 14.10). Qu'elle empêche de fusionner une CI rouge est observé : voir 14.11 (hypothèses) et 14.12 (résultats).
+- **L'application lancée à la main contre le SQL Server de la CI** : la CI ne lance que les tests ; l'API y démarre à l'intérieur des tests d'intégration. Ni `dotnet run`, ni Swagger UI, ni l'interface (Vite) n'ont été essayés contre un SQL Server en conteneur. Aucun Dockerfile n'existe dans le dépôt.
+- **Le réglage « Workflow permissions » du dépôt** (Settings, Actions, General) n'a pas été regardé. Il n'a pas d'effet sur cette CI, car `ci.yml` déclare lui-même `permissions: contents: read`.
+- **L'effet du cache npm** : la durée avec et sans cache n'est pas mesurée.
+- **Les annotations** de l'exécution n° 7 n'ont pas été relevées, et le détail des étapes de l'exécution n° 6 non plus.
+- **Seules les exécutions du 2026-10-26 sont observées** : rien n'est dit de leur comportement à une autre date.
+
+### 14.9 Rejouer la vérification
+
+- Sur GitHub, onglet « Actions » : ouvrir une exécution puis « Re-run all jobs », ou pousser un nouveau commit sur la branche. Résultat attendu : les deux tâches vertes en environ 1 minute ; étape Test du `backend` : 75 et 88 réussis ; étape Test du `frontend` : 22 fichiers et 178 tests réussis.
+- Pour voir le commit de fusion d'une pull request (remplacer 12 par son numéro), dans PowerShell, depuis le dépôt :
+
+  ```powershell
+  git fetch origin "refs/pull/12/merge"
+  git log -1 --format="%H %P" FETCH_HEAD
+  ```
+
+  Résultat observé : le hash `13f2078…` suivi de ses deux parents. Ce hash est celui relevé le 2026-10-26 : je n'ai pas vérifié à quel moment GitHub recalcule la fusion, ni si « Re-run all jobs » reteste le même commit de fusion ou un nouveau.
+- Pour comparer avec la machine de développement : `dotnet test Traceability.slnx` (résumé attendu `total : 163; échec : 0; réussi : 163`) et, dans `web/`, `npm run lint`, `npm run build`, `npm test`.
+
+### 14.10 Protection de `main` : constat
+
+Observé le 2026-10-26 sur GitHub, par captures d'écran de Mohamed. Décision et alternatives : [ADR 0010](adr/0010-protection-de-main-par-ruleset.md).
+
+**Avant** (vers 19:48 et 19:52) : la page d'accueil du dépôt affichait « Your main branch isn't protected », et la page Settings, Branches (« Branch protection rules ») ne listait aucune règle. Elle proposait « Add branch ruleset » et « Add classic branch protection rule », en indiquant que les rulesets sont la méthode recommandée.
+
+**Création** : le ruleset `protect-main` a été créé entre 20:00 et 20:02 (heure locale = UTC). GitHub a affiché « Ruleset created » et l'état « Active ».
+
+**Réglages relevés sur la page du ruleset après création** :
+
+- État **Active**, bypass list **vide**, cible : la branche par défaut (« Applies to 1 target: `main` »).
+- Cochées : « Restrict deletions », « Block force pushes », « Require a pull request before merging » et « Require status checks to pass ».
+- Pull request obligatoire : 0 approbation requise ; modes de fusion autorisés : Merge, Squash, Rebase. Parmi les réglages de cette règle, seul « Require an additional approval for unattributed Copilot pull requests » est coché (valeur par défaut de GitHub) ; son libellé dit qu'il ne joue que si un nombre d'approbations non nul est exigé.
+- Vérifications exigées : `backend` et `frontend`, source GitHub Actions. « Require branches to be up to date before merging » et « Do not require status checks on creation » sont décochées.
+- Décochées : « Restrict creations », « Restrict updates », « Require linear history », « Require deployments to succeed », « Require signed commits », « Require code scanning results », « Require code quality results », « Restrict code coverage », « Automatically request Copilot code review ».
+
+**Effet vu sur la pull request n° 12** (vers 20:03 et 20:04, encore en brouillon, dernier commit `ba39c34`) :
+
+- « All checks have passed » (4 vérifications réussies) et « No conflicts with base branch ».
+- « This pull request is still a work in progress : Draft pull requests cannot be merged » : le bouton « Merge pull request » est grisé, à cause du brouillon.
+- Détail des quatre vérifications, toutes marquées « Required » :
+
+| Vérification | Durée |
+|---|---|
+| `CI / backend (pull_request)` | 1 min |
+| `CI / backend (push)` | 54 s |
+| `CI / frontend (pull_request)` | 22 s |
+| `CI / frontend (push)` | 30 s |
+
+Ce que ce constat montre : la règle existe, elle est active sur `main`, et la pull request rattache `backend` et `frontend` aux vérifications exigées, pour les deux déclenchements. Ce qu'il ne montre pas : qu'une vérification en échec empêche la fusion, ni qu'une poussée directe sur `main` est refusée ; l'essai du test cassé est en 14.11 et 14.12. Le brouillon masque l'effet de la règle sur le bouton de fusion.
+
+### 14.11 Essai du test cassé : hypothèses écrites avant
+
+Écrit le 2026-10-26 (soir), avant la création de la branche jetable et avant tout lancement de l'essai. Rien n'est encore observé.
+
+**But** : voir un test en échec rendre la CI rouge, et voir la règle `protect-main` empêcher la fusion.
+
+**Méthode prévue** :
+
+1. Mohamed crée la branche jetable `test/ci-red-check` à partir de `feature/lot-6-ci`, une fois les commits de la documentation poussés.
+2. Une seule ligne change : dans `src/Traceability.Api/Errors/SqlErrorTranslator.cs`, la ligne qui traduit la famille d'erreurs 502xx passe de 409 à 400. C'est le même défaut que la « casse volontaire » du lot 3b (section 9.2).
+3. Mohamed commite et pousse, puis ouvre une pull request de cette branche vers `main`, **pas en brouillon** : le message « Draft pull requests cannot be merged » masquerait l'effet de la règle. Cette pull request affichera aussi les commits de `feature/lot-6-ci`, puisque la branche en part.
+4. On regarde l'onglet Actions (exécutions `push` et `pull_request`) et le cadre de fusion de la pull request.
+5. La pull request n'est **jamais fusionnée** : elle est fermée sans fusion, la branche est supprimée, et on vérifie que `main` n'a pas bougé.
+
+| N° | Prédiction | Fausse si… |
+|---|---|---|
+| E1 | Avec la ligne de `SqlErrorTranslator.cs` qui traduit la famille 502xx passée de 409 à 400, la tâche `backend` est rouge, à l'étape « Test », avec 4 échecs unitaires et 3 d'intégration. | La tâche est verte, ou l'étape rouge est une autre, ou les nombres diffèrent. |
+| E2 | La tâche `frontend` reste verte : le changement ne touche pas `web/`. | Elle est rouge. |
+| E3 | La pull request vers `main` montre `backend` en échec, signalé « Required », et le bouton de fusion n'est pas utilisable. | Le bouton de fusion reste utilisable malgré la tâche rouge. |
+
+Remarque écrite avant l'essai : les nombres de E1 (4 et 3) viennent du lot 3b ; depuis, des tests ont été ajoutés (lots 3c à 5), et E1 est écrite telle quelle, avec ces nombres.
+
+Résultats : voir 14.12.
+
+### 14.12 Essai du test cassé : résultats
+
+Observé le 2026-10-26 entre 20:59 et 21:12 (heure locale = UTC), par les captures d'écran et les journaux copiés par Mohamed. Les hypothèses E1 à E3 sont écrites en 14.11 (commit `2edf254`), avant l'essai ; elles ne sont pas modifiées.
+
+**Ce qui a été fait** : la branche `test/ci-red-check`, créée à partir de `feature/lot-6-ci`, ne contient qu'un commit de plus, `2b53981` (« Break the 502xx status on purpose to see the CI fail »), poussé vers 20:59. Il change la ligne 34 de `SqlErrorTranslator.cs` : `>= 50200 and <= 50299 => new ApiError(409, …)` devient `new ApiError(400, …)`. Les lignes 49, 54 et 59 (doublons détectés par la base, aussi en 409) ne sont pas touchées.
+
+**Exécution du push (`2b53981`)** : échec, 56 s au total. `backend` rouge (54 s), `frontend` vert (30 s).
+
+Journal de l'étape `dotnet test Traceability.slnx --no-build` de la tâche `backend`, terminée par « Error: Process completed with exit code 1 » :
+
+- Tests unitaires : `Failed: 4, Passed: 71, Total: 75` (118 ms). Les 4 échecs sont `Procedure_errors_map_to_the_status_of_their_family` pour les numéros 50200, 50201, 50202 et 50203 : « Expected: 409, Actual: 400 ».
+- Tests d'intégration : `Failed: 5, Passed: 83, Total: 88` (1 s). Les 5 échecs sont `StationsTests.A_code_that_differs_only_by_case_is_already_taken`, `StationsTests.A_function_already_declared_gives_409`, `StationsTests.A_code_already_taken_gives_409`, `FarmsTests.A_code_already_taken_gives_409` et `BatchesTests.A_batch_code_already_taken_gives_409` : « Expected: Conflict, Actual: BadRequest ».
+- Au total : 9 échecs et 154 réussis sur 163.
+- La compilation avait réussi : l'étape de test lance les binaires déjà compilés (`--no-build`). C'est une déduction, le journal de l'étape de compilation n'a pas été relevé.
+- Le journal copié est celui du push ; celui des exécutions de la pull request n'a pas été relevé.
+
+**Pull request n° 13** (« Test only: break the 502xx status to see the CI fail (do not merge) », de `test/ci-red-check` vers `main`, 14 commits, pas en brouillon : l'écran affiche « Still in progress? Convert to draft »). Ses exécutions `pull_request` : `backend` rouge (1 min), `frontend` vert (26 s).
+
+Cadre de fusion, état final (capture vers 21:08) : « Some checks were not successful : 2 failing, 2 successful checks » ; `backend (pull_request)` et `backend (push)` en échec, `frontend (pull_request)` et `frontend (push)` réussies, les quatre étiquetées « Required » ; le bouton « Merge pull request » est grisé. La capture suivante (vers 21:09), faite sur le bouton, affiche l'infobulle « Merging is blocked due to failing merge requirements », sans zone de confirmation de fusion.
+
+| N° | Verdict | Observé |
+|---|---|---|
+| E1 | **Fausse** | `backend` rouge à l'étape de test, comme prévu, avec 4 échecs unitaires comme prévu. Mais 5 échecs d'intégration au lieu de 3 : la condition « les nombres diffèrent » est remplie. Les nombres 4 et 3 venaient du lot 3b ; des tests ajoutés depuis couvrent le même cas (remarque écrite avant l'essai en 14.11). |
+| E2 | **Vraie** | `frontend` vert sur le push (30 s) et sur la pull request (26 s). |
+| E3 | **Vraie** | `backend` en échec, signalé « Required », et fusion bloquée : « Merging is blocked due to failing merge requirements ». |
+
+**Nettoyage** : la pull request n° 13 a été fermée sans fusion (« Closed with unmerged commits »), sa branche supprimée sur GitHub puis en local. Après `git fetch origin --prune`, `origin/main` vaut `45e3f600cc509ce5fe89dd3cf91a1ed71c67f82c`, comme avant l'essai : rien du test n'est entré dans `main`.
+
+**Ce que l'essai ne montre pas** : une poussée directe sur `main`, sa suppression et une poussée forcée n'ont pas été essayées, car si la règle avait échoué l'essai aurait abîmé `main`. Il ne montre pas non plus ce qui arrive quand `frontend` seul est rouge, ni quand seule la vérification du déclencheur `push` ou celle de `pull_request` échoue.
