@@ -626,3 +626,31 @@ Décisions et écarts par rapport au plan :
 - Mesures sur `TraceabilityDev` : dans `013`, lancer d'abord le bloc de contrôles du début, puis les blocs A1, A2 et A3 (plan réel actif) et B1 et B2 (plan désactivé) : attendu un total sans filtre à 1 737 lectures, 47 pour `F001`, 8 pour `F021`, 10 574 pour `RECEIVED`, et la dernière page à 10 424 lectures de `Batch`, sans zone de travail.
 - Par l'API (lancée sur `TraceabilityDev`) : la boucle de 10 appels de [mesures.md](mesures.md), section 9.6 : attendu 10 réponses `OK`, de l'ordre de 0,5 s.
 - Revenir en arrière : relancer la partie `ListBatches` de `005`, puis supprimer l'index `IX_Batch_FarmId` de `trace.Batch`.
+
+## 14. Lot 6 : intégration continue
+
+Statut : **Prévu**. Rien n'est encore prouvé : pour l'instant, cette section ne contient que les hypothèses écrites avant le premier lancement. Les résultats, ce qui est prouvé et ce qui ne l'est pas viendront à la suite, après les lancements.
+
+### 14.1 Hypothèses écrites avant le premier lancement
+
+Écrites le 2026-10-26, avant tout lancement de la CI. Aucune n'a été essayée.
+
+La CI prévue est un fichier de workflow GitHub Actions avec deux tâches :
+
+- `backend` (Linux) : un conteneur SQL Server 2025 en authentification SQL, la base `TraceabilityTest` construite par les scripts `001`, `002`, `004`, `005`, `011` et `017` (sur des copies temporaires où la ligne `:setvar DbName` est remplacée), puis `dotnet build` et `dotnet test Traceability.slnx` ;
+- `frontend` : Node 22, `npm ci`, puis lint, build et tests dans `web/`.
+
+| N° | Prédiction | Fausse si… |
+|---|---|---|
+| C1 | Le conteneur SQL Server 2025 démarre et accepte une connexion en authentification SQL avec le secret, en moins de 60 s. | La tâche expire sans première connexion réussie. |
+| C2 | `sqlcmd` est disponible sur le runner sans installation. | « command not found » à la première utilisation. |
+| C3 | Les scripts `001`, `002`, `004`, `005`, `011` et `017` s'exécutent sans erreur sur une base vierge, avec la ligne `:setvar` remplacée dans une copie temporaire. | Un script renvoie une erreur, ou la base créée n'est pas `TraceabilityTest`. |
+| C4 | `dotnet test Traceability.slnx` donne `total : 163; échec : 0; réussi : 163` (75 unitaires, 88 d'intégration). | Le total diffère de 163, ou un test échoue. |
+| C5 | Côté interface : lint à 0 avertissement, build réussi, 178 tests réussis. | Un de ces trois résultats diffère. |
+| C6 | La tâche `backend` dure moins de 10 minutes. | Elle dépasse 10 minutes. |
+
+Remarques écrites avant le lancement :
+
+- Les chiffres 163 (tests C#) et 178 (tests de l'interface) ont été observés le 2026-10-23 pour le premier et au lot 4b pour le second. Ils n'ont pas été remesurés aujourd'hui.
+- L'image `mssql/server:2025-latest` n'est confirmée que par un listing tiers (releasealert.dev, étiquette datée du 2026-10-20), pas par le registre de Microsoft. Elle sera constatée au premier téléchargement : ce n'est pas une hypothèse.
+- Une hypothèse fausse reste écrite telle quelle. Les résultats s'ajoutent à la suite, et une hypothèse ajoutée après un lancement le dit en toutes lettres.
