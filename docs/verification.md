@@ -309,7 +309,7 @@ Paquets principaux : `Microsoft.Data.SqlClient` 7.1.1, `System.Security.Cryptogr
   ```
 
   Résultats observés : 404 avec `errorCode` 50102, puis deux 400 avec un champ `errors` et sans `errorCode`.
-- Pour voir un test échouer : dans `src/Traceability.Api/Errors/SqlErrorTranslator.cs`, passer le 409 de la famille 502xx à 400, lancer `dotnet test Traceability.slnx` (4 échecs unitaires, 3 d'intégration), puis rétablir la ligne.
+- Pour voir un test échouer : dans `src/Traceability.Api/Errors/SqlErrorTranslator.cs`, passer le 409 de la famille 502xx à 400, lancer `dotnet test Traceability.slnx` (au lot 3b : 4 échecs unitaires et 3 d'intégration ; au 2026-10-26 : 4 et 5, voir 14.12), puis rétablir la ligne.
 
 ## 10. Lot 3c : API pour les lots
 

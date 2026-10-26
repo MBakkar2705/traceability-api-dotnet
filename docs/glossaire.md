@@ -54,6 +54,8 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Authentification Windows** : se connecter à SQL Server avec son compte Windows, sans mot de passe. Utilisée en local.
 
+**Authentification SQL** : se connecter à SQL Server avec un nom d'utilisateur et un mot de passe, au lieu du compte Windows. Ici : la CI se connecte avec l'utilisateur `sa` (le compte administrateur du conteneur) et le mot de passe du secret `MSSQL_SA_PASSWORD` ; le code C# ne change pas, seule la chaîne de connexion diffère.
+
 **`THROW`** : lève une erreur avec un numéro et un message choisis, et arrête la procédure. Ici : `THROW 50301, ...` quand un mouvement saute une étape.
 
 **Session** : une connexion ouverte à SQL Server, identifiée par un numéro (`@@SPID`). Ici : deux fenêtres SSMS sont deux sessions (56 et 55 dans l'essai du verrou).
@@ -142,7 +144,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **CORS** : une règle appliquée par le navigateur : une page web ne peut appeler une API située à une autre adresse que si l'API l'autorise. Ici : configuré en développement seulement, pour l'interface sur `http://localhost:5173`, en `GET` et `POST` seulement, avec l'en-tête `Content-Type` (voir ADR 0007).
 
-**Casse volontaire d'un test** : on change une ligne du code pour vérifier que les tests la voient, puis on la rétablit. Ici : la famille 502xx de 409 à 400 donne 4 échecs unitaires et 3 d'intégration ; le fichier rétabli a la même empreinte que l'original. Au lot 3c : 5 défauts, 4 vus par les tests, 1 non détecté (la conversion d'une heure avec décalage, sur une machine en UTC).
+**Casse volontaire d'un test** : on change une ligne du code pour vérifier que les tests la voient, puis on la rétablit. Ici : au lot 3b, la famille 502xx de 409 à 400 donnait 4 échecs unitaires et 3 d'intégration (4 et 5 le 2026-10-26, avec les tests ajoutés depuis : voir verification.md, section 14.12) ; le fichier rétabli a la même empreinte que l'original. Au lot 3c : 5 défauts, 4 vus par les tests, 1 non détecté (la conversion d'une heure avec décalage, sur une machine en UTC).
 
 **Validation de forme** : l'API vérifie qu'une requête est bien formée avant d'appeler la base (champ présent, longueur, caractères, heure en UTC) et répond 400 sans `errorCode`. Les règles métier restent dans les procédures et répondent avec un `errorCode`. Ici : `FieldErrors`, `FieldLimits` et `CodeRules`.
 
@@ -194,4 +196,22 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **ADR (Architecture Decision Record)** : un court document qui garde la trace d'une décision, de ses alternatives et de ses conséquences. Dans `docs/adr/`.
 
-**CI/CD** : deux pratiques automatiques. La CI (intégration continue) construit le projet et lance les tests à chaque modification : elle est prévue dans ce projet, avec GitHub Actions (lot 6). Le CD (livraison ou déploiement continu) met ensuite la nouvelle version en service : il est hors périmètre de ce projet.
+**CI/CD** : deux pratiques automatiques. La CI (intégration continue) construit le projet et lance les tests à chaque modification : elle est en place dans ce projet avec GitHub Actions (lot 6). Le CD (livraison ou déploiement continu) met ensuite la nouvelle version en service : il est hors périmètre de ce projet.
+
+**Workflow (GitHub Actions)** : un fichier qui dit à GitHub ce qu'il doit exécuter tout seul, et quand. Ici : `.github/workflows/ci.yml`, lancé à chaque push et à chaque pull request.
+
+**Tâche (job) et étape (step)** : une tâche est une suite d'étapes exécutées l'une après l'autre sur la même machine ; une étape est une commande ou une action. Les tâches d'un workflow tournent chacune sur leur machine, en parallèle, sauf si on les enchaîne. Ici : deux tâches, `backend` (installer `sqlcmd`, construire la base, compiler, tester) et `frontend` (installer, lint, build, tester).
+
+**Runner** : la machine virtuelle que GitHub prête pour exécuter une tâche. Elle est neuve à chaque exécution et disparaît ensuite. Ici : `ubuntu-24.04` (Linux), fixé au lieu de `ubuntu-latest`, qui désigne « la dernière version » et change avec le temps.
+
+**Pull request (PR) et brouillon** : une demande de fusionner une branche dans une autre (ici dans `main`). GitHub y montre les changements et lance la CI. Une pull request en brouillon (« draft ») signale qu'elle n'est pas prête : GitHub refuse de la fusionner. Ici : une branche et une pull request par lot (la n° 12 pour le lot 6).
+
+**Conteneur et conteneur de service** : un conteneur est un petit environnement isolé, démarré à partir d'une image (un programme et tout ce dont il a besoin) ; il disparaît à la fin sans rien laisser sur la machine. Un conteneur de service est un conteneur que GitHub démarre à côté de la tâche. Ici : SQL Server 2025 (`mcr.microsoft.com/mssql/server:2025-latest`) ; il est neuf à chaque exécution, donc la base `TraceabilityTest` est reconstruite par les scripts à chaque fois.
+
+**Secret de dépôt** : une valeur confidentielle enregistrée dans les réglages de GitHub. La CI peut la lire, mais elle n'est ni dans le code ni visible dans les journaux (GitHub l'affiche `***`). Ici : `MSSQL_SA_PASSWORD`.
+
+**Protection de branche (ruleset)** : des règles que GitHub applique à une branche. Ici : le ruleset `protect-main` interdit de supprimer `main` ou de réécrire son historique de force, impose une pull request et exige que les vérifications soient vertes pour fusionner (voir l'ADR 0010). C'est un réglage de GitHub, pas un fichier du dépôt.
+
+**Vérification requise (required status check)** : une tâche de la CI dont la réussite est obligatoire pour fusionner. Ici : `backend` et `frontend`. Avec un test en échec, GitHub affiche « Merging is blocked due to failing merge requirements » (voir verification.md, section 14.12).
+
+**Étiquette et digest d'une image** : une étiquette (tag) est un nom pratique donné à une version d'une image, mais son contenu peut changer avec le temps ; le digest est l'empreinte (SHA-256) qui identifie une version précise. Ici : `2025-latest` est une étiquette qui se déplace ; le digest de l'image de la CI est noté dans verification.md, section 14.5.
