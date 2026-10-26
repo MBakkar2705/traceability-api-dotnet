@@ -684,3 +684,34 @@ Hypothèses **ajoutées après le premier lancement**, donc après avoir su que 
 | C9 | La dernière version de `go-sqlcmd` sur GitHub propose une archive Linux amd64 téléchargeable depuis le runner. | Aucun fichier de ce type n'est listé, ou la liste est inaccessible depuis le runner. |
 
 La prochaine étape est une étape de diagnostic dans `ci.yml` qui affiche ces trois sources, sans rien installer.
+
+### 14.3 Deuxième lancement : diagnostic de `sqlcmd`
+
+Deuxième exécution de la CI, sur le commit `9da02bb`, lancée par le push de 09:59 (heure locale = UTC). Elle contenait une étape de diagnostic en lecture seule à la place de la vérification de `sqlcmd`.
+
+Observé dans le journal du diagnostic :
+
+1. Runner : `sqlcmd` est absent du `PATH`, et les dossiers `/opt/mssql-tools18/bin` et `/opt/mssql-tools/bin` n'existent pas.
+2. Conteneur `mssql/server:2025-latest` (identifiant `4f7821024f64`) : `/opt/mssql-tools18/bin` contient `bcp` et `sqlcmd` (491 792 octets, daté du 27 août) ; `/opt/mssql-tools/bin` n'existe pas ; `command -v sqlcmd` n'a rien affiché, donc `sqlcmd` n'est pas dans le `PATH` du conteneur.
+3. `apt` sur le runner : `mssql-tools18` a un candidat `18.7.1.1-1` (versions `18.6.2.1-1`, `18.6.1.1-1` et `18.4.1.1-1` aussi listées), dans `packages.microsoft.com/ubuntu/24.04/prod noble/main amd64` ; `mssql-tools` a un candidat `17.11.1.1-1` ; aucune ligne pour un paquet nommé `sqlcmd`. Aucun des deux n'est installé. Le fichier `/etc/apt/sources.list.d/microsoft-prod.list` mentionne `packages.microsoft.com`.
+4. GitHub : la dernière version de `go-sqlcmd` est `v1.10.0`, avec une archive `sqlcmd-linux-amd64.tar.bz2` (et des fichiers pour Windows, macOS et d'autres architectures Linux). L'API GitHub est accessible depuis le runner.
+
+L'étape suivante, « Wait for SQL Server (60 s at most) », a échoué après 1 min 0 s avec « SQL Server did not answer within 60 s ». Ce n'est pas un résultat sur C1 : `sqlcmd` étant absent du `PATH`, chaque tentative a échoué faute de commande, et l'étape redirige les messages d'erreur vers `/dev/null`, donc la cause n'apparaissait pas dans le journal. Cette étape devra afficher la dernière erreur quand elle échoue.
+
+Résultat des hypothèses de 14.2 :
+
+| N° | Résultat | Observation |
+|---|---|---|
+| C7 | **Fausse** | `/opt/mssql-tools18/bin/sqlcmd` existe dans le conteneur. |
+| C8 | Non fausse | Un candidat `mssql-tools18` existe dans un dépôt déjà configuré sur le runner. L'installation elle-même n'a pas été essayée. |
+| C9 | Non fausse | Une archive Linux amd64 est listée et la liste est accessible depuis le runner. Le téléchargement n'a pas été essayé. |
+
+Toujours non testées : C1 (aucune connexion possible sans `sqlcmd`), C3, C4 et C6. C2 reste fausse.
+
+Hypothèse **ajoutée après le deuxième lancement**, donc après avoir vu le diagnostic :
+
+| N° | Prédiction | Fausse si… |
+|---|---|---|
+| C10 | `sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18` réussit sur le runner en moins de 90 s, et `/opt/mssql-tools18/bin/sqlcmd` existe ensuite. | `apt-get` renvoie une erreur, dépasse 90 s, ou le fichier est absent après l'installation. |
+
+Le conteneur contient aussi `sqlcmd`, donc lancer les scripts depuis le conteneur reste possible. La prochaine étape prévue est l'installation de `mssql-tools18` sur le runner (C10), avec `/opt/mssql-tools18/bin` ajouté au `PATH` des étapes suivantes.
