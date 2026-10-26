@@ -39,10 +39,28 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Check that sqlcmd is available
+      - name: Diagnose where sqlcmd could come from (read only)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          command -v sqlcmd
-          sqlcmd -? 2>&1 | head -n 3 || true
+          echo "=== 1. On the runner"
+          command -v sqlcmd || echo "sqlcmd: absent from the runner PATH"
+          ls -l /opt/mssql-tools18/bin /opt/mssql-tools/bin 2>&1 || true
+
+          echo "=== 2. In the SQL Server container (C7)"
+          docker ps --format '{{.ID}} {{.Image}}' || true
+          CID=$(docker ps --filter "ancestor=mcr.microsoft.com/mssql/server:2025-latest" --quiet | head -n 1)
+          echo "container id: ${CID:-not found}"
+          if [ -n "$CID" ]; then
+            docker exec "$CID" sh -c 'command -v sqlcmd; ls -l /opt/mssql-tools18/bin /opt/mssql-tools/bin' 2>&1 || true
+          fi
+
+          echo "=== 3. apt on the runner (C8)"
+          apt-cache policy mssql-tools18 sqlcmd mssql-tools 2>&1 || true
+          grep -rl "packages.microsoft.com" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || echo "no apt source mentions packages.microsoft.com"
+
+          echo "=== 4. go-sqlcmd latest release on GitHub (C9)"
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/microsoft/go-sqlcmd/releases/latest | grep -E '"(tag_name|browser_download_url)"' || echo "could not read the release list"
 
       - name: Wait for SQL Server (60 s at most)
         run: |
