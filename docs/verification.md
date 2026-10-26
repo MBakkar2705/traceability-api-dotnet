@@ -1,6 +1,6 @@
-# Vérification (lots 1, 2a, 2b, 3a, 3b, 3c, 4a, 4b et 5)
+# Vérification (lots 1, 2a, 2b, 3a, 3b, 3c, 4a, 4b, 5 et 6)
 
-Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12) et l'optimisation de la liste des lots (lot 5, section 13). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
+Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12), l'optimisation de la liste des lots (lot 5, section 13) et l'intégration continue (lot 6, section 14). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
 
 Lot 1 : observé dans SQL Server (instance locale, base `TraceabilityDev`) le 2026-10-18, avec les scripts du dossier `database/`.
 
@@ -629,7 +629,7 @@ Décisions et écarts par rapport au plan :
 
 ## 14. Lot 6 : intégration continue
 
-Statut : **Prévu**. Rien n'est encore prouvé : pour l'instant, cette section ne contient que les hypothèses écrites avant le premier lancement. Les résultats, ce qui est prouvé et ce qui ne l'est pas viendront à la suite, après les lancements.
+Statut : **Terminé** (2026-10-26). Seul ce que liste 14.7 est prouvé ; ce qui ne l'est pas est en 14.8. Les hypothèses sont en 14.1 et 14.11, écrites avant les lancements ; les résultats sont en 14.2 à 14.6, 14.10 et 14.12 ; pour rejouer, voir 14.9.
 
 ### 14.1 Hypothèses écrites avant le premier lancement
 
