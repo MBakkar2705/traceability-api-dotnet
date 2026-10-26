@@ -4,6 +4,7 @@ name: CI
 #   backend  - builds TraceabilityTest from the SQL scripts in a throwaway SQL Server
 #              container (SQL authentication), then runs the C# tests.
 #   frontend - lint, build and tests of the web interface.
+# The runner is pinned to ubuntu-24.04 instead of ubuntu-latest (see docs/verification.md, section 14).
 
 on:
   pull_request:
@@ -14,7 +15,7 @@ permissions:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     services:
@@ -88,7 +89,7 @@ jobs:
         run: dotnet test Traceability.slnx --no-build
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     defaults:
