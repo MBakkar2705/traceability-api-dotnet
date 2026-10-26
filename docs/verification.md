@@ -771,3 +771,64 @@ Versions relevées dans les journaux :
 Tests de l'exécution n° 5 : `backend` 75 réussis sur 75 (123 ms) et 88 réussis sur 88 (1 s), soit 163 tests, 0 échec ; `frontend` 22 fichiers réussis sur 22 et 178 tests réussis sur 178 (Vitest 12,44 s).
 
 Le moteur de la CI est donc une version plus récente que celle de la machine de développement (17.0.5035.5 contre 17.0.1145.4) : les tests passent sur les deux. L'étiquette `2025-latest` se déplace avec le temps : le digest ci-dessus identifie l'image de cette exécution.
+
+### 14.6 Sixième et septième exécutions : push de documentation et pull request
+
+Écrit le 2026-10-26 après observation. Aucune hypothèse n'avait été écrite avant pour le déclenchement par pull request : ce qui suit est un constat, pas une hypothèse confirmée après coup. Statuts et durées des exécutions : page publique « Actions » du dépôt ; détail des étapes : journaux du run n° 7 copiés par Mohamed.
+
+**Exécution n° 6**, commit `7615535f7140884326366bb6948f4c1b2621fe09` (`7615535`), lancée par un push (modification de ce fichier seulement). Statut : réussie, 1 min 4 s. Le détail de ses étapes n'a pas été relevé.
+
+**Exécution n° 7**, lancée par la pull request n° 12 « Add the continuous integration (lot 6) » : `feature/lot-6-ci` vers `main`, 10 commits, **en brouillon** au moment de l'exécution. Statut : réussie, 1 min 3 s. Le workflow n'a aucune condition sur l'état « brouillon » : il s'est donc exécuté sur une pull request en brouillon.
+
+Commit testé par l'exécution n° 7 :
+
+- Le journal de l'étape « Check out the repository » (tâche `backend`) récupère le commit `13f2078ff3156542fad0e60dab80cb32cfc9e581` (`13f2078`), avec `fetch --depth=1`, sous le nom `pull/12/merge` ; `git log -1 --format=%H` affiche le même hash.
+- Relevé en local le 2026-10-26 vers 10:55 (`git fetch origin "refs/pull/12/merge"` puis `git log -1 --format="%H %P" FETCH_HEAD`) : `13f2078` a deux parents, `45e3f600cc509ce5fe89dd3cf91a1ed71c67f82c` et `7615535f7140884326366bb6948f4c1b2621fe09`.
+- Relevé vers 10:57 (`git fetch origin main` puis `git rev-parse origin/main`) : la pointe de `main` est `45e3f600cc509ce5fe89dd3cf91a1ed71c67f82c`, le premier parent.
+- Une pull request teste donc la fusion temporaire de la branche avec `main`, pas le dernier commit de la branche seul. Ce commit de fusion est calculé par GitHub ; il n'est pas dans l'historique de la branche.
+
+Tests de l'exécution n° 7 :
+
+- `backend`, étape Test : 75 réussis sur 75 (181 ms) et 88 réussis sur 88 (1 s), soit 163 tests, 0 échec.
+- `frontend`, étape Test : 22 fichiers réussis sur 22, 178 tests réussis sur 178 (Vitest 10,14 s, démarré à 10:46:54). Vitest affiche un conseil (isolation : environ 4,80 s gagnées avec `isolate: false`) ; il n'est pas appliqué.
+- Le journal montre `SQLCMDPASSWORD: ***` : le secret est masqué.
+- Les annotations de cette exécution n'ont pas été relevées.
+
+Durées des exécutions réussies (page « Actions ») : n° 3 1 min 6 s, n° 4 1 min 12 s, n° 5 56 s, n° 6 1 min 4 s, n° 7 1 min 3 s. Exécutions en échec : n° 1 (33 s) et n° 2 (1 min 34 s), voir 14.2 et 14.3.
+
+### 14.7 Ce qui est prouvé
+
+- **Déclenchement** : la CI se lance à chaque push de la branche (exécutions n° 1 à 6) et sur une pull request (n° 7), y compris en brouillon.
+- **Commit testé en pull request** : la fusion de la branche avec `main` (`13f2078`, parents `45e3f60` et `7615535`).
+- **Backend sous Linux** : un conteneur SQL Server 2025 en authentification SQL, la base `TraceabilityTest` construite par les scripts `001`, `002`, `004`, `005`, `011` et `017`, puis 163 tests réussis (75 unitaires et 88 d'intégration). Observé dans les journaux des exécutions n° 3, 4, 5 et 7. Le code C# n'a pas changé : la méthode d'authentification dépend seulement du contenu de la chaîne de connexion.
+- **Frontend** : lint à 0 avertissement, build réussi et 178 tests réussis (22 fichiers) sous Node 22.
+- **Durée** : de 56 s à 1 min 12 s pour les exécutions réussies, très en dessous des limites (20 min pour `backend`, 15 min pour `frontend`).
+- **Secret** : `MSSQL_SA_PASSWORD` est lu depuis les secrets du dépôt et apparaît masqué (`***`) dans le journal de l'exécution n° 7.
+- **Une CI peut être rouge** : les exécutions n° 1 et 2 ont échoué, pour une cause d'environnement (`sqlcmd` absent du runner), pas à cause d'un test.
+- **Versions** : outils, moteur SQL Server et image du conteneur relevés au 14.5 (digest de l'image inclus).
+
+### 14.8 Ce qui n'est pas prouvé
+
+- **Un test en échec fait passer la CI au rouge** : aucun test n'a été fait échouer dans la CI. Les exécutions rouges (n° 1 et 2) ont une autre cause. Le comportement attendu (code de sortie non nul de `dotnet test`, étape en échec, tâche rouge) n'est pas observé.
+- **Les scripts `006` et `012`** (données d'exemple) ne sont pas exécutés par la CI : leur effet n'y est pas vérifié.
+- **L'authentification Windows** : la CI ne prouve que l'authentification SQL. Le chemin utilisé en local (authentification Windows) n'est pas couvert.
+- **La migration d'`ubuntu-latest`** (annoncée vers Ubuntu 26 à partir du 2026-10-19) : le runner est fixé à `ubuntu-24.04`, mais la différence n'a pas été observée.
+- **L'étiquette `2025-latest`** : elle se déplace avec le temps ; seule l'image des exécutions relevées (digest au 14.5) est connue. Une version plus récente du moteur peut changer un résultat.
+- **Une pull request venant d'un fork** : selon la documentation de GitHub (« secrets are not passed to the runner when a workflow is triggered from a forked repository »), le secret ne serait pas transmis et la tâche `backend` échouerait. Non essayé.
+- **Une CI exigée avant fusion** : je n'ai pas vérifié si une règle de protection de `main` exige que la CI soit verte.
+- **L'effet du cache npm** : la durée avec et sans cache n'est pas mesurée.
+- **Les annotations** de l'exécution n° 7 n'ont pas été relevées, et le détail des étapes de l'exécution n° 6 non plus.
+- **Seules les exécutions du 2026-10-26 sont observées** : rien n'est dit de leur comportement à une autre date.
+
+### 14.9 Rejouer la vérification
+
+- Sur GitHub, onglet « Actions » : ouvrir une exécution puis « Re-run all jobs », ou pousser un nouveau commit sur la branche. Résultat attendu : les deux tâches vertes en environ 1 minute ; étape Test du `backend` : 75 et 88 réussis ; étape Test du `frontend` : 22 fichiers et 178 tests réussis.
+- Pour voir le commit de fusion d'une pull request (remplacer 12 par son numéro), dans PowerShell, depuis le dépôt :
+
+  ```powershell
+  git fetch origin "refs/pull/12/merge"
+  git log -1 --format="%H %P" FETCH_HEAD
+  ```
+
+  Résultat observé : le hash `13f2078…` suivi de ses deux parents. Ce hash est celui relevé le 2026-10-26 : je n'ai pas vérifié à quel moment GitHub recalcule la fusion, ni si « Re-run all jobs » reteste le même commit de fusion ou un nouveau.
+- Pour comparer avec la machine de développement : `dotnet test Traceability.slnx` (résumé attendu `total : 163; échec : 0; réussi : 163`) et, dans `web/`, `npm run lint`, `npm run build`, `npm test`.
