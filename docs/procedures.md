@@ -1,6 +1,6 @@
 # Procédures stockées
 
-Ce document décrit ce que les 10 procédures du schéma `trace` doivent faire : leurs paramètres, leurs contrôles et leurs erreurs. C'est le contrat sur lequel s'appuieront les scripts, les tests et, plus tard, l'API.
+Ce document décrit ce que les 10 procédures du schéma `trace` doivent faire : leurs paramètres, leurs contrôles et leurs erreurs. C'est le contrat sur lequel s'appuient les scripts, les tests et l'API.
 
 Les règles métier sont dans [fonctionnel.md](fonctionnel.md), le modèle dans [modele-de-donnees.md](modele-de-donnees.md). L'avancement est dans le [README](../README.md) ; les preuves observées sont dans [verification.md](verification.md).
 
@@ -182,16 +182,18 @@ Les procédures s'ajoutent aux contraintes du lot 1, elles ne les remplacent pas
 
 ## 4. Les erreurs
 
-Les numéros de 50000 à 50099 sont réservés aux gardes des scripts. Les scripts d'inspection (`003`, `900`) gardent `RAISERROR`, choix du lot 1. Gardes utilisées :
+Les numéros de 50000 à 50099 sont réservés aux gardes des scripts. Les scripts `003`, `004`, `005`, `006`, `011`, `012`, `017` et `900` gardent `RAISERROR` (choix du lot 1 pour `003` et `900`). Gardes utilisées :
 
 | N° | Sens | Script |
 |---|---|---|
-| 50001 | Mauvaise base de données | `002`, `007`, `008`, `009`, `010` |
+| 50001 | Mauvaise base de données | `002`, `007`, `008`, `009`, `010`, `013`, `014`, `015`, `016` |
 | 50002 | `@TargetLots` hors de 1 à 1 000 000 | `007` |
-| 50003 | Contenu inattendu : `007` refuse une base qui contient autre chose qu'un début de son jeu de données ; `008` refuse une base sans lot ; `009` exige le jeu complet de 1 000 000 de lots | `007`, `008`, `009` |
+| 50003 | Contenu inattendu : `007` refuse une base qui contient autre chose qu'un début de son jeu de données ; `008` refuse une base sans lot ; `009` et `013` à `016` exigent le jeu complet de 1 000 000 de lots | `007`, `008`, `009`, `013` à `016` |
 | 50004 | Fermes ou stations de référence différentes de celles attendues | `007` |
 | 50005 | Espace disque libre sous la limite `@MinFreeGB` | `007` |
-| 50006 | Procédures `GetBatch` ou `ListBatches` introuvables (lancer `004` et `005`) | `009` |
+| 50006 | Procédures introuvables : `009` cherche `GetBatch` et `ListBatches` (lancer `004` et `005`) ; `013` à `016` signalent « procédure introuvable » (lancer `005`) | `009`, `013` à `016` |
+| 50007 | Une transaction est déjà ouverte dans la fenêtre | `016` |
+| 50008 | Ferme `F001` ou station ayant la fonction `RECEPTION` absente | `016` |
 
 | N° | Famille | Sens | Message (anglais, exemple) | Levée par |
 |---|---|---|---|---|
