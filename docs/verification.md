@@ -1,4 +1,4 @@
-# Vérification (lots 1, 2a, 2b, 3a, 3b, 3c, 4a, 4b, 5 et 6)
+# Vérification
 
 Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12), l'optimisation de la liste des lots (lot 5, section 13) et l'intégration continue (lot 6, section 14). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
 
@@ -188,6 +188,8 @@ Observé le 2026-10-19 dans SQL Server 2025 Developer (17.0.1145.4), base `Trace
 
 Observé dans SQL Server (instance locale 17.0) le 2026-10-20, sur la base `TraceabilityTest` sauf mention contraire, avec SSMS 22. Le contrat des procédures est dans [procedures.md](procedures.md), sections 2.7 à 2.10. Les données de test sont inventées.
 
+Pourquoi un lot 3a : l'étude de l'API .NET a montré que le SQL manquait de trois procédures de lecture (`ListFarms`, `ListStations` et `GetStation`) et d'un total pour la liste des lots (`ListBatches`). Elles forment le lot 3a, avant l'API.
+
 ### 8.1 Les scripts
 
 | Script | Rôle |
@@ -241,6 +243,8 @@ Observé dans SQL Server (instance locale 17.0) le 2026-10-20, sur la base `Trac
 ## 9. Lot 3b : API pour les fermes et les stations
 
 Observé le 2026-10-20 sous Windows 11, avec le SDK .NET 10.0.402 (exécution 10.0.13), SQL Server 2025 (instance locale 17.0) et xUnit 2.9.3. Les tests d'intégration tournent sur la base `TraceabilityTest`. Les essais à la main (section 9.2), en lecture seule, ont été faits sur `TraceabilityDev`. Les routes sont décrites dans le [README](../README.md), les erreurs des procédures dans [procedures.md](procedures.md). Les données de test sont inventées.
+
+Découpage de l'API : le lot 3 a été coupé une seconde fois, par ressource. Les fermes et les stations forment le lot 3b (cette section), les lots forment le lot 3c (section 10).
 
 ### 9.1 Ce qui a été construit
 
