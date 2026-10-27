@@ -4,7 +4,7 @@ Statut : **Accepté** (2026-10-26)
 
 ## Contexte
 
-Le lot 6 a mis en place la CI ([ADR 0009](0009-integration-continue-github-actions.md)). Une CI qui n'empêche rien reste une information : le 2026-10-26, avant ce réglage, la page d'accueil du dépôt affichait « Your main branch isn't protected » et la page Settings, Branches ne listait aucune règle. Rien n'empêchait donc de pousser directement sur `main`, de la supprimer, de réécrire son historique avec une poussée forcée, ni de fusionner une pull request dont la CI est rouge. Seules la discipline et le `CLAUDE.md` (« un lot = une branche = une PR ») s'y opposaient. Mohamed voulait se rapprocher d'une pratique d'entreprise, où la branche principale est protégée.
+Le lot 6 a mis en place la CI ([ADR 0009](0009-integration-continue-github-actions.md)). Une CI qui n'empêche rien reste une information : le 2026-10-26, avant ce réglage, la page d'accueil du dépôt affichait « Your main branch isn't protected » et la page Settings, Branches ne listait aucune règle. Rien n'empêchait donc de pousser directement sur `main`, de la supprimer, de réécrire son historique avec une poussée forcée, ni de fusionner une pull request dont la CI est rouge. Seules la discipline et le `CLAUDE.md` (« un lot = une branche = une PR ») s'y opposaient. Le but était de se rapprocher d'une pratique d'entreprise, où la branche principale est protégée.
 
 ## Décision
 
@@ -21,7 +21,7 @@ C'est un réglage du dépôt sur GitHub : il n'est pas dans les fichiers du dép
 
 - **Ne pas protéger `main`** (la situation d'avant). Seule la discipline empêcherait de fusionner une CI rouge.
 - **Une règle « classique » de protection de branche** au lieu d'un ruleset. La page de réglages de GitHub indique que les rulesets sont la méthode recommandée et que les règles classiques offrent moins de possibilités. Non essayée.
-- **Exiger une ou plusieurs approbations de relecture.** Écarté : le projet est mené seul, et selon GitHub l'auteur d'une pull request ne peut pas approuver la sienne. La relecture reste celle que décrit le `CLAUDE.md` : Mohamed relit, commite et fusionne.
+- **Exiger une ou plusieurs approbations de relecture.** Écarté : le projet est mené seul, et selon GitHub l'auteur d'une pull request ne peut pas approuver la sienne. La relecture reste celle que décrit le `CLAUDE.md` : la personne qui mène le projet relit, commite et fusionne.
 - **Exiger « branche à jour avant fusion ».** Écarté : la CI d'une pull request teste déjà la fusion avec `main` ([verification.md](../verification.md) 14.6) ; l'option ajouterait surtout des relances.
 - **Exiger un historique linéaire ou limiter les modes de fusion.** Écarté : les onze pull requests précédentes ont été fusionnées avec un commit de fusion, et les hashes cités dans la documentation restent ainsi dans l'historique de `main`.
 - **Exempter le propriétaire du dépôt** (bypass). Écarté : il pourrait alors contourner sa propre règle.

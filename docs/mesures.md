@@ -291,6 +291,7 @@ Décision : le total est gardé tel quel dans `ListBatches`, pour que les trois 
 - Le résultat s'énonce « mesuré sur 1 million de lots inventés », pas « valable en production ».
 - Les index ne sont mesurés que sur les recherches listées ci-dessus. Leur effet sur la vitesse des écritures (`CreateBatch`, `AddMovement`) n'est pas mesuré, sauf si une section ajoutée plus tard le dit.
 - Le total de `ListBatches` (section 4.3) n'a été mesuré qu'une fois, sans hypothèse écrite avant, sans examiner son plan, et aucun index n'a été essayé pour lui.
+  - Note du 2026-10-27, ajoutée après coup : traité au lot 5, sections 6 à 9.6 : le total est mesuré avec un index en 9.3 et 9.4, puis après la modification en 9.6.
 
 ## 6. Lot 5 : le total des listes et le bouton « Fin » (hypothèses, 2026-10-23)
 
@@ -396,6 +397,8 @@ Première page (B2), temps écoulé de l'appel entier : 218 ms, 120 ms, 262 ms, 
 ### 7.6 Ce qui n'est pas encore fait
 
 Le test de l'ordre des appels (F1), la lecture du plan réellement utilisé par l'API (partie C du script), l'essai d'un index pour le total (T2), la décision, et le coût en écriture d'un index (section 5).
+
+Note du 2026-10-27, ajoutée après coup : F1 a été fait en 9.1, T2 en 9.3, le coût en écriture en 9.4 et la décision en 9.5.
 
 ## 8. Lot 5 : la dernière page sans parallélisme (hypothèse G1, 2026-10-23)
 
@@ -828,6 +831,8 @@ L'index `IX_Batch_FarmId` n'est plus dans `TraceabilityDev`. Il sera recréé pa
 - **Le total :** option B, c'est-à-dire `OPTION (RECOMPILE)` sur le total avec l'index `IX_Batch_FarmId` (47 à 48 pages et environ 4 ms pour `F001`, 1 740 pages sans filtre ; coût à l'écriture : environ 0,12 ms et 118 octets de journal par `CreateBatch`, voir C1).
 - **« Fin » :** tester d'abord l'option C (paginer sur `Batch` avant de joindre `Farm`, hypothèse G2 ci-dessous), avec l'option B (`OPTION (MAXDOP 1)` sur la requête de la page) en repli.
 - Rien n'est modifié dans la procédure, l'API ni l'interface à ce stade.
+
+Note du 2026-10-27, ajoutée après coup : ces décisions ont été confirmées dans l'[ADR 0008](adr/0008-listbatches-page-avant-jointure-total-recompile.md), accepté le 2026-10-23.
 
 **Ce qui motive G2 (faits)**
 

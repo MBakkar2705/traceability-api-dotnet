@@ -2,6 +2,8 @@
 
 Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12), l'optimisation de la liste des lots (lot 5, section 13) et l'intégration continue (lot 6, section 14). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
 
+Chaque section « Ce qui n'est pas prouvé » date de son lot. Un point peut avoir été réglé depuis : la preuve est alors dans la section « Ce qui est prouvé » du lot concerné. Le texte d'origine n'est pas modifié : pour les points réglés repérés le 2026-10-27, une note datée renvoie à la preuve.
+
 Lot 1 : observé dans SQL Server (instance locale, base `TraceabilityDev`) le 2026-10-18, avec les scripts du dossier `database/`.
 
 ## 1. Les scripts
@@ -126,6 +128,7 @@ Ce que cela montre : le second appel attend, relit le lot après la validation d
 - Les codes `NULL` (traités comme vides, 50400) : les tests utilisent des espaces, pas `NULL`.
 - Les types en minuscules : seul `AddStationCapability` est testé (test 8), pas `AddMovement`.
 - `ListBatches` : les deux filtres combinés et l'appel sans filtre ne sont pas testés. La lenteur sur un grand volume a été mesurée au lot 2b (section 7 et [mesures.md](mesures.md)).
+  - Note du 2026-10-27, ajoutée après coup : au lot 5, l'ancienne et la nouvelle requête de la page ont rendu les mêmes lignes sur 6 cas, dont « statut et ferme » et la page sans filtre (section 13.2). Ce ne sont pas des tests de `006`.
 - `GetBatch` : le contenu n'est vérifié qu'à l'œil (test 30).
 - La suppression de `TraceabilityTest` par `900` n'a pas été essayée (seulement sur `TraceabilityDev`).
 - Un seul environnement (SQL Server 2025 Developer sur le poste de développement).
@@ -231,6 +234,7 @@ Pourquoi un lot 3a : l'étude de l'API .NET a montré que le SQL manquait de tro
 - **La lecture en deux requêtes sans verrou** : le cas où une ligne est ajoutée entre la page et le total, ou entre la station et ses fonctions, n'a pas été essayé.
 - **Le contenu des tests à l'œil** (6 dans `012`, 4 dans `006`) n'est pas contrôlé par le script, seulement le nombre et la forme des tableaux. Le test 30 de `006` (`GetBatch`) n'a pas été revu à l'œil lors du passage du 2026-10-20 : la procédure n'a pas changé.
 - **Le coût du total de `ListBatches`** : une seule mesure, plan non examiné, aucune optimisation essayée (voir [mesures.md](mesures.md), sections 4.3 et 5).
+  - Note du 2026-10-27, ajoutée après coup : traité au lot 5 : preuves en section 13, mesures dans [mesures.md](mesures.md) (sections 6 à 9.6), décision dans l'[ADR 0008](adr/0008-listbatches-page-avant-jointure-total-recompile.md).
 
 ### 8.4 Rejouer la vérification
 
@@ -286,12 +290,15 @@ Paquets principaux : `Microsoft.Data.SqlClient` 7.1.1, `System.Security.Cryptogr
 ### 9.3 Ce qui n'est pas prouvé
 
 - **Les routes des lots** (lot 3c) : les erreurs 50100, 50101, 50300 à 50303, 50401 et 50403 n'ont jamais traversé l'API. La règle « 503xx donne 422 » n'est testée qu'en unitaire.
+  - Note du 2026-10-27, ajoutée après coup : traité au lot 3c, section 10.2.
 - **Deux requêtes qui créent le même code au même moment** : l'erreur 2627 n'est prouvée que par un `INSERT` direct, car les procédures vérifient le code avant d'insérer.
 - **L'erreur 500** : elle n'est testée qu'en unitaire (U2). Aucune panne SQL n'a traversé l'API, et l'écriture de la vraie erreur dans le journal du serveur n'a pas été observée.
 - **Longueurs** : un code trop long est refusé par l'API (testé en unitaire), mais pas par un test HTTP. La longueur du nom et de la région (100) n'est contrôlée ni par l'API ni par un test : le comportement avec un texte plus long n'est pas observé.
 - **Cas non testés par HTTP** : une page au-delà de la fin pour les stations ; les tailles de page 1 et 1 000 ; la casse des codes.
 - **Swagger UI** : il ne documente ni les erreurs possibles ni des descriptions des routes (prévu au lot 3c), et affiche « integer | string ($int32) » comme type de `pageNumber` et `pageSize`, sans que j'en aie cherché la cause.
+  - Note du 2026-10-27, ajoutée après coup : documenté au lot 3c (section 10.2) ; ce qui reste ouvert est en 10.3.
 - **CORS** : non configuré, aucun frontend n'a été essayé.
+  - Note du 2026-10-27, ajoutée après coup : réglé au lot 4a (politique CORS en 11.1, tests en 11.2, interface essayée dans Edge) ; `POST` ajouté au lot 4b (section 12). Voir l'[ADR 0007](adr/0007-cors-dans-l-api.md).
 - **En-tête `Location`** : seul son suffixe `/stations/{code}` est testé, pas sa forme complète (absolue ou relative).
 - **Configuration** : la chaîne de connexion est lue à la première utilisation. Si `ConnectionStrings__Default` manque, l'erreur n'apparaît qu'à la première requête qui touche la base : non essayé.
 - **Vitesse et charge** : rien n'est mesuré côté API, ni pour `ListFarms` et `ListStations` sur un grand volume.
@@ -382,8 +389,10 @@ Décisions et écarts par rapport au plan :
 - **Autres formats** : une quantité négative par HTTP, une heure avec des fractions de seconde, un champ `null` explicite.
 - **En-tête `Location`** : seul son suffixe est testé, pas sa forme complète.
 - **Vitesse** : `GET /batches` n'a pas été essayée sur `TraceabilityDev` (1 000 000 de lots) et le coût du total n'a pas été remesuré par l'API (voir [mesures.md](mesures.md), section 4.3).
+  - Note du 2026-10-27, ajoutée après coup : au lot 5, la dernière page a été appelée 10 fois par l'API, de 0,45 à 1,59 s (section 13.2) ; le coût du total a été mesuré dans SSMS ([mesures.md](mesures.md), sections 9.4 et 9.6).
 - **Données** : `TraceabilityDev` a été relue au début de la session (200 fermes, 30 stations, 40 fonctions, 1 000 000 de lots, 3 250 000 mouvements) et n'a pas été recomptée à la fin ; rien n'y a été écrit volontairement. `TraceabilityTest` était vide au début de la session et est vidée par les tests.
 - **Reportés de la section 9.3** : CORS non configuré et aucun frontend ; chaîne de connexion lue à la première utilisation ; .NET 10 sur Windows 11 22H2 ; les deux garde-fous des tests jamais déclenchés (50099 et refus de démarrer de la fixture) ; aucune mesure de charge côté API.
+  - Note du 2026-10-27, ajoutée après coup : CORS et interface : réglés au lot 4a (section 11).
 
 ### 10.4 Rejouer la vérification
 
@@ -540,6 +549,7 @@ Décisions et écarts par rapport au plan :
 - **Écriture simultanée** : deux utilisateurs qui ajoutent un mouvement au même lot en même temps ne sont pas essayés (le verrou est prouvé en SQL, section 6).
 - **En-tête `Location`** : l'interface ne le lit pas ; elle ouvre la page du lot ou de la station avec le code saisi. Il n'est pas vérifié dans un navigateur.
 - **« Fin » de la liste des lots** : lent, parfois en erreur (section 11.3) ; non revu, c'est l'objet du lot 5.
+  - Note du 2026-10-27, ajoutée après coup : traité au lot 5, section 13.2 ; ce qui reste non prouvé est en 13.3.
 - **Durée des tests de l'interface** : la suite a pris de 28 s à 143 s selon les exécutions, sans cause identifiée ; un test de `StationsPage` a dépassé une fois 5 s pendant une exécution lente, cause non prouvée.
 - **Journal de l'API** : il écrit toujours un appel annulé comme une erreur grave (observé au lot 4a) ; rien n'a été changé.
 - **Casse volontaire** : 6 défauts seulement. Un test peut ne pas voir un autre défaut.
@@ -778,7 +788,7 @@ Le moteur de la CI est donc une version plus récente que celle de la machine de
 
 ### 14.6 Sixième et septième exécutions : push de documentation et pull request
 
-Écrit le 2026-10-26 après observation. Aucune hypothèse n'avait été écrite avant pour le déclenchement par pull request : ce qui suit est un constat, pas une hypothèse confirmée après coup. Statuts et durées des exécutions : page publique « Actions » du dépôt ; détail des étapes : journaux du run n° 7 copiés par Mohamed.
+Écrit le 2026-10-26 après observation. Aucune hypothèse n'avait été écrite avant pour le déclenchement par pull request : ce qui suit est un constat, pas une hypothèse confirmée après coup. Statuts et durées des exécutions : page publique « Actions » du dépôt ; détail des étapes : journaux copiés du run n° 7.
 
 **Exécution n° 6**, commit `7615535f7140884326366bb6948f4c1b2621fe09` (`7615535`), lancée par un push (modification de ce fichier seulement). Statut : réussie, 1 min 4 s. Le détail de ses étapes n'a pas été relevé.
 
@@ -842,7 +852,7 @@ Durées des exécutions réussies (page « Actions ») : n° 3 1 min 6 s, n° 4 
 
 ### 14.10 Protection de `main` : constat
 
-Observé le 2026-10-26 sur GitHub, par captures d'écran de Mohamed. Décision et alternatives : [ADR 0010](adr/0010-protection-de-main-par-ruleset.md).
+Observé le 2026-10-26 sur GitHub, par captures d'écran. Décision et alternatives : [ADR 0010](adr/0010-protection-de-main-par-ruleset.md).
 
 **Avant** (vers 19:48 et 19:52) : la page d'accueil du dépôt affichait « Your main branch isn't protected », et la page Settings, Branches (« Branch protection rules ») ne listait aucune règle. Elle proposait « Add branch ruleset » et « Add classic branch protection rule », en indiquant que les rulesets sont la méthode recommandée.
 
@@ -879,9 +889,9 @@ Ce que ce constat montre : la règle existe, elle est active sur `main`, et la p
 
 **Méthode prévue** :
 
-1. Mohamed crée la branche jetable `test/ci-red-check` à partir de `feature/lot-6-ci`, une fois les commits de la documentation poussés.
+1. La branche jetable `test/ci-red-check` est créée à partir de `feature/lot-6-ci`, une fois les commits de la documentation poussés.
 2. Une seule ligne change : dans `src/Traceability.Api/Errors/SqlErrorTranslator.cs`, la ligne qui traduit la famille d'erreurs 502xx passe de 409 à 400. C'est le même défaut que la « casse volontaire » du lot 3b (section 9.2).
-3. Mohamed commite et pousse, puis ouvre une pull request de cette branche vers `main`, **pas en brouillon** : le message « Draft pull requests cannot be merged » masquerait l'effet de la règle. Cette pull request affichera aussi les commits de `feature/lot-6-ci`, puisque la branche en part.
+3. Le changement est commité et poussé, puis une pull request de cette branche vers `main` est ouverte, **pas en brouillon** : le message « Draft pull requests cannot be merged » masquerait l'effet de la règle. Cette pull request affichera aussi les commits de `feature/lot-6-ci`, puisque la branche en part.
 4. On regarde l'onglet Actions (exécutions `push` et `pull_request`) et le cadre de fusion de la pull request.
 5. La pull request n'est **jamais fusionnée** : elle est fermée sans fusion, la branche est supprimée, et on vérifie que `main` n'a pas bougé.
 
@@ -897,7 +907,7 @@ Résultats : voir 14.12.
 
 ### 14.12 Essai du test cassé : résultats
 
-Observé le 2026-10-26 entre 20:59 et 21:12 (heure locale = UTC), par les captures d'écran et les journaux copiés par Mohamed. Les hypothèses E1 à E3 sont écrites en 14.11 (commit `2edf254`), avant l'essai ; elles ne sont pas modifiées.
+Observé le 2026-10-26 entre 20:59 et 21:12 (heure locale = UTC), par les captures d'écran et les journaux copiés. Les hypothèses E1 à E3 sont écrites en 14.11 (commit `2edf254`), avant l'essai ; elles ne sont pas modifiées.
 
 **Ce qui a été fait** : la branche `test/ci-red-check`, créée à partir de `feature/lot-6-ci`, ne contient qu'un commit de plus, `2b53981` (« Break the 502xx status on purpose to see the CI fail »), poussé vers 20:59. Il change la ligne 34 de `SqlErrorTranslator.cs` : `>= 50200 and <= 50299 => new ApiError(409, …)` devient `new ApiError(400, …)`. Les lignes 49, 54 et 59 (doublons détectés par la base, aussi en 409) ne sont pas touchées.
 
