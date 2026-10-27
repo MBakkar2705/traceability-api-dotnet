@@ -606,6 +606,7 @@ Décisions et écarts par rapport au plan :
 - **Par l'API** : 10 appels de suite de la dernière page, tous réussis, de 0,45 à 1,59 s (moyenne 0,65 s), avec un budget de mémoire des requêtes de 5 Mo avant et après la série. Avant le lot 5 : de 1,9 à 11,7 s quand l'appel réussissait (section 11.3), et 3 échecs sur 3 après environ 30 s au début de la séance du 2026-10-23 (erreur SQL -2, délai).
 - **Coûts mesurés** : `IX_Batch_FarmId` pèse 1 737 pages (13,57 Mo) ; `CreateBatch` passe de 0,16 à 0,28 ms par appel et de 632 à 750 octets de journal (500 appels par série, 5 séries, dans SSMS) ; refaire le plan du total coûte environ 4 ms par appel (mesure C2b, 100 appels par tour, 5 tours, deux lancements).
 - **Observations sur la mémoire** : pendant un échec de « Fin » par l'API, la requête attendait sa mémoire (`RESOURCE_SEMAPHORE`, 0 Ko accordé, depuis 9,7 s). Dans SSMS, une requête a attendu environ 15 minutes quand le budget de mémoire des requêtes était de 5 Mo, puis a repris une minute après l'arrêt d'Edge (budget de 5 à 1 017 Mo).
+- **Observation hors protocole du soir du 2026-10-23** (une seule, sans essai témoin ; [mesures.md](mesures.md), section 9.7) : avec un budget de mémoire des requêtes de 5 Mo, l'ancienne requête de la dernière page a attendu sa mémoire pendant 118 s (0 Ko accordé), alors que la nouvelle procédure répondait à l'interface en 443 ms (« Début ») et 684 ms (« Fin »). Dans l'interface, « Fin » affiche la dernière page (66 667 sur 66 667, `LOT-1000000` en dernier) en 717, 769 et 684 ms.
 - **Hypothèses contredites ou non confirmées** (elles sont écrites telles quelles dans [mesures.md](mesures.md)) :
 
   | Hypothèse | Verdict |
@@ -622,6 +623,7 @@ Décisions et écarts par rapport au plan :
 ### 13.3 Ce qui n'est pas prouvé
 
 - **La correction des échecs de « Fin » par l'API** : ils ne se reproduisaient pas à volonté (3 échecs sur 3 au début de la séance, puis 7 réussites avant tout changement). Les 10 appels réussis après `017` sont cohérents avec une correction mais ne la prouvent pas, et l'ancienne version n'a pas été remesurée dans le même état de mémoire.
+  - Note du 2026-10-27, ajoutée après coup : l'ancienne version a été remesurée le 2026-10-23 au soir avec un budget de mémoire de 5 Mo : elle a attendu sa mémoire pendant 118 s, pendant que la nouvelle répondait en moins d'une seconde (une seule observation, sans essai témoin ; [mesures.md](mesures.md), section 9.7). La correction des échecs d'origine reste non prouvée.
 - **La cause des échecs** : une attente de mémoire est plausible (vue pendant un échec, à 9,7 s ; pas lue jusqu'à la coupure à 30 s), et la mémoire de la machine l'est aussi (une seule observation, sans essai témoin : l'arrêt d'Edge a coïncidé avec un budget qui passe de 5 à 1 017 Mo).
 - **La demande de mémoire du nouveau plan** : non lue. On suppose qu'elle est petite faute de tri.
 - **Le coût en écriture** : mesuré seulement par `CreateBatch` dans SSMS, deux mesures séparées de 27 minutes et non alternées ; pas dans l'application, pas sous charge.
@@ -629,6 +631,7 @@ Décisions et écarts par rapport au plan :
 - **La dernière page lit toujours toute la table** (10 424 pages) : la pagination par `OFFSET` reste linéaire ; la pagination par clé n'est pas essayée.
 - **Autres écritures du total et de la page** : les variantes par branches `IF` et le SQL dynamique ne sont pas mesurés ; les coûts avec filtre ne sont mesurés que pour la page 1 (les lignes des pages avec filtre ont été comparées, pas leur coût).
 - **L'interface web** n'a pas été essayée dans le navigateur avec la nouvelle procédure (le bouton « Fin » n'a été exercé que par l'API).
+  - Note du 2026-10-27, ajoutée après coup : essayée dans Edge le 2026-10-23 au soir, hors protocole : « Fin » affiche la dernière page en 717, 769 et 684 ms (statut 200) ; voir [mesures.md](mesures.md), section 9.7.
 - **Une seule machine** (environ 8 Go, plus de 90 % de mémoire utilisée pendant la séance), des données inventées, et des durées qui varient selon l'état de la machine : les lectures de pages sont la mesure de référence.
 
 ### 13.4 Rejouer la vérification

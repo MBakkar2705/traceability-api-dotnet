@@ -1014,3 +1014,30 @@ Mémoire disponible pour les requêtes (pool 2), lue avant et après la série :
 **Précision sur H5 (2026-10-23)**
 
 Le contexte de H5, écrit plus haut avant les mesures, donne « 8 à 12 s avant quand l'appel réussissait ». Les réussites de l'API notées avant le lot 5 vont en réalité de 1,9 s à 11,7 s ([verification.md](verification.md), section 11.3 : 8,88 s, 11,73 s, 9,72 s et 1,90 s), plus 10,6 s le 2026-10-23 (section 9.1). Le seuil de H5 (chaque appel sous 5 s) et son verdict ne changent pas.
+
+### 9.7 Observations hors protocole du soir du 2026-10-23 (19:26 à 19:42)
+
+Écrit le 2026-10-27 d'après les relevés pris pendant la séance du 2026-10-23 (captures d'écran et résultats collés dans la conversation de travail), non versionnés au moment des faits. Aucune hypothèse n'était écrite avant ces observations : ce n'est pas un test d'hypothèse.
+
+Conditions : API sur `TraceabilityDev` (profil `https`), interface sur `http://localhost:5173/`, Edge en affichage téléphone (370 px) avec l'onglet Réseau en filtre « All ». Rien n'a été créé ni modifié dans l'interface. Les heures sont celles de la machine (UTC) ; les heures des clics ne sont connues qu'à la minute.
+
+- **19:32** : bouton « Fin » : `GET /batches?pageNumber=66667&pageSize=15` : 200, 1,4 ko, **717 ms**. Page affichée de `LOT-0999991` à `LOT-1000000`, « Page 66 667 sur 66 667 · 1 000 000 au total », « Suivant » et « Fin » grisés. Budget de mémoire des requêtes : 520 Mo (tout disponible), RAM libre 1 017 Mo. Gestionnaire des tâches : mémoire utilisée à 85 % (Edge 877 Mo, Claude 825 Mo, Visual Studio Code 605 Mo, SQL Server 55,4 Mo).
+- **19:36** : mémoire utilisée à 93 %, processus SQL Server 20,2 Mo (Chrome ouvert pour faire monter la mémoire utilisée : 685 Mo ; Edge 460 Mo).
+- **19:37** : budget de mémoire des requêtes de **5 Mo sur 5 Mo** avec 916 Mo de RAM libre (520 Mo quatre minutes plus tôt) : inexpliqué. À 19:39 : toujours 5 Mo, RAM libre 814 Mo.
+- **19:37 à 19:38**, Edge : « Début » (page 1) en **746 ms**, « Fin » en **769 ms**, statut 200.
+- **Comparaison au même moment** : l'ancienne requête de la dernière page (texte de `014`, bloc G2a-1 « default », envoyée par `sp_executesql`) a été lancée dans SSMS vers 19:39. À 19:41, la session 53 est `suspended`, en attente `RESOURCE_SEMAPHORE` depuis 118 s sur 119 écoulées, avec 0 Ko accordé et 47 456 Ko demandés ; une session 76 attendait aussi (11 s, 1 024 Ko demandés, programme non lu). Pendant ce temps, Edge a obtenu « Début » en **443 ms** et « Fin » en **684 ms** (200) avec la nouvelle procédure. La requête a été annulée vers 19:42.
+
+Les trois essais de « Fin » par l'interface : 717 ms (19:32), 769 ms (19:37 à 19:38) et 684 ms (pendant l'attente de l'ancienne requête).
+
+**Ce que ces observations répondent** à deux points de [verification.md](verification.md), section 13.3 :
+
+- *« L'ancienne version n'a pas été remesurée dans le même état de mémoire »* : observé une fois. Avec un budget de mémoire de 5 Mo, l'ancienne requête de la dernière page a attendu sa mémoire pendant 118 s sans rien obtenir, alors que la nouvelle procédure répondait à l'interface en moins d'une seconde.
+- *« L'interface web n'a pas été essayée dans le navigateur avec la nouvelle procédure »* : observé dans Edge. « Fin » affiche la dernière page (66 667 sur 66 667, `LOT-1000000` en dernier) en 717, 769 et 684 ms.
+
+**Limites**
+
+- Une seule observation, sans essai témoin répété, hors protocole.
+- La demande de mémoire du nouveau plan n'a pas été lue.
+- Elle ne démontre pas que les trois échecs d'origine de « Fin » par l'API venaient de l'attente de mémoire : elle montre que, dans cet état de mémoire, l'ancienne requête attend et que la nouvelle passe.
+
+**Reste inexpliqué** : le budget de mémoire des requêtes tombé à 5 Mo avec 916 Mo de RAM libre, et la page 1 à 443 à 746 ms dans Edge contre 113 ms en moyenne dans SSMS (section 9.6).
