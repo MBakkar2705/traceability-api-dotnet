@@ -408,7 +408,7 @@ Cette hypothèse est écrite **après** les mesures « avant » de la section 7.
 
 - La page demandée est triée par `BatchId`, qui est l'ordre de `PK_Batch` (section 1 : la table elle-même, triée par `BatchId`).
 - Pour la page 66 667, le plan observé (A3) est parallèle (4 fils) : lecture de `PK_Batch` en parallèle, puis tri de 1 000 000 de lignes par `BatchId`, avec déversement de 10 530 pages dans `tempdb` (section 7.2).
-- La même page a duré de 7 928 ms à 146 313 ms en B1, avec les mêmes lectures logiques (section 7.3). Les 2,2 à 2,7 s notées pour SSMS dans [verification.md](verification.md), section 11.3, venaient d'un plan non noté (section 7.5).
+- La même page a duré de 7 928 ms à 146 313 ms en B1, avec les mêmes lectures logiques (section 7.3). Les 2,2 à 2,7 s notées pour SSMS dans [verification.md](verification.md), section 11.3, venaient d'un plan non noté (section 7.5 du présent document).
 - Raisonnement, non vérifié : une lecture parallèle ne livre pas les lignes dans l'ordre de la clé, ce qui obligerait à trier. Un plan sans parallélisme pourrait lire `PK_Batch` dans l'ordre et se passer du tri.
 
 ### 8.2 Hypothèse G1

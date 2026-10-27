@@ -295,7 +295,7 @@ Paquets principaux : `Microsoft.Data.SqlClient` 7.1.1, `System.Security.Cryptogr
 - **L'erreur 500** : elle n'est testée qu'en unitaire (U2). Aucune panne SQL n'a traversé l'API, et l'écriture de la vraie erreur dans le journal du serveur n'a pas été observée.
 - **Longueurs** : un code trop long est refusé par l'API (testé en unitaire), mais pas par un test HTTP. La longueur du nom et de la région (100) n'est contrôlée ni par l'API ni par un test : le comportement avec un texte plus long n'est pas observé.
 - **Cas non testés par HTTP** : une page au-delà de la fin pour les stations ; les tailles de page 1 et 1 000 ; la casse des codes.
-- **Swagger UI** : il ne documente ni les erreurs possibles ni des descriptions des routes (prévu au lot 3c), et affiche « integer | string ($int32) » comme type de `pageNumber` et `pageSize`, sans que j'en aie cherché la cause.
+- **Swagger UI** : il ne documente ni les erreurs possibles ni des descriptions des routes (prévu au lot 3c), et affiche « integer | string ($int32) » comme type de `pageNumber` et `pageSize`, sans que la cause ait été cherchée.
   - Note du 2026-10-27, ajoutée après coup : documenté au lot 3c (section 10.2) ; ce qui reste ouvert est en 10.3.
 - **CORS** : non configuré, aucun frontend n'a été essayé.
   - Note du 2026-10-27, ajoutée après coup : réglé au lot 4a (politique CORS en 11.1, tests en 11.2, interface essayée dans Edge) ; `POST` ajouté au lot 4b (section 12). Voir l'[ADR 0007](adr/0007-cors-dans-l-api.md).
@@ -423,7 +423,7 @@ Décisions et écarts par rapport au plan :
 - **Taille de page** : le plan disait 20 lignes. Après avoir vu l'écran, elle est passée à 10 (pour tenir sur un écran sans défiler), puis à 15 avec des lignes moins hautes. C'est une constante de `web/src/config.ts` ; l'API garde 20 par défaut.
 - **Heures** : affichées en UTC avec la mention « UTC », jamais converties en heure locale.
 - **Petits écrans** : sous 640 pixels de large, les colonnes Ferme et Variété de la liste des lots sont cachées pour éviter le défilement de côté.
-- **Non prévus au plan, décidés pendant le lot, après avoir vu la page** : les boutons « Début » et « Fin », un thème de couleurs chaudes défini à un seul endroit (`src/index.css`), et un fond d'écran de dessins (fruits, légumes, caisses, cartons) tracés en SVG.
+- **Non prévus au plan, décidés pendant le lot, après avoir vu la page** : les boutons « Début » et « Fin », un thème de couleurs chaudes défini à un seul endroit (`web/src/index.css`), et un fond d'écran de dessins (fruits, légumes, caisses, cartons) tracés en SVG.
 - **Filtres** : le statut et la ferme de la liste des lots sont dans l'adresse (`?status=…&farmCode=…&page=…`) ; appliquer un filtre revient à la page 1.
 - **ADR 0007 ajouté** : le CORS n'était pas prévu comme décision à part.
 
@@ -810,6 +810,8 @@ Tests de l'exécution n° 7 :
 
 Durées des exécutions réussies (page « Actions ») : n° 3 1 min 6 s, n° 4 1 min 12 s, n° 5 56 s, n° 6 1 min 4 s, n° 7 1 min 3 s. Exécutions en échec : n° 1 (33 s) et n° 2 (1 min 34 s), voir 14.2 et 14.3.
 
+Note du 2026-10-27, ajoutée après coup : la page du workflow « CI » (onglet Actions) liste aussi la n° 8 (push du commit `aed1519`, « Record the pull request run and the lot 6 proven and unproven points », réussie en 1 min 4 s) et la n° 9 (pull request n° 12, déclenchement `synchronize`, réussie en 1 min 18 s). Elles ne sont pas décrites plus haut. Les neuf exécutions citées par l'[ADR 0009](adr/0009-integration-continue-github-actions.md) sont donc les n° 1 à 9 : n° 1 et 2 en échec, n° 3 à 9 réussies.
+
 ### 14.7 Ce qui est prouvé
 
 - **Déclenchement** : la CI se lance à chaque push de la branche (exécutions n° 1 à 6) et sur une pull request (n° 7), y compris en brouillon.
@@ -847,7 +849,7 @@ Durées des exécutions réussies (page « Actions ») : n° 3 1 min 6 s, n° 4 
   git log -1 --format="%H %P" FETCH_HEAD
   ```
 
-  Résultat observé : le hash `13f2078…` suivi de ses deux parents. Ce hash est celui relevé le 2026-10-26 : je n'ai pas vérifié à quel moment GitHub recalcule la fusion, ni si « Re-run all jobs » reteste le même commit de fusion ou un nouveau.
+  Résultat observé : le hash `13f2078…` suivi de ses deux parents. Ce hash est celui relevé le 2026-10-26 : il n'a pas été vérifié à quel moment GitHub recalcule la fusion, ni si « Re-run all jobs » reteste le même commit de fusion ou un nouveau.
 - Pour comparer avec la machine de développement : `dotnet test Traceability.slnx` (résumé attendu `total : 163; échec : 0; réussi : 163`) et, dans `web/`, `npm run lint`, `npm run build`, `npm test`.
 
 ### 14.10 Protection de `main` : constat
@@ -934,3 +936,13 @@ Cadre de fusion, état final (capture vers 21:08) : « Some checks were not succ
 **Nettoyage** : la pull request n° 13 a été fermée sans fusion (« Closed with unmerged commits »), sa branche supprimée sur GitHub puis en local. Après `git fetch origin --prune`, `origin/main` vaut `45e3f600cc509ce5fe89dd3cf91a1ed71c67f82c`, comme avant l'essai : rien du test n'est entré dans `main`.
 
 **Ce que l'essai ne montre pas** : une poussée directe sur `main`, sa suppression et une poussée forcée n'ont pas été essayées, car si la règle avait échoué l'essai aurait abîmé `main`. Il ne montre pas non plus ce qui arrive quand `frontend` seul est rouge, ni quand seule la vérification du déclencheur `push` ou celle de `pull_request` échoue.
+
+### 14.13 Suivi après la fusion de la pull request n° 12
+
+Écrit le 2026-10-27 d'après la page du workflow « CI » (onglet Actions, 26 exécutions) et l'historique Git local. Les exécutions décrites ont eu lieu le 2026-10-26.
+
+- **Fusion** : la pull request n° 12 a été fusionnée par un commit de fusion, `05d1485` (2026-10-26 21:40:26 UTC), sans squash. Ses deux parents sont `45e3f60` (la pointe de `main` avant la fusion) et `6708285` (la pointe de la branche) : les commits de la branche restent dans l'historique de `main`.
+- **Dernières exécutions avant la fusion** : n° 24 (push du commit `6708285`, réussie, 59 s) et n° 25 (pull request n° 12, déclenchement `synchronize`, réussie, 1 min 1 s).
+- **Exécution après la fusion** : n° 26, push du commit `05d1485` sur `main`, réussie, 1 min 8 s. C'est la première exécution sur `main` : les 25 précédentes concernent les branches `feature/lot-6-ci` et `test/ci-red-check`.
+- **Affichage de GitHub à la fusion** : « 4 checks passed », relevé le 2026-10-26 avec la règle `protect-main` active ; non revu le 2026-10-27 (la page publique des exécutions ne l'affiche pas).
+- **« Ready for review »** : la pull request n° 12 était en brouillon à son ouverture (n° 7, voir 14.6) ; elle a été passée à « Ready for review » avant la fusion (relevé du 2026-10-26, non revu le 2026-10-27). Parmi les 26 exécutions de la page, aucune n'est déclenchée par cet événement : les exécutions `pull_request` listées sont `opened` (n° 7, pull request n° 12, et n° 15, pull request n° 13) et `synchronize`. Ce passage n'a donc pas lancé d'exécution.
