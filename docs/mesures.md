@@ -291,6 +291,7 @@ Décision : le total est gardé tel quel dans `ListBatches`, pour que les trois 
 - Le résultat s'énonce « mesuré sur 1 million de lots inventés », pas « valable en production ».
 - Les index ne sont mesurés que sur les recherches listées ci-dessus. Leur effet sur la vitesse des écritures (`CreateBatch`, `AddMovement`) n'est pas mesuré, sauf si une section ajoutée plus tard le dit.
 - Le total de `ListBatches` (section 4.3) n'a été mesuré qu'une fois, sans hypothèse écrite avant, sans examiner son plan, et aucun index n'a été essayé pour lui.
+  - Note du 2026-10-27, ajoutée après coup : traité au lot 5, sections 6 à 9.6 : le total est mesuré avec un index en 9.3 et 9.4, puis après la modification en 9.6.
 
 ## 6. Lot 5 : le total des listes et le bouton « Fin » (hypothèses, 2026-10-23)
 
@@ -397,6 +398,8 @@ Première page (B2), temps écoulé de l'appel entier : 218 ms, 120 ms, 262 ms, 
 
 Le test de l'ordre des appels (F1), la lecture du plan réellement utilisé par l'API (partie C du script), l'essai d'un index pour le total (T2), la décision, et le coût en écriture d'un index (section 5).
 
+Note du 2026-10-27, ajoutée après coup : F1 a été fait en 9.1, T2 en 9.3, le coût en écriture en 9.4 et la décision en 9.5.
+
 ## 8. Lot 5 : la dernière page sans parallélisme (hypothèse G1, 2026-10-23)
 
 Cette hypothèse est écrite **après** les mesures « avant » de la section 7. Elle vient de ces mesures et ne fait pas partie des hypothèses de la section 6, écrites avant toute mesure du lot. Elle est enregistrée dans Git avant le test qu'elle prévoit et n'est pas modifiée après coup : le résultat s'ajoute dans cette même section, sous 8.4.
@@ -405,7 +408,7 @@ Cette hypothèse est écrite **après** les mesures « avant » de la section 7.
 
 - La page demandée est triée par `BatchId`, qui est l'ordre de `PK_Batch` (section 1 : la table elle-même, triée par `BatchId`).
 - Pour la page 66 667, le plan observé (A3) est parallèle (4 fils) : lecture de `PK_Batch` en parallèle, puis tri de 1 000 000 de lignes par `BatchId`, avec déversement de 10 530 pages dans `tempdb` (section 7.2).
-- La même page a duré de 7 928 ms à 146 313 ms en B1, avec les mêmes lectures logiques (section 7.3). Les 2,2 à 2,7 s notées pour SSMS dans [verification.md](verification.md), section 11.3, venaient d'un plan non noté (section 7.5).
+- La même page a duré de 7 928 ms à 146 313 ms en B1, avec les mêmes lectures logiques (section 7.3). Les 2,2 à 2,7 s notées pour SSMS dans [verification.md](verification.md), section 11.3, venaient d'un plan non noté (section 7.5 du présent document).
 - Raisonnement, non vérifié : une lecture parallèle ne livre pas les lignes dans l'ordre de la clé, ce qui obligerait à trier. Un plan sans parallélisme pourrait lire `PK_Batch` dans l'ordre et se passer du tri.
 
 ### 8.2 Hypothèse G1
@@ -829,6 +832,8 @@ L'index `IX_Batch_FarmId` n'est plus dans `TraceabilityDev`. Il sera recréé pa
 - **« Fin » :** tester d'abord l'option C (paginer sur `Batch` avant de joindre `Farm`, hypothèse G2 ci-dessous), avec l'option B (`OPTION (MAXDOP 1)` sur la requête de la page) en repli.
 - Rien n'est modifié dans la procédure, l'API ni l'interface à ce stade.
 
+Note du 2026-10-27, ajoutée après coup : ces décisions ont été confirmées dans l'[ADR 0008](adr/0008-listbatches-page-avant-jointure-total-recompile.md), accepté le 2026-10-23.
+
 **Ce qui motive G2 (faits)**
 
 - Le plan actuel de la page joint `Batch` et `Farm`, puis trie 1 000 000 de lignes par `BatchId`, avec un déversement dans `tempdb` (sections 7.2, 8.4, 9.1) ; ce tri demande environ 93 Mo de mémoire (9.1).
@@ -1009,3 +1014,30 @@ Mémoire disponible pour les requêtes (pool 2), lue avant et après la série :
 **Précision sur H5 (2026-10-23)**
 
 Le contexte de H5, écrit plus haut avant les mesures, donne « 8 à 12 s avant quand l'appel réussissait ». Les réussites de l'API notées avant le lot 5 vont en réalité de 1,9 s à 11,7 s ([verification.md](verification.md), section 11.3 : 8,88 s, 11,73 s, 9,72 s et 1,90 s), plus 10,6 s le 2026-10-23 (section 9.1). Le seuil de H5 (chaque appel sous 5 s) et son verdict ne changent pas.
+
+### 9.7 Observations hors protocole du soir du 2026-10-23 (19:26 à 19:42)
+
+Écrit le 2026-10-27 d'après les relevés pris pendant la séance du 2026-10-23 (captures d'écran et résultats collés dans la conversation de travail), non versionnés au moment des faits. Aucune hypothèse n'était écrite avant ces observations : ce n'est pas un test d'hypothèse.
+
+Conditions : API sur `TraceabilityDev` (profil `https`), interface sur `http://localhost:5173/`, Edge en affichage téléphone (370 px) avec l'onglet Réseau en filtre « All ». Rien n'a été créé ni modifié dans l'interface. Les heures sont celles de la machine (UTC) ; les heures des clics ne sont connues qu'à la minute.
+
+- **19:32** : bouton « Fin » : `GET /batches?pageNumber=66667&pageSize=15` : 200, 1,4 ko, **717 ms**. Page affichée de `LOT-0999991` à `LOT-1000000`, « Page 66 667 sur 66 667 · 1 000 000 au total », « Suivant » et « Fin » grisés. Budget de mémoire des requêtes : 520 Mo (tout disponible), RAM libre 1 017 Mo. Gestionnaire des tâches : mémoire utilisée à 85 % (Edge 877 Mo, Claude 825 Mo, Visual Studio Code 605 Mo, SQL Server 55,4 Mo).
+- **19:36** : mémoire utilisée à 93 %, processus SQL Server 20,2 Mo (Chrome ouvert pour faire monter la mémoire utilisée : 685 Mo ; Edge 460 Mo).
+- **19:37** : budget de mémoire des requêtes de **5 Mo sur 5 Mo** avec 916 Mo de RAM libre (520 Mo quatre minutes plus tôt) : inexpliqué. À 19:39 : toujours 5 Mo, RAM libre 814 Mo.
+- **19:37 à 19:38**, Edge : « Début » (page 1) en **746 ms**, « Fin » en **769 ms**, statut 200.
+- **Comparaison au même moment** : l'ancienne requête de la dernière page (texte de `014`, bloc G2a-1 « default », envoyée par `sp_executesql`) a été lancée dans SSMS vers 19:39. À 19:41, la session 53 est `suspended`, en attente `RESOURCE_SEMAPHORE` depuis 118 s sur 119 écoulées, avec 0 Ko accordé et 47 456 Ko demandés ; une session 76 attendait aussi (11 s, 1 024 Ko demandés, programme non lu). Pendant ce temps, Edge a obtenu « Début » en **443 ms** et « Fin » en **684 ms** (200) avec la nouvelle procédure. La requête a été annulée vers 19:42.
+
+Les trois essais de « Fin » par l'interface : 717 ms (19:32), 769 ms (19:37 à 19:38) et 684 ms (pendant l'attente de l'ancienne requête).
+
+**Ce que ces observations répondent** à deux points de [verification.md](verification.md), section 13.3 :
+
+- *« L'ancienne version n'a pas été remesurée dans le même état de mémoire »* : observé une fois. Avec un budget de mémoire de 5 Mo, l'ancienne requête de la dernière page a attendu sa mémoire pendant 118 s sans rien obtenir, alors que la nouvelle procédure répondait à l'interface en moins d'une seconde.
+- *« L'interface web n'a pas été essayée dans le navigateur avec la nouvelle procédure »* : observé dans Edge. « Fin » affiche la dernière page (66 667 sur 66 667, `LOT-1000000` en dernier) en 717, 769 et 684 ms.
+
+**Limites**
+
+- Une seule observation, sans essai témoin répété, hors protocole.
+- La demande de mémoire du nouveau plan n'a pas été lue.
+- Elle ne démontre pas que les trois échecs d'origine de « Fin » par l'API venaient de l'attente de mémoire : elle montre que, dans cet état de mémoire, l'ancienne requête attend et que la nouvelle passe.
+
+**Reste inexpliqué** : le budget de mémoire des requêtes tombé à 5 Mo avec 916 Mo de RAM libre, et la page 1 à 443 à 746 ms dans Edge contre 113 ms en moyenne dans SSMS (section 9.6).

@@ -10,6 +10,8 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 ## Base de données
 
+**SSMS (SQL Server Management Studio)** : le programme de Microsoft pour se connecter à SQL Server, écrire des requêtes, lancer des scripts et lire les plans d'exécution. Ici : les scripts numérotés du dossier `database/` s'y lancent et les mesures (plans, lectures logiques) s'y lisent. Version utilisée : 22.
+
 **Schéma SQL** : un « dossier » à l'intérieur de la base, qui regroupe des tables. Ici : `trace`.
 
 **Clé primaire (PK)** : la colonne qui identifie une ligne de façon unique. Ici : `BatchId` dans `trace.Batch`.
@@ -134,9 +136,9 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **OpenAPI et Swagger UI** : OpenAPI est la description d'une API dans un fichier JSON ; Swagger UI est la page web qui l'affiche et laisse essayer les routes. Ici : `https://localhost:7080/swagger`, activée en développement seulement.
 
-**Test unitaire** : un test d'un petit morceau de code, seul, sans base ni réseau. Ici : 74 cas pour la traduction des erreurs, la forme des champs (codes, textes, quantités, heures) et la page par défaut.
+**Test unitaire** : un test d'un petit morceau de code, seul, sans base ni réseau. Ici : 75 cas pour la traduction des erreurs, la forme des champs (codes, textes, quantités, heures) et la page par défaut.
 
-**Test par HTTP (`WebApplicationFactory`)** : un test qui lance la vraie API dans le programme de test et lui envoie de vraies requêtes. Ici : 75 cas sur `TraceabilityTest`.
+**Test par HTTP (`WebApplicationFactory`)** : un test qui lance la vraie API dans le programme de test et lui envoie de vraies requêtes. Ici : une partie des 88 tests d'intégration, sur `TraceabilityTest`.
 
 **xUnit : `[Fact]`, `[Theory]` et `[InlineData]`** : `[Fact]` est un test ; `[Theory]` avec des lignes `[InlineData]` est le même test répété avec plusieurs valeurs, et chaque ligne compte comme un cas. Ici : au lot 3b, les 8 tests unitaires du plan faisaient 49 cas ; avec le lot 3c, les tests unitaires font 74 cas.
 
@@ -180,7 +182,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Routeur (React Router)** : la bibliothèque qui associe une adresse à un écran. Ici : `/batches`, `/batches/:batchCode`, `/farms`, `/stations` et `/stations/:stationCode` ; les filtres et la page sont dans l'adresse (`?status=…&page=2`), donc F5 et la flèche « retour » gardent l'écran (observé).
 
-**Tailwind CSS (classes utilitaires)** : le style s'écrit avec de petites classes dans le code des composants (`px-3`, `text-ink`). Ici : les couleurs sont des variables de thème, définies une seule fois dans `src/index.css`.
+**Tailwind CSS (classes utilitaires)** : le style s'écrit avec de petites classes dans le code des composants (`px-3`, `text-ink`). Ici : les couleurs sont des variables de thème, définies une seule fois dans `web/src/index.css`.
 
 **Linter (Oxlint)** : un outil qui lit le code sans l'exécuter et signale des fautes probables. Ici : 0 avertissement ; il a signalé un `setState` appelé de façon synchrone dans un effet de `useApi`, corrigé.
 

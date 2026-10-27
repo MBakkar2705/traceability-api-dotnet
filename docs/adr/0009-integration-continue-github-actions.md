@@ -46,3 +46,4 @@ Négatives :
 
 - 2026-10-26 : décision validée après neuf exécutions observées (n° 1 et 2 en échec, n° 3 à 9 réussies). Détail, versions des outils et du moteur : [verification.md](../verification.md), section 14.
 - 2026-10-26 (soir) : la protection de `main` (pull request obligatoire, `backend` et `frontend` exigés avant fusion) est décidée à part, dans l'[ADR 0010](0010-protection-de-main-par-ruleset.md). Cette décision-ci n'est pas modifiée.
+- 2026-10-27 : la dernière conséquence négative (« Aucun test n'a encore été vu faire passer la CI au rouge ») est levée. L'essai du test cassé du 2026-10-26 (pull request n° 13, fermée sans fusion) a rendu la tâche `backend` rouge, et GitHub a bloqué la fusion (voir [verification.md](../verification.md), section 14.12, et l'[ADR 0010](0010-protection-de-main-par-ruleset.md)).
