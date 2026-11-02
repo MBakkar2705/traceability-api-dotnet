@@ -23,6 +23,7 @@ Dans ce README, « Prévu » veut dire « on a l'intention de le faire », pas �
 | 4b | Interface web : écriture (formulaires, erreurs par champ) | Terminé |
 | 5 | Optimisation de la liste des lots (total, dernière page, index, mesures) | Terminé |
 | 6 | Intégration continue (GitHub Actions) : SQL Server en conteneur, tests C# et interface à chaque push et pull request, `main` protégée | Terminé |
+| 7 | SQL Server en conteneur Docker : base reconstruite par les scripts, API et interface essayées à la main (fermes seulement) | Terminé |
 
 ## Technologies
 
@@ -50,8 +51,9 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 ## Ce que ce projet ne prouve pas
 
 - Il ne représente aucun système réel : le scénario est simplifié et inventé.
-- Pour chaque lot, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3, 9.3, 10.3, 11.3, 12.3, 13.3 et 14.8. Chaque liste date de son lot : un point peut avoir été réglé depuis, et la preuve est alors dans la section « Ce qui est prouvé » du lot concerné.
+- Pour chaque lot, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3, 9.3, 10.3, 11.3, 12.3, 13.3, 14.8 et 15.3. Chaque liste date de son lot : un point peut avoir été réglé depuis, et la preuve est alors dans la section « Ce qui est prouvé » du lot concerné.
 - La CI (lot 6) prouve que les 163 tests C# et les 178 tests de l'interface passent sur une machine vierge en authentification SQL, et qu'un test en échec bloque la fusion. Elle ne prouve ni l'authentification Windows, ni les scripts `006` et `012`, ni une pull request venue d'un fork (le secret n'y serait pas transmis), ni la migration annoncée d'`ubuntu-latest`, ni le lancement à la main de l'application contre un SQL Server en conteneur. Son moteur SQL Server est plus récent que celui de la machine de développement (17.0.5035.5 contre 17.0.1145.4).
+- Le lot 7 prouve que l'application, lancée à la main, lit et écrit les fermes dans un SQL Server 2025 en conteneur (authentification SQL, une seule machine). Il ne prouve ni les lots, les stations et les mouvements dans ce conteneur, ni les données volumineuses, ni l'authentification Windows, ni un Dockerfile : l'application elle-même n'est pas dans un conteneur (voir [docs/verification.md](docs/verification.md), section 15).
 - Le CORS n'est configuré que pour le serveur de développement de l'interface (`http://localhost:5173`, `GET` et `POST`). L'interface n'a été vue que dans Edge. Le bouton « Fin » de la liste des lots a été accéléré au lot 5, mais la correction de ses échecs n'est pas prouvée (voir [docs/verification.md](docs/verification.md), section 13.3). Une observation hors protocole du 2026-10-23 montre, avec un budget de mémoire de 5 Mo, l'ancienne requête de la dernière page en attente de sa mémoire pendant que la nouvelle répondait en moins d'une seconde ([docs/mesures.md](docs/mesures.md), section 9.7) : elle ne démontre pas la cause des échecs d'origine. Swagger UI décrit les 10 routes et leurs erreurs, mais son exemple d'erreur n'affiche pas les champs ajoutés par l'API (`errorCode`, `errors`).
 - Les mesures des lots 2b et 5 portent sur un million de lots inventés et une seule machine : elles ne disent rien d'un autre volume ni d'une autre machine ; le coût en écriture n'est mesuré que pour `IX_Batch_FarmId` (voir [docs/mesures.md](docs/mesures.md), sections 5 et 9.4).
 - Il donne une base de travail, pas une expérience de production.
@@ -86,7 +88,7 @@ Ces points ne sont pas planifiés dans un lot : ce sont des intentions, pas des 
 - exécuter les scripts `006` et `012` dans la CI ;
 - limiter `SQLCMDPASSWORD` aux seules étapes de la CI qui appellent `sqlcmd` (aujourd'hui toutes les étapes de la tâche `backend` y ont accès, voir l'[ADR 0009](docs/adr/0009-integration-continue-github-actions.md)) ;
 - ajouter un badge de CI à ce README ;
-- lancer l'application à la main contre un SQL Server en conteneur, et décider si Docker (l'application elle-même dans un conteneur) entre dans le projet : décision à prendre ;
+- décider si Docker (l'application elle-même dans un conteneur) entre dans le projet : décision à prendre (le lot 7 a essayé l'application à la main contre un SQL Server en conteneur, pour les fermes seulement) ;
 - fixer les actions de la CI par empreinte de commit au lieu de la version majeure.
 
 ## Démarrage
