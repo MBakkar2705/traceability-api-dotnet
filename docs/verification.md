@@ -1,6 +1,6 @@
 # Vérification
 
-Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12), l'optimisation de la liste des lots (lot 5, section 13) et l'intégration continue (lot 6, section 14). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
+Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12), l'optimisation de la liste des lots (lot 5, section 13), l'intégration continue (lot 6, section 14) et SQL Server en conteneur (lot 7, section 15). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
 
 Chaque section « Ce qui n'est pas prouvé » date de son lot. Un point peut avoir été réglé depuis : la preuve est alors dans la section « Ce qui est prouvé » du lot concerné. Le texte d'origine n'est pas modifié : pour les points réglés repérés le 2026-10-27, une note datée renvoie à la preuve.
 
@@ -837,6 +837,7 @@ Note du 2026-10-27, ajoutée après coup : la page du workflow « CI » (onglet 
 - **Une pull request venant d'un fork** : selon la documentation de GitHub (« secrets are not passed to the runner when a workflow is triggered from a forked repository »), le secret ne serait pas transmis et la tâche `backend` échouerait. Non essayé.
 - **Une CI exigée avant fusion** : une règle `protect-main` l'exige depuis le 2026-10-26 (constat en 14.10). Qu'elle empêche de fusionner une CI rouge est observé : voir 14.11 (hypothèses) et 14.12 (résultats).
 - **L'application lancée à la main contre le SQL Server de la CI** : la CI ne lance que les tests ; l'API y démarre à l'intérieur des tests d'intégration. Ni `dotnet run`, ni Swagger UI, ni l'interface (Vite) n'ont été essayés contre un SQL Server en conteneur. Aucun Dockerfile n'existe dans le dépôt.
+  - Note du 2026-11-02, ajoutée après coup : essayé au lot 7 contre un conteneur local, pour les fermes seulement (section 15).
 - **Le réglage « Workflow permissions » du dépôt** (Settings, Actions, General) n'a pas été regardé. Il n'a pas d'effet sur cette CI, car `ci.yml` déclare lui-même `permissions: contents: read`.
 - **L'effet du cache npm** : la durée avec et sans cache n'est pas mesurée.
 - **Les annotations** de l'exécution n° 7 n'ont pas été relevées, et le détail des étapes de l'exécution n° 6 non plus.
@@ -949,3 +950,74 @@ Cadre de fusion, état final (capture vers 21:08) : « Some checks were not succ
 - **Exécution après la fusion** : n° 26, push du commit `05d1485` sur `main`, réussie, 1 min 8 s. C'est la première exécution sur `main` : les 25 précédentes concernent les branches `feature/lot-6-ci` et `test/ci-red-check`.
 - **Affichage de GitHub à la fusion** : « 4 checks passed », relevé le 2026-10-26 avec la règle `protect-main` active ; non revu le 2026-10-27 (la page publique des exécutions ne l'affiche pas).
 - **« Ready for review »** : la pull request n° 12 était en brouillon à son ouverture (n° 7, voir 14.6) ; elle a été passée à « Ready for review » avant la fusion (relevé du 2026-10-26, non revu le 2026-10-27). Parmi les 26 exécutions de la page, aucune n'est déclenchée par cet événement : les exécutions `pull_request` listées sont `opened` (n° 7, pull request n° 12, et n° 15, pull request n° 13) et `synchronize`. Ce passage n'a donc pas lancé d'exécution.
+
+## 15. Lot 7 : SQL Server en conteneur, application lancée à la main
+
+Écrit le 2026-11-02, avant l'essai. Tant que l'essai n'est pas fait, chaque ligne de la liste vaut « À observer ». Il n'y a pas de prédiction chiffrée : chaque ligne se termine par « Observé » ou « Non observé », avec ce qui a été vu.
+
+### 15.1 Ce qui est essayé
+
+- Un conteneur SQL Server 2025 (image `mcr.microsoft.com/mssql/server:2025-latest`, authentification SQL, utilisateur `sa`) sur le PC de développement (Windows 11, environ 8 Go de RAM), sur le port 14330 côté PC pour ne pas gêner l'instance SQL Server locale.
+- La base `TraceabilityDev` reconstruite dans ce conteneur par les scripts `001`, `002`, `004`, `005`, `011` et `017`, sans les données volumineuses.
+- L'API (`dotnet run`) et l'interface (Vite) lancées à la main contre ce conteneur. La chaîne de connexion n'est remplacée que dans la fenêtre PowerShell de l'essai, pas dans les variables du compte Windows. Le mot de passe de `sa` n'est écrit nulle part dans le dépôt ni dans le chat.
+- Aucun code, aucun script SQL et aucun fichier de la CI n'est modifié. Aucun Dockerfile, aucun fichier `docker-compose.yml`, aucun volume : les données disparaissent avec le conteneur.
+
+### 15.2 Liste de contrôle
+
+| N° | À observer | Résultat |
+|---|---|---|
+| D1 | `docker version` répond, côté client et côté serveur. | Observé. Client 29.6.1, serveur Docker Desktop 4.81.0, moteur 29.6.1 (`linux/amd64`). |
+| D2 | Le conteneur démarre (`docker ps` le liste) et SSMS s'y connecte en authentification SQL sur `localhost,14330`. | Observé. `docker ps` : `traceability-sql`, état « Up », ports `0.0.0.0:14330->1433/tcp`. Journaux : « SQL Server is now ready for client connections » à 09:52:36. SSMS 22 connecté à `localhost,14330` en authentification SQL (chiffrement « Obligatoire », certificat de serveur de confiance coché). |
+| D3 | Relever la version du moteur, l'édition et le système (`@@VERSION`, `SERVERPROPERTY('Edition')`), et l'empreinte (digest) de l'image utilisée. | Observé. `Microsoft SQL Server 2025 (RTM-CU10) (KB5125471) - 17.0.5035.5 (X64)`, 15 octobre 2026, Enterprise Developer Edition (64-bit) sur Linux (Ubuntu 24.04.5 LTS) ; `ProductVersion` 17.0.5035.5. Empreinte de l'image : `sha256:245f6b1c8903edae52cb20fa31419cefcde1a49938bb8c3447099011fc871ca3`, la même qu'au 14.5. Le moteur est donc celui de la CI, et non celui de l'instance locale (17.0.1145.4, relevée au lot 2b). |
+| D4 | Les scripts `001`, `002`, `004`, `005`, `011` et `017` s'exécutent sans erreur dans le conteneur. | Observé. `001` : « Database TraceabilityDev created. » (`SIMPLE`, `ONLINE`, fichiers sous `/var/opt/mssql/data/`) ; `002` : 5 tables dans le schéma `trace` ; `004` : 3 procédures ; `005` : 7 ; `011` : 10 ; `017` : « Index IX_Batch_FarmId created. » (index `IX_Batch_FarmId` NONCLUSTERED, `PK_Batch` CLUSTERED, `UQ_Batch_BatchCode` NONCLUSTERED ; `ListBatches` modifiée à 10:15:19). Aucune erreur dans les sorties relevées ; pour `011`, seule la grille de résultat a été relevée, pas les messages. |
+| D5 | L'API démarre contre le conteneur et Swagger UI s'ouvre sur `https://localhost:7080/swagger`. | Observé. « Now listening on: https://localhost:7080 », « Application started », « Hosting environment: Development ». Swagger UI affichée dans Edge sur `https://localhost:7080/swagger/index.html` (Traceability.Api v1, OAS 3.1). La chaîne de connexion a été définie dans la fenêtre PowerShell de l'essai seulement. |
+| D6 | `GET /farms` répond ; relever le code. | Observé. Code 200, corps `{"items": [], "totalCount": 0, "pageNumber": 1, "pageSize": 20}`. Le conteneur est donc bien celui qui répond : la base locale compte 200 fermes (section 11). |
+| D7 | Une ferme créée par `POST /farms` est relue par `GET /farms`. | Observé. `POST /farms` avec `TEST-DOCKER`, `Ferme essai Docker`, `Souss` : code 201 et corps identique. `GET /farms` ensuite : code 200, une ferme dans `items`, `totalCount` à 1. |
+| D8 | L'interface web (Vite) s'ouvre contre cette API, et un formulaire de l'interface crée une ferme qui apparaît dans la liste. | Observé. `http://localhost:5173/farms` : une ferme, `TEST-DOCKER` (« Page 1 sur 1 · 1 au total »). Formulaire « Nouvelle ferme » (`UI-DOCKER`, `Ferme creee avec interface`, `Souss`) : message « Ferme UI-DOCKER créée. », puis la liste affiche 2 fermes (« 2 au total »). La sortie de Vite n'a pas été relevée : seule la page affichée l'est. |
+| D9 | Relever la mémoire utilisée par le conteneur (`docker stats --no-stream`) pendant que l'API et Vite tournent. | Observé. `docker stats --no-stream` : 671,4 MiB utilisés sur une limite de 3,825 GiB (17,14 %), 4,16 % de processeur, 87 processus, l'API et Vite étant en marche et les deux fermes écrites. |
+| D10 | Le conteneur est arrêté et supprimé (`docker stop`, `docker rm`) ; la base disparaît avec lui. | Observé. `docker inspect traceability-sql --format '{{json .Mounts}}'` : `[]` (aucun montage) ; `docker stop` puis `docker rm` ; `docker ps -a` ne liste plus le conteneur. Que la base disparaisse avec lui est une déduction (aucun montage), pas relevé sur un nouveau conteneur. |
+
+### 15.3 Ce qui n'est pas essayé
+
+Écrit avant l'essai.
+
+- L'authentification Windows : le conteneur est en authentification SQL.
+- Les données volumineuses (un million de lots), les scripts `006` et `012`, et les tests C# contre ce conteneur.
+- Un Dockerfile pour l'API ou l'interface, un fichier `docker-compose.yml`, un volume, une sauvegarde.
+- Tout usage en production ou sur un serveur distant.
+
+Ajouté après l'essai, le 2026-11-02 :
+
+- Seules les fermes ont été lues et écrites. Les lots, les stations, les mouvements, `ListBatches` et les erreurs de l'API n'ont pas été essayés contre le conteneur.
+- L'essai a eu lieu une seule fois, sur une seule machine : les scripts n'ont pas été rejoués une deuxième fois dans le conteneur.
+- Le démarrage de Vite et les messages de `011` n'ont pas été relevés (voir D4 et D8).
+- La limite de mémoire de 3,825 GiB est celle relevée par `docker stats` ; son origine (réglage de Docker Desktop) n'a pas été vérifiée.
+
+### 15.4 Ce qui est prouvé
+
+Essai du 2026-11-02, de 09:52 (création du conteneur) à 10:38 (suppression), heure UTC.
+
+- **Le conteneur** : SQL Server 2025 en conteneur, avec la même image (même empreinte) et le même moteur que la CI, démarre sur le PC de développement et accepte une connexion SSMS en authentification SQL (D1 à D3).
+- **La base** : les scripts `001`, `002`, `004`, `005`, `011` et `017` la reconstruisent dans le conteneur : 5 tables, 10 procédures et l'index `IX_Batch_FarmId` (D4).
+- **L'API** : lancée à la main contre le conteneur, elle démarre, Swagger UI s'affiche, et une ferme créée par `POST /farms` est relue par `GET /farms` (D5 à D7). Aucun code n'a été modifié.
+- **L'interface** : lancée contre cette API, elle liste les fermes du conteneur et en crée une par son formulaire (D8).
+- **La mémoire** : 671,4 MiB pour le conteneur pendant l'essai (D9), sur une machine d'environ 8 Go.
+- **Le nettoyage** : le conteneur ne montait aucun volume et a été supprimé (D10).
+
+### 15.5 Rejouer la vérification
+
+Dans PowerShell, depuis la racine du dépôt, dans la même fenêtre pour tout ce qui suit. Le mot de passe de `sa` (au moins 12 caractères, majuscules, minuscules et chiffres, sans symbole) est saisi masqué : il n'est écrit ni dans le dépôt ni dans une commande.
+
+```powershell
+$env:MSSQL_SA_PASSWORD = [Net.NetworkCredential]::new('', (Read-Host 'Mot de passe sa' -AsSecureString)).Password
+docker run --name traceability-sql -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD -p 14330:1433 -d mcr.microsoft.com/mssql/server:2025-latest
+```
+
+Attendre la ligne « SQL Server is now ready for client connections » dans `docker logs traceability-sql`. Dans SSMS, se connecter à `localhost,14330` (authentification SQL, utilisateur `sa`, certificat de serveur de confiance coché) et exécuter, un par un et avec le mode SQLCMD actif, les scripts `001`, `002`, `004`, `005`, `011` et `017`. Puis lancer l'API contre le conteneur, dans la même fenêtre :
+
+```powershell
+$env:ConnectionStrings__Default = "Server=localhost,14330;Database=TraceabilityDev;User Id=sa;Password=$env:MSSQL_SA_PASSWORD;TrustServerCertificate=True"
+dotnet run --project src/Traceability.Api --launch-profile https
+```
+
+Ouvrir `https://localhost:7080/swagger`, puis lancer l'interface dans une autre fenêtre (`cd web`, `npm run dev`). Pour nettoyer : arrêter l'API et Vite (Ctrl+C), puis `docker stop traceability-sql` et `docker rm traceability-sql`.
