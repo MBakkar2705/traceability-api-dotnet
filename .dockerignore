@@ -1,0 +1,10 @@
+# Lot 8: what is not sent to Docker when the image is built.
+# The build context is the repository root; the Dockerfile only uses src/.
+**/bin
+**/obj
+.git
+.github
+database
+docs
+tests
+web

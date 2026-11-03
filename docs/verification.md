@@ -1,6 +1,6 @@
 # Vérification
 
-Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12), l'optimisation de la liste des lots (lot 5, section 13), l'intégration continue (lot 6, section 14) et SQL Server en conteneur (lot 7, section 15). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
+Ce document garde les preuves observées : la base de données (lot 1, sections 1 à 5), les procédures stockées (lot 2a, section 6) et les données volumineuses, les index et les mesures (lot 2b, section 7), puis les procédures de lecture pour l'API (lot 3a, section 8), l'API des fermes et des stations (lot 3b, section 9), l'API des lots (lot 3c, section 10), l'interface web de lecture (lot 4a, section 11), l'interface web d'écriture (lot 4b, section 12), l'optimisation de la liste des lots (lot 5, section 13), l'intégration continue (lot 6, section 14), SQL Server en conteneur (lot 7, section 15) et l'API en conteneur (lot 8, section 16). Le modèle est décrit dans [modele-de-donnees.md](modele-de-donnees.md) ; l'avancement du projet est dans le [README](../README.md).
 
 Chaque section « Ce qui n'est pas prouvé » date de son lot. Un point peut avoir été réglé depuis : la preuve est alors dans la section « Ce qui est prouvé » du lot concerné. Le texte d'origine n'est pas modifié : pour les points réglés repérés le 2026-10-27, une note datée renvoie à la preuve.
 
@@ -838,6 +838,7 @@ Note du 2026-10-27, ajoutée après coup : la page du workflow « CI » (onglet 
 - **Une CI exigée avant fusion** : une règle `protect-main` l'exige depuis le 2026-10-26 (constat en 14.10). Qu'elle empêche de fusionner une CI rouge est observé : voir 14.11 (hypothèses) et 14.12 (résultats).
 - **L'application lancée à la main contre le SQL Server de la CI** : la CI ne lance que les tests ; l'API y démarre à l'intérieur des tests d'intégration. Ni `dotnet run`, ni Swagger UI, ni l'interface (Vite) n'ont été essayés contre un SQL Server en conteneur. Aucun Dockerfile n'existe dans le dépôt.
   - Note du 2026-11-02, ajoutée après coup : essayé au lot 7 contre un conteneur local, pour les fermes seulement (section 15).
+  - Note du 2026-11-03, ajoutée après coup : un `Dockerfile` existe depuis le lot 8 (section 16 et [ADR 0011](adr/0011-api-dans-une-image-docker.md)).
 - **Le réglage « Workflow permissions » du dépôt** (Settings, Actions, General) n'a pas été regardé. Il n'a pas d'effet sur cette CI, car `ci.yml` déclare lui-même `permissions: contents: read`.
 - **L'effet du cache npm** : la durée avec et sans cache n'est pas mesurée.
 - **Les annotations** de l'exécution n° 7 n'ont pas été relevées, et le détail des étapes de l'exécution n° 6 non plus.
@@ -1021,3 +1022,81 @@ dotnet run --project src/Traceability.Api --launch-profile https
 ```
 
 Ouvrir `https://localhost:7080/swagger`, puis lancer l'interface dans une autre fenêtre (`cd web`, `npm run dev`). Pour nettoyer : arrêter l'API et Vite (Ctrl+C), puis `docker stop traceability-sql` et `docker rm traceability-sql`.
+
+## 16. Lot 8 : l'API dans un conteneur Docker
+
+Écrit le 2026-11-03, avant l'essai. Tant que l'essai n'est pas fait, chaque ligne de la liste vaut « À observer ». Il n'y a pas de prédiction chiffrée : chaque ligne se termine par « Observé » ou « Non observé », avec ce qui a été vu.
+
+### 16.1 Ce qui est essayé
+
+- Une image Docker de l'API, construite par un `Dockerfile` à la racine du dépôt (une étape de compilation, puis une image d'exécution `aspnet`) et un `.dockerignore`.
+- Un réseau Docker, SQL Server 2025 (la même image qu'au lot 7) et l'API, chacun dans son conteneur. L'API joint SQL Server par le nom de son conteneur.
+- La chaîne de connexion et le mot de passe de `sa` sont passés par des variables d'environnement au lancement du conteneur : ils ne sont écrits ni dans l'image, ni dans le dépôt, ni dans le chat.
+- L'interface web (Vite) reste sur le PC et appelle l'API du conteneur : l'adresse est donnée par `VITE_API_URL` dans la fenêtre PowerShell de l'essai, sans créer de fichier.
+- Aucun code C#, aucun script SQL, aucun fichier de l'interface et aucun fichier de la CI n'est modifié. Les fichiers ajoutés sont le `Dockerfile` et le `.dockerignore`.
+
+### 16.2 Liste de contrôle
+
+| N° | À observer | Résultat |
+|---|---|---|
+| F1 | `docker build` de l'image réussit. Relever la durée, la taille de l'image (`docker image ls`) et les étiquettes des images de base utilisées. | Observé. `docker build -t traceability-api .` : 16 étapes sur 16, 259,5 s au premier lancement, dont environ 152 s pour télécharger l'image SDK et 49 s pour l'image `aspnet` ; `dotnet restore` 37,4 s, `dotnet publish` 53,9 s. Contexte envoyé à Docker : 54,70 ko. Images de base : `mcr.microsoft.com/dotnet/sdk:10.0` et `mcr.microsoft.com/dotnet/aspnet:10.0` (empreintes tronquées dans le journal, non relevées en entier ; le filtre `docker image ls` n'a listé aucune image de base). Image finale `traceability-api:latest` : 356 Mo sur le disque, 102 Mo de contenu. |
+| F2 | Relever l'utilisateur qui fait tourner l'image (`docker image inspect`, champ `Config.User`). | Observé. `Config.User` vaut `app`. |
+| F3 | Relever les variables d'environnement de l'image (`Config.Env`) et le contenu du dossier de l'application dans l'image : ni mot de passe, ni chaîne de connexion, ni dossiers `web`, `database`, `tests` ou `.git`. | Observé. Variables : `PATH`, `APP_UID=1654`, `ASPNETCORE_HTTP_PORTS=8080`, `DOTNET_RUNNING_IN_CONTAINER=true`, `DOTNET_VERSION=10.0.14` et `ASPNET_VERSION=10.0.14` : ni mot de passe, ni chaîne de connexion. Dossier `/app` : l'API publiée et ses bibliothèques, les dossiers de langues et `runtimes`, `web.config`, `appsettings.json` (151 octets) et `appsettings.Development.json` (127 octets), dont le contenu n'a pas été lu. Pas de `web`, `database`, `tests` ni `.git`. |
+| F4 | Un réseau Docker et un nouveau conteneur SQL Server sont créés, et les scripts `001`, `002`, `004`, `005`, `011` et `017` s'exécutent sans erreur dans ce conteneur (5 tables, 10 procédures, index `IX_Batch_FarmId`). | Observé. Réseau `traceability-net` créé ; conteneur `traceability-sql` (même image qu'au lot 7) lancé sur ce réseau, « ready for client connections » à 08:51:59. Les six scripts rejoués dans SSMS : 5 tables, 10 procédures et l'index `IX_Batch_FarmId` (contrôle final). Aucune erreur signalée ; seul le contrôle final a été collé. |
+| F5 | Le conteneur de l'API démarre sans forcer l'environnement. Relever les journaux : adresse d'écoute, environnement affiché, avertissements éventuels. | Observé. `docker ps` : `traceability-api` « Up », `0.0.0.0:8080->8080/tcp`. Journaux : « Now listening on: http://[::]:8080 », « Application started », « Hosting environment: Production », « Content root path: /app », sans avertissement au démarrage. La chaîne de connexion, donnée par la variable `ConnectionStrings__Default`, désigne `traceability-sql,1433` : le nom du conteneur et son port interne. |
+| F6 | Dans cet état, `GET /farms` et `GET /batches` répondent. Relever les codes et les corps. | Observé. `GET /farms` et `GET /batches` : code 200, corps `{"items":[],"totalCount":0,"pageNumber":1,"pageSize":20}` (base neuve). L'API du conteneur atteint donc SQL Server par le nom `traceability-sql`. Les journaux contiennent ensuite `warn: Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionMiddleware[3] Failed to determine the https port for redirect.` ; aucune redirection n'a eu lieu. |
+| F7 | Dans cet état, relever la réponse de `/swagger`. | Observé. `GET /swagger` : 404 Not Found, corps vide. |
+| F8 | Relancé avec `ASPNETCORE_ENVIRONMENT=Development`, Swagger UI s'affiche. | Observé. Conteneur relancé avec `ASPNETCORE_ENVIRONMENT=Development` : Swagger UI s'affiche sur `http://localhost:8080/swagger/index.html` (Traceability.Api v1, OAS 3.1, serveur `http://localhost:8080/`). |
+| F9 | L'interface (Vite) contre l'API du conteneur liste les fermes et en crée une par son formulaire. | Observé, dans Chrome (le navigateur est donné par l'utilisateur, il n'est pas visible sur les captures ; la barre d'adresse montre `localhost:5173/farms`). Vite lancé avec `VITE_API_URL=http://localhost:8080` dans la fenêtre PowerShell. Liste vide (« Aucune ferme enregistrée. », « 0 au total ») : elle vient de la base du conteneur, la base locale comptant 200 fermes. Formulaire `API-DOCKER`, `Ferme avec API dans le conteneur`, `Souss` : « Ferme API-DOCKER créée. », puis la liste affiche « 1 au total ». La sortie de Vite n'a pas été relevée. |
+| F10 | Relever la mémoire des deux conteneurs (`docker stats --no-stream`) pendant l'essai. | Observé. `docker stats --no-stream` : `traceability-api` 60,64 MiB (22 processus, 0,04 % de processeur) et `traceability-sql` 953,7 MiB (86 processus, 5,95 %), sur une limite de 3,825 GiB chacun, Vite en marche et une ferme écrite. |
+| F11 | Les conteneurs, le réseau et l'image sont supprimés : `docker ps -a`, `docker network ls` et `docker image ls` ne les listent plus. | Observé. `docker stop` et `docker rm` des deux conteneurs, `docker network rm traceability-net`, `docker rmi traceability-api` (`Untagged` et `Deleted`). `docker ps -a` ne liste plus de conteneur, `docker network ls` ne liste plus `traceability-net` et `docker image ls traceability-api` est vide. Les images de base n'ont pas été supprimées. |
+
+### 16.3 Ce qui n'est pas essayé
+
+Écrit avant l'essai.
+
+- L'authentification Windows : le conteneur SQL Server est en authentification SQL.
+- Les données volumineuses, les lots, les stations et les mouvements : seules les routes de lecture `GET /farms` et `GET /batches` et la création d'une ferme sont essayées.
+- Un fichier `docker-compose.yml`, un registre d'images et l'envoi de l'image, un déploiement, un orchestrateur.
+- Le HTTPS dans le conteneur : l'API y écoute en HTTP simple.
+- La construction de l'image dans la CI.
+- L'alternative sans Dockerfile (publication d'une image par le SDK .NET) : citée dans l'ADR, non essayée.
+
+Ajouté après l'essai, le 2026-11-03 :
+
+- Un seul essai, sur une seule machine, avec une seule construction de l'image : la construction avec le cache de Docker n'a pas été essayée, et sa durée n'est pas mesurée.
+- Seules la création d'une ferme et les lectures `GET /farms` et `GET /batches` ont été essayées. Les stations, les mouvements et la création d'un lot n'ont pas été essayés avec l'API en conteneur.
+- Le contenu de la configuration du conteneur (`docker inspect`) n'a pas été relevé, et aucun coffre à secrets n'est essayé : la chaîne de connexion est passée par une variable d'environnement.
+- La sortie de Vite, les empreintes complètes des images de base et le contenu des deux fichiers `appsettings` de l'image n'ont pas été relevés.
+- L'interface n'a été vue que dans Chrome pour cet essai (Edge ne l'a pas été).
+
+### 16.4 Ce qui est prouvé
+
+Essai du 2026-11-03 (heure UTC).
+
+- **L'image** : un `Dockerfile` en deux étapes construit l'image de l'API (356 Mo). Elle s'exécute avec l'utilisateur `app`, et ses variables d'environnement ne contiennent ni mot de passe ni chaîne de connexion (F1 à F3).
+- **L'API en conteneur** : lancée sur un réseau Docker avec la chaîne de connexion donnée au démarrage, elle joint SQL Server dans un autre conteneur par son nom, et répond à `GET /farms` et `GET /batches` (F4 à F6).
+- **L'environnement** : sans le forcer, le conteneur démarre en `Production` : Swagger répond 404 et l'API journalise un avertissement sur la redirection HTTPS. Avec `ASPNETCORE_ENVIRONMENT=Development`, Swagger UI s'affiche (F5 à F8).
+- **L'interface** : lancée contre l'API du conteneur, elle liste les fermes et en crée une par son formulaire (F9).
+- **La mémoire et le nettoyage** : 60,64 MiB pour l'API et 953,7 MiB pour SQL Server pendant l'essai (F10) ; les conteneurs, le réseau et l'image sont supprimés (F11).
+- Aucun code C#, aucun script SQL, aucun fichier de l'interface et aucun fichier de la CI n'a été modifié.
+
+### 16.5 Rejouer la vérification
+
+Dans PowerShell, depuis la racine du dépôt, dans la même fenêtre pour tout ce qui suit. Construire l'image, puis démarrer SQL Server sur un réseau Docker (le mot de passe de `sa` est saisi masqué, comme en 15.5) :
+
+```powershell
+docker build -t traceability-api .
+$env:MSSQL_SA_PASSWORD = [Net.NetworkCredential]::new('', (Read-Host 'Mot de passe sa' -AsSecureString)).Password
+docker network create traceability-net
+docker run --name traceability-sql --network traceability-net -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD -p 14330:1433 -d mcr.microsoft.com/mssql/server:2025-latest
+```
+
+Dans SSMS, se connecter à `localhost,14330` et exécuter les scripts `001`, `002`, `004`, `005`, `011` et `017`, comme en 15.5. Puis lancer l'API en conteneur (sans `ASPNETCORE_ENVIRONMENT`, `/swagger` répond 404) :
+
+```powershell
+$env:ConnectionStrings__Default = "Server=traceability-sql,1433;Database=TraceabilityDev;User Id=sa;Password=$env:MSSQL_SA_PASSWORD;TrustServerCertificate=True"
+docker run --name traceability-api --network traceability-net -e ConnectionStrings__Default -e ASPNETCORE_ENVIRONMENT=Development -p 8080:8080 -d traceability-api
+```
+
+Ouvrir `http://localhost:8080/swagger`. Pour l'interface, dans une autre fenêtre : `cd web`, `$env:VITE_API_URL = "http://localhost:8080"`, `npm run dev`, puis `http://localhost:5173/farms`. Pour nettoyer : arrêter Vite (Ctrl+C), puis `docker stop` et `docker rm` des deux conteneurs, `docker network rm traceability-net` et `docker rmi traceability-api`.
