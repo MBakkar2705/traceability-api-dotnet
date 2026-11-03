@@ -6,6 +6,7 @@ name: CI
 #   frontend - lint, build and tests of the web interface.
 #   docker   - builds the API image with the Dockerfile (lot 9). Nothing is published, no secret is used.
 # The runner is pinned to ubuntu-24.04 instead of ubuntu-latest (see docs/verification.md, section 14).
+# The actions are pinned by commit hash (lot 9); the comment after each hash gives the version.
 
 on:
   pull_request:
@@ -30,10 +31,10 @@ jobs:
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.x
 
@@ -112,10 +113,10 @@ jobs:
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -144,7 +145,7 @@ jobs:
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Show Docker version
         run: docker --version
