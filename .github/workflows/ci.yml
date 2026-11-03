@@ -1,9 +1,10 @@
 name: CI
 
-# Lot 6: continuous integration. Two independent jobs:
+# Lot 6: continuous integration. Three independent jobs:
 #   backend  - builds TraceabilityTest from the SQL scripts in a throwaway SQL Server
 #              container (SQL authentication), then runs the C# tests.
 #   frontend - lint, build and tests of the web interface.
+#   docker   - builds the API image with the Dockerfile (lot 9). Nothing is published, no secret is used.
 # The runner is pinned to ubuntu-24.04 instead of ubuntu-latest (see docs/verification.md, section 14).
 
 on:
@@ -130,3 +131,21 @@ jobs:
 
       - name: Test
         run: npm test
+
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Show Docker version
+        run: docker --version
+
+      # Only a build: the image is not started, not pushed to a registry, and no secret is used.
+      - name: Build the API image
+        run: docker build -t traceability-api .
+
+      - name: Show the image
+        run: docker image ls traceability-api
