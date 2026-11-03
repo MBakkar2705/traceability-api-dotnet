@@ -28,10 +28,6 @@ jobs:
         ports:
           - 1433:1433
 
-    env:
-      # sqlcmd reads the password from this variable, so it never appears on a command line.
-      SQLCMDPASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
-
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
@@ -55,6 +51,10 @@ jobs:
           docker image inspect mcr.microsoft.com/mssql/server:2025-latest --format '{{index .RepoDigests 0}}' || true
 
       - name: Wait for SQL Server (60 s at most)
+        env:
+          # sqlcmd reads the password from this variable, so it never appears on a command line.
+          # Only the steps that call sqlcmd to connect receive it.
+          SQLCMDPASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
         run: |
           last_error=""
           for i in $(seq 1 30); do
@@ -69,6 +69,9 @@ jobs:
           exit 1
 
       - name: Build TraceabilityTest from the SQL scripts
+        env:
+          # Same variable as in "Wait for SQL Server": only the steps that call sqlcmd receive it.
+          SQLCMDPASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
         run: |
           mkdir -p "$RUNNER_TEMP/db"
           for f in 001_create_database 002_create_schema_and_tables 004_create_reference_procedures 005_create_batch_procedures 011_create_list_procedures 017_optimize_list_batches; do
@@ -83,6 +86,9 @@ jobs:
           done
 
       - name: List what was created (read only)
+        env:
+          # Same variable as in "Wait for SQL Server": only the steps that call sqlcmd receive it.
+          SQLCMDPASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
         run: |
           sqlcmd -C -S localhost,1433 -U sa -b -Q "SELECT @@VERSION AS engine_version, SERVERPROPERTY('ProductVersion') AS product_version"
           sqlcmd -C -S localhost,1433 -U sa -b -d TraceabilityTest -Q "SELECT s.name AS schema_name, p.name AS procedure_name FROM sys.procedures AS p JOIN sys.schemas AS s ON s.schema_id = p.schema_id ORDER BY s.name, p.name"
