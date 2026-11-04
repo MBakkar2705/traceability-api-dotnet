@@ -1,5 +1,7 @@
 # traceability-api-dotnet
 
+[![CI](https://github.com/MBakkar2705/traceability-api-dotnet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MBakkar2705/traceability-api-dotnet/actions/workflows/ci.yml)
+
 API ASP.NET Core et SQL Server de traçabilité (projet d'apprentissage).
 
 Elle suit le parcours de lots de tomates, de la ferme à l'expédition : fermes, lots, stations et mouvements.
