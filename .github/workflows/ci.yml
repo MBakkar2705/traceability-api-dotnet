@@ -2,7 +2,8 @@ name: CI
 
 # Lot 6: continuous integration. Three independent jobs:
 #   backend  - builds TraceabilityTest from the SQL scripts in a throwaway SQL Server
-#              container (SQL authentication), then runs the C# tests.
+#              container (SQL authentication), replays the stored procedure test scripts
+#              006 and 012 (lot 9), then runs the C# tests.
 #   frontend - lint, build and tests of the web interface.
 #   docker   - builds the API image with the Dockerfile (lot 9). Nothing is published, no secret is used.
 # The runner is pinned to ubuntu-24.04 instead of ubuntu-latest (see docs/verification.md, section 14).
@@ -94,6 +95,20 @@ jobs:
           sqlcmd -C -S localhost,1433 -U sa -b -Q "SELECT @@VERSION AS engine_version, SERVERPROPERTY('ProductVersion') AS product_version"
           sqlcmd -C -S localhost,1433 -U sa -b -d TraceabilityTest -Q "SELECT s.name AS schema_name, p.name AS procedure_name FROM sys.procedures AS p JOIN sys.schemas AS s ON s.schema_id = p.schema_id ORDER BY s.name, p.name"
           sqlcmd -C -S localhost,1433 -U sa -b -d TraceabilityTest -Q "SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID(N'trace.Batch') AND name IS NOT NULL ORDER BY name"
+
+      - name: Run 006 (stored procedure tests)
+        env:
+          # Same variable as in "Wait for SQL Server": only the steps that call sqlcmd receive it.
+          SQLCMDPASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
+        # The script raises an error when a test is not OK, and -b makes sqlcmd fail on it.
+        run: sqlcmd -C -S localhost,1433 -U sa -b -i database/006_check_procedures.sql
+
+      - name: Run 012 (list procedure tests)
+        env:
+          # Same variable as in "Wait for SQL Server": only the steps that call sqlcmd receive it.
+          SQLCMDPASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
+        # Same as 006: the script raises an error when a test is not OK.
+        run: sqlcmd -C -S localhost,1433 -U sa -b -i database/012_check_list_procedures.sql
 
       - name: Build
         run: dotnet build Traceability.slnx
