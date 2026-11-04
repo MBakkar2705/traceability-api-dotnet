@@ -17,6 +17,10 @@
     Tests 32, 33 and 38 show what to expect in the grid, before the results (changed
     when ListBatches got its total).
   - Creates one helper function in TraceabilityTest only: dbo.TestFingerprint().
+  - Verdict (lot 9): at the end, the script raises an error (RAISERROR, severity 16) if a test is
+    marked ATTENTION or if the counts do not add up, so that a run with sqlcmd -b fails (CI).
+    A test "to check by eye" counts as passed there for its shape only: its content is still
+    checked BY EYE.
 */
 
 USE TraceabilityTest;
@@ -1023,6 +1027,17 @@ FROM @results;
 SELECT BatchCode, Status, QuantityKg
 FROM trace.Batch
 WHERE BatchCode = N'ZZ-B-RECV';
+
+-- Verdict (lot 9): raise an error when a test is not OK, so that a run with sqlcmd -b fails.
+-- A test "to check by eye" counts as passed here: only its shape is checked, not its content.
+DECLARE @verdict_total     INT = (SELECT COUNT(*) FROM @results);
+DECLARE @verdict_attention INT = (SELECT COUNT(*) FROM @results WHERE outcome LIKE N'ATTENTION%');
+DECLARE @verdict_passed    INT = (SELECT COUNT(*) FROM @results
+                                  WHERE outcome IN (N'Refused as expected', N'Accepted as expected')
+                                     OR outcome LIKE N'To check by eye%');
+IF @verdict_total = 0 OR @verdict_attention > 0 OR @verdict_passed <> @verdict_total
+    RAISERROR(N'006 verdict: FAILED (tests_total = %d, passed or to check by eye = %d, marked ATTENTION = %d).',
+              16, 1, @verdict_total, @verdict_passed, @verdict_attention);
 GO
 
 -- End of the safety lock set at the top of the script.
