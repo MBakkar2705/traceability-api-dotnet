@@ -1173,9 +1173,13 @@ Ajouté après les essais G18 à G24, le 2026-11-04 :
 - Une règle cassée dans une procédure lue par `012` : seul `006` est essayé avec une règle cassée (G18) ; `012` l'est avec un contenu cassé (G19).
 - Le double déclenchement : conservé (voir l'[ADR 0009](adr/0009-integration-continue-github-actions.md)). L'effet d'un seul déclenchement sur les vérifications exigées n'est pas essayé.
 
+Ajouté après la fusion, le 2026-11-04 :
+
+- Le badge de la CI : l'état après la fusion de la pull request du lot 9 (premier run de `main` avec les trois jobs) est maintenant essayé (voir 17.6). L'état « failing » (dernier run de `main` rouge) reste non essayé.
+
 ### 17.4 Ce qui est prouvé
 
-Essais du 2026-11-03 et du 2026-11-04 (heure UTC).
+Essais du 2026-11-03 et du 2026-11-04.
 
 - **La CI construit l'image** : la tâche `docker` construit l'image de l'API avec le `Dockerfile` (étape `Build the API image` de 16 s, image `traceability-api` de 240 MB), sans la lancer, sans l'envoyer dans un registre et sans secret (G1 à G4).
 - **Un `Dockerfile` cassé met la CI au rouge** : avec la ligne `COPY` de `Traceability.Data.csproj` retirée, la tâche `docker` est rouge, l'étape en échec est `dotnet publish` (et non `dotnet restore`), et `backend` et `frontend` restent verts (G6 et G7). Avec `docker` exigé par `protect-main`, le bouton « Merge pull request » de la pull request jetable n° 17 est grisé (G22 et G23).
@@ -1193,3 +1197,12 @@ Essais du 2026-11-03 et du 2026-11-04 (heure UTC).
 - Pour voir la CI rouge avec un `Dockerfile` cassé : sur une branche jetable partie de `feature/lot-9-ci`, retirer du `Dockerfile` la ligne `COPY src/Traceability.Data/Traceability.Data.csproj src/Traceability.Data/`, pousser, ouvrir une pull request vers `main` sans la fusionner. Résultat observé : `docker` rouge pour `push` et `pull_request`, `backend` et `frontend` verts, bouton de fusion grisé. Fermer la pull request sans fusion, puis supprimer la branche.
 - Pour voir `Run 006` rouge : sur une branche jetable, dans `database/005_create_batch_procedures.sql`, remplacer `IF @QuantityKg > @CurrentQuantity` par `IF @QuantityKg > @CurrentQuantity + 100000` (dans `AddMovement`), puis pousser. Résultat observé : `Run 006` rouge, message `006 verdict: FAILED`, test 29 en `ATTENTION: accepted`.
 - Pour rejouer `006` et `012` à la main : dans SSMS, sur `TraceabilityTest`. Résultat observé au lot 9 : `tests_total` 38, `tests_ok` 34, `tests_by_eye` 4 pour `006` ; 16, 10 et 6 pour `012` ; aucune erreur dans la sortie.
+
+### 17.6 Suivi après la fusion de la pull request n° 18
+
+Écrit le 2026-11-04 d'après la page de l'exécution n° 49 (onglet Actions), la page du dépôt et le `README.md` de `main`, relevés le 2026-11-04 vers 11:55 UTC. Cette section existe parce que ces observations n'étaient possibles qu'après la fusion : elles n'avaient pas été prévues dans le plan du commit final de documentation du lot.
+
+- **Fusion** : la pull request n° 18 est fusionnée par un commit de fusion, `697523b` (« Merge pull request #18 from MBakkar2705/feature/lot-9-ci »). L'heure exacte de la fusion n'est pas relevée.
+- **Exécution après la fusion** : n° 49, déclenchement `push`, branche `main`, commit `697523b`, Success en 59 s. Trois tâches vertes : `backend` 56 s, `frontend` 19 s et `docker` 23 s. C'est le premier run de `main` avec les trois tâches : le précédent, n° 35 (commit `38da64e`, fusion de la pull request n° 16), n'en avait que deux (`backend` et `frontend`).
+- **Page du dépôt** : à côté du commit `697523b`, un point orange (exécution en cours) sur la première capture, puis une coche verte sur la capture prise après la fin de l'exécution.
+- **Badge** : le `README.md` de `main` affiche « CI passing » sur la capture prise pendant l'exécution et sur celle prise après. Limite : le run précédent de `main` (n° 35) était vert lui aussi, donc le badge ne distingue pas le n° 49 du n° 35. L'état « failing » n'est pas essayé.
