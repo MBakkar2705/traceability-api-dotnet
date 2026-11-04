@@ -20,6 +20,10 @@
     has at most 1000 farms and 1000 stations.
   - dbo.TestFingerprint() has the same definition as in 006: whichever of the two
     scripts runs first creates it.
+  - Verdict (lot 9): at the end, the script raises an error (RAISERROR, severity 16) if a test is
+    marked ATTENTION or if the counts do not add up, so that a run with sqlcmd -b fails (CI).
+    A test "to check by eye" counts as passed there for its shape only: its content is still
+    checked BY EYE.
 */
 
 USE TraceabilityTest;
@@ -488,6 +492,17 @@ SELECT COUNT(*) AS tests_total,
                 THEN 1 ELSE 0 END) AS tests_ok,
        SUM(CASE WHEN outcome LIKE N'To check by eye%' THEN 1 ELSE 0 END) AS tests_by_eye
 FROM @results;
+
+-- Verdict (lot 9): raise an error when a test is not OK, so that a run with sqlcmd -b fails.
+-- A test "to check by eye" counts as passed here: only its shape is checked, not its content.
+DECLARE @verdict_total     INT = (SELECT COUNT(*) FROM @results);
+DECLARE @verdict_attention INT = (SELECT COUNT(*) FROM @results WHERE outcome LIKE N'ATTENTION%');
+DECLARE @verdict_passed    INT = (SELECT COUNT(*) FROM @results
+                                  WHERE outcome IN (N'Refused as expected', N'Accepted as expected')
+                                     OR outcome LIKE N'To check by eye%');
+IF @verdict_total = 0 OR @verdict_attention > 0 OR @verdict_passed <> @verdict_total
+    RAISERROR(N'012 verdict: FAILED (tests_total = %d, passed or to check by eye = %d, marked ATTENTION = %d).',
+              16, 1, @verdict_total, @verdict_passed, @verdict_attention);
 GO
 
 -- End of the safety lock set at the top of the script.

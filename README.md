@@ -1,5 +1,7 @@
 # traceability-api-dotnet
 
+[![CI](https://github.com/MBakkar2705/traceability-api-dotnet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MBakkar2705/traceability-api-dotnet/actions/workflows/ci.yml)
+
 API ASP.NET Core et SQL Server de traçabilité (projet d'apprentissage).
 
 Elle suit le parcours de lots de tomates, de la ferme à l'expédition : fermes, lots, stations et mouvements.
@@ -25,6 +27,7 @@ Dans ce README, « Prévu » veut dire « on a l'intention de le faire », pas �
 | 6 | Intégration continue (GitHub Actions) : SQL Server en conteneur, tests C# et interface à chaque push et pull request, `main` protégée | Terminé |
 | 7 | SQL Server en conteneur Docker : base reconstruite par les scripts, API et interface essayées à la main (fermes seulement) | Terminé |
 | 8 | L'API dans une image Docker (`Dockerfile`) : image construite, lancée avec SQL Server en conteneur, interface essayée (fermes seulement) | Terminé |
+| 9 | CI dédiée : image Docker construite par la CI, scripts `006` et `012` rejoués (une erreur met la CI au rouge), `SQLCMDPASSWORD` limité aux étapes `sqlcmd`, actions fixées par empreinte, badge, `docker` exigé pour fusionner | Terminé |
 
 ## Technologies
 
@@ -46,17 +49,18 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 - [ADR 0006](docs/adr/0006-interface-web-vite-react.md) : interface web en Vite, React et TypeScript.
 - [ADR 0007](docs/adr/0007-cors-dans-l-api.md) : CORS dans l'API, plutôt qu'un proxy de développement.
 - [ADR 0008](docs/adr/0008-listbatches-page-avant-jointure-total-recompile.md) : `ListBatches` : page découpée avant la jointure, total refait à chaque appel, index sur la ferme.
-- [ADR 0009](docs/adr/0009-integration-continue-github-actions.md) : intégration continue avec GitHub Actions : SQL Server en conteneur (authentification SQL), déclenchement à chaque push et pull request, runner et actions fixés.
-- [ADR 0010](docs/adr/0010-protection-de-main-par-ruleset.md) : protection de `main` par un ruleset GitHub : pull request obligatoire, vérifications `backend` et `frontend` exigées.
-- [ADR 0011](docs/adr/0011-api-dans-une-image-docker.md) : l'API dans une image Docker, construite par un `Dockerfile` à la racine ; environnement et secrets donnés au lancement.
+- [ADR 0009](docs/adr/0009-integration-continue-github-actions.md) : intégration continue avec GitHub Actions : SQL Server en conteneur (authentification SQL), déclenchement à chaque push et pull request, runner et actions fixés. Les changements du lot 9 sont dans ses notes.
+- [ADR 0010](docs/adr/0010-protection-de-main-par-ruleset.md) : protection de `main` par un ruleset GitHub : pull request obligatoire, vérifications `backend` et `frontend` exigées (`docker` ajoutée au lot 9, voir ses notes).
+- [ADR 0011](docs/adr/0011-api-dans-une-image-docker.md) : l'API dans une image Docker, construite par un `Dockerfile` à la racine ; environnement et secrets donnés au lancement. La CI construit l'image depuis le lot 9 (voir ses notes).
 
 ## Ce que ce projet ne prouve pas
 
 - Il ne représente aucun système réel : le scénario est simplifié et inventé.
-- Pour chaque lot, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3, 9.3, 10.3, 11.3, 12.3, 13.3, 14.8, 15.3 et 16.3. Chaque liste date de son lot : un point peut avoir été réglé depuis, et la preuve est alors dans la section « Ce qui est prouvé » du lot concerné.
-- La CI (lot 6) prouve que les 163 tests C# et les 178 tests de l'interface passent sur une machine vierge en authentification SQL, et qu'un test en échec bloque la fusion. Elle ne prouve ni l'authentification Windows, ni les scripts `006` et `012`, ni une pull request venue d'un fork (le secret n'y serait pas transmis), ni la migration annoncée d'`ubuntu-latest`, ni le lancement à la main de l'application contre un SQL Server en conteneur. Son moteur SQL Server est plus récent que celui de la machine de développement (17.0.5035.5 contre 17.0.1145.4).
+- Pour chaque lot, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3, 9.3, 10.3, 11.3, 12.3, 13.3, 14.8, 15.3, 16.3 et 17.3. Chaque liste date de son lot : un point peut avoir été réglé depuis, et la preuve est alors dans la section « Ce qui est prouvé » du lot concerné.
+- La CI (lot 6) prouve que les 163 tests C# et les 178 tests de l'interface passent sur une machine vierge en authentification SQL, et qu'un test en échec bloque la fusion. Elle ne prouve ni l'authentification Windows, ni les scripts `006` et `012` (rejoués par la CI depuis le lot 9), ni une pull request venue d'un fork (le secret n'y serait pas transmis), ni la migration annoncée d'`ubuntu-latest`, ni le lancement à la main de l'application contre un SQL Server en conteneur. Son moteur SQL Server est plus récent que celui de la machine de développement (17.0.5035.5 contre 17.0.1145.4).
 - Le lot 7 prouve que l'application, lancée à la main, lit et écrit les fermes dans un SQL Server 2025 en conteneur (authentification SQL, une seule machine). Il ne prouve ni les lots, les stations et les mouvements dans ce conteneur, ni les données volumineuses, ni l'authentification Windows, ni l'application dans un conteneur, essayée au lot 8 (voir [docs/verification.md](docs/verification.md), section 15).
-- Le lot 8 prouve que l'image de l'API se construit et que l'API en conteneur lit et écrit les fermes dans SQL Server en conteneur, avec l'interface web. Il ne prouve ni les stations, les mouvements ou la création d'un lot dans ce montage, ni le HTTPS, ni un coffre à secrets, ni que le `Dockerfile` reste valable : la CI ne le construit pas (voir [docs/verification.md](docs/verification.md), section 16, et l'[ADR 0011](docs/adr/0011-api-dans-une-image-docker.md)).
+- Le lot 8 prouve que l'image de l'API se construit et que l'API en conteneur lit et écrit les fermes dans SQL Server en conteneur, avec l'interface web. Il ne prouve ni les stations, les mouvements ou la création d'un lot dans ce montage, ni le HTTPS, ni un coffre à secrets, ni que le `Dockerfile` reste valable : la CI ne le construisait pas à ce lot, elle le construit depuis le lot 9 (voir [docs/verification.md](docs/verification.md), sections 16 et 17, et l'[ADR 0011](docs/adr/0011-api-dans-une-image-docker.md)).
+- Le lot 9 prouve que la CI construit l'image de l'API (tâche `docker`, sans la lancer) et que, dans les essais jetables, un `Dockerfile` cassé rend la CI rouge, que `006` rejoué par la CI la rend rouge quand une règle d'une procédure est cassée, et qu'avec `docker` exigé par `protect-main` le bouton de fusion d'une pull request au `Dockerfile` cassé est grisé. Il ne prouve ni le contenu des tests « à vérifier à l'œil » (un seul cas essayé : un test C# l'a détecté, pas `012`), ni une règle cassée vue par `012`, ni le démarrage de l'image dans la CI ou son envoi dans un registre, ni la mise à jour future des empreintes des actions, ni un badge « failing » (voir [docs/verification.md](docs/verification.md), sections 17.3 et 17.4).
 - Le CORS n'est configuré que pour le serveur de développement de l'interface (`http://localhost:5173`, `GET` et `POST`). L'interface n'a été vue que dans Edge. Le bouton « Fin » de la liste des lots a été accéléré au lot 5, mais la correction de ses échecs n'est pas prouvée (voir [docs/verification.md](docs/verification.md), section 13.3). Une observation hors protocole du 2026-10-23 montre, avec un budget de mémoire de 5 Mo, l'ancienne requête de la dernière page en attente de sa mémoire pendant que la nouvelle répondait en moins d'une seconde ([docs/mesures.md](docs/mesures.md), section 9.7) : elle ne démontre pas la cause des échecs d'origine. Swagger UI décrit les 10 routes et leurs erreurs, mais son exemple d'erreur n'affiche pas les champs ajoutés par l'API (`errorCode`, `errors`).
 - Les mesures des lots 2b et 5 portent sur un million de lots inventés et une seule machine : elles ne disent rien d'un autre volume ni d'une autre machine ; le coût en écriture n'est mesuré que pour `IX_Batch_FarmId` (voir [docs/mesures.md](docs/mesures.md), sections 5 et 9.4).
 - Il donne une base de travail, pas une expérience de production.
@@ -87,12 +91,7 @@ Ces points ne sont pas planifiés dans un lot : ce sont des intentions, pas des 
 - un index sur le statut des lots : le total et la page de `RECEIVED` lisent encore 10 574 et 9 351 pages (voir [docs/mesures.md](docs/mesures.md), sections 9.5 et 9.6) ;
 - une pagination par clé (reprendre après le dernier numéro de lot vu) plutôt que par numéro de page : la dernière page lit toujours toute la table (10 424 pages) ; cela changerait le contrat de l'API et de l'interface ;
 - reproduire à volonté les échecs du bouton « Fin » (par exemple en limitant la mémoire de SQL Server) pour prouver la correction, et essayer « Fin » dans l'interface web, pas seulement par l'API ;
-- un cahier de scénarios fonctionnels (une recette) : créer une ferme, créer un lot, le faire avancer jusqu'à l'expédition, avec un maximum de scénarios, y compris les refus. Il pourra être rejoué à la main, puis automatisé en partie une fois l'interface web faite ;
-- exécuter les scripts `006` et `012` dans la CI ;
-- limiter `SQLCMDPASSWORD` aux seules étapes de la CI qui appellent `sqlcmd` (aujourd'hui toutes les étapes de la tâche `backend` y ont accès, voir l'[ADR 0009](docs/adr/0009-integration-continue-github-actions.md)) ;
-- ajouter un badge de CI à ce README ;
-- un lot dédié à la CI, dont la liste est à fixer à son début : y regrouper les points de CI de cette liste (scripts `006` et `012`, `SQLCMDPASSWORD`, badge, actions fixées par empreinte) et y ajouter la construction de l'image Docker (le `Dockerfile` n'est pas vérifié à chaque changement, voir l'[ADR 0011](docs/adr/0011-api-dans-une-image-docker.md)) et le double déclenchement `push` et `pull_request` (choix de l'[ADR 0009](docs/adr/0009-integration-continue-github-actions.md) ; l'effet d'un seul déclenchement sur les vérifications exigées par l'[ADR 0010](docs/adr/0010-protection-de-main-par-ruleset.md) n'est pas essayé) ;
-- fixer les actions de la CI par empreinte de commit au lieu de la version majeure.
+- un cahier de scénarios fonctionnels (une recette) : créer une ferme, créer un lot, le faire avancer jusqu'à l'expédition, avec un maximum de scénarios, y compris les refus. Il pourra être rejoué à la main, puis automatisé en partie une fois l'interface web faite.
 
 ## Démarrage
 
@@ -198,16 +197,19 @@ Les écrans d'écriture (lot 4b) : chaque liste a un lien vers la page de créat
 
 Ces écrans écrivent dans la base que l'API utilise. Pour les essayer sans toucher à `TraceabilityDev`, voir [docs/verification.md](docs/verification.md), section 12.4.
 
-### Intégration continue (lot 6)
+### Intégration continue (lots 6 et 9)
 
-La CI est le fichier `.github/workflows/ci.yml` : deux tâches, `backend` (SQL Server 2025 en conteneur, base `TraceabilityTest` reconstruite par les scripts `001`, `002`, `004`, `005`, `011` et `017`, puis `dotnet build` et `dotnet test Traceability.slnx`) et `frontend` (Node 22, `npm ci`, lint, build et tests). Elle se lance à chaque push et à chaque pull request ; une exécution dure environ une minute.
+La CI est le fichier `.github/workflows/ci.yml` : trois tâches, `backend` (SQL Server 2025 en conteneur, base `TraceabilityTest` reconstruite par les scripts `001`, `002`, `004`, `005`, `011` et `017`, scripts de tests `006` et `012` rejoués, puis `dotnet build` et `dotnet test Traceability.slnx`), `frontend` (Node 22, `npm ci`, lint, build et tests) et `docker` (construction de l'image de l'API avec le `Dockerfile`, sans la lancer ni l'envoyer dans un registre, sans secret). Elle se lance à chaque push et à chaque pull request ; une exécution dure environ une minute.
 
 - **Secret à créer** : `MSSQL_SA_PASSWORD`, un secret de dépôt (réglages de GitHub, Secrets and variables). C'est le mot de passe du compte `sa` du conteneur de la CI : il doit respecter la politique de mot de passe de SQL Server, et il n'est jamais écrit dans le dépôt.
 - **Voir et rejouer** : onglet Actions de GitHub ; « Re-run all jobs » dans une exécution, ou un nouveau push.
 - **Authentification** : la CI se connecte en authentification SQL (utilisateur `sa`), la machine de développement en authentification Windows. Le code C# ne change pas : seule la chaîne de connexion `ConnectionStrings__Test` diffère.
-- **`main` protégée** : le ruleset `protect-main` (un réglage de GitHub, hors du dépôt, voir l'[ADR 0010](docs/adr/0010-protection-de-main-par-ruleset.md)) impose une pull request et les vérifications `backend` et `frontend` pour fusionner.
+- **`main` protégée** : le ruleset `protect-main` (un réglage de GitHub, hors du dépôt, voir l'[ADR 0010](docs/adr/0010-protection-de-main-par-ruleset.md)) impose une pull request et les vérifications `backend`, `frontend` et `docker` pour fusionner (`docker` depuis le lot 9).
+- **Scripts `006` et `012`** : rejoués par la CI avec `sqlcmd -b` ; ils déclenchent une erreur quand un test est en échec, ce qui met la CI au rouge. Les tests « à vérifier à l'œil » ne sont contrôlés que pour leur forme, pas pour leur contenu.
+- **Mot de passe et actions** : dans `ci.yml`, `SQLCMDPASSWORD` n'est défini que sur les étapes qui appellent `sqlcmd`, et les actions de GitHub sont fixées par empreinte de commit.
+- **Badge** : sous le titre de ce README, il affiche l'état du dernier run de `main`.
 
-Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), section 14, et [ADR 0009](docs/adr/0009-integration-continue-github-actions.md).
+Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), sections 14 et 17, et [ADR 0009](docs/adr/0009-integration-continue-github-actions.md) (notes du lot 9 comprises).
 
 ### Docker : SQL Server et API en conteneurs (lots 7 et 8)
 
@@ -218,6 +220,6 @@ Prérequis : Docker Desktop (version 4.81.0 observée). Ces deux lots essaient l
 - **Secrets** : le mot de passe de `sa` est saisi masqué dans PowerShell, et la chaîne de connexion est donnée au conteneur par la variable `ConnectionStrings__Default`. Ni l'image ni le dépôt ne contiennent de mot de passe.
 - **Environnement** : un conteneur démarre en `Production`, où Swagger n'existe pas (réponse 404) et où le CORS n'est pas appliqué. Pour essayer Swagger et l'interface web, `ASPNETCORE_ENVIRONMENT=Development` est donné au lancement, et l'interface vise l'API du conteneur avec `VITE_API_URL=http://localhost:8080`.
 - **Rejouer** : les commandes complètes, sans mot de passe, sont dans [docs/verification.md](docs/verification.md), sections 15.5 et 16.5.
-- **Ce que ce montage n'est pas** : un seul poste, des conteneurs lancés à la main, sans registre d'images ni déploiement, l'API en HTTP seulement, aucun coffre à secrets. La CI ne construit pas l'image.
+- **Ce que ce montage n'est pas** : un seul poste, des conteneurs lancés à la main, sans registre d'images ni déploiement, l'API en HTTP seulement, aucun coffre à secrets. Depuis le lot 9, la CI construit l'image (sans la lancer).
 
 Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), sections 15 et 16, et [ADR 0011](docs/adr/0011-api-dans-une-image-docker.md).
