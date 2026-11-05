@@ -1206,3 +1206,115 @@ Essais du 2026-11-03 et du 2026-11-04.
 - **Exécution après la fusion** : n° 49, déclenchement `push`, branche `main`, commit `697523b`, Success en 59 s. Trois tâches vertes : `backend` 56 s, `frontend` 19 s et `docker` 23 s. C'est le premier run de `main` avec les trois tâches : le précédent, n° 35 (commit `38da64e`, fusion de la pull request n° 16), n'en avait que deux (`backend` et `frontend`).
 - **Page du dépôt** : à côté du commit `697523b`, un point orange (exécution en cours) sur la première capture, puis une coche verte sur la capture prise après la fin de l'exécution.
 - **Badge** : le `README.md` de `main` affiche « CI passing » sur la capture prise pendant l'exécution et sur celle prise après. Limite : le run précédent de `main` (n° 35) était vert lui aussi, donc le badge ne distingue pas le n° 49 du n° 35. L'état « failing » n'est pas essayé.
+
+## 18. Lot 10a : le pseudo annuaire Keycloak, dans Docker et sous Windows
+
+Écrit le 2026-11-04, avant l'essai. Tant que l'essai n'est pas fait, chaque ligne de la liste vaut « À observer ». Il n'y a pas de prédiction chiffrée : chaque ligne se terminera par « Observé » ou « Non observé », avec ce qui a été vu. Le lot 10a prépare seulement le serveur de connexion : l'API (lot 10b) et l'interface (lot 10c) ne sont pas touchées.
+
+### 18.1 Ce qui est essayé
+
+- Un serveur de connexion Keycloak, version 26.6.2 (celle du guide Docker officiel), lancé en mode développement (`start-dev`) : d'abord dans un conteneur Docker, ensuite directement sous Windows avec un JDK 21 extrait d'une archive `.zip` à côté du Java 24 existant (sans installation et sans changer le PATH de Windows). Le JDK 21 est dans la liste des JDK pris en charge par Keycloak (OpenJDK 17, 21 et 25, page « Supported Configurations » relevée le 2026-11-04) et c'est celui de l'image officielle.
+- Un fichier de réglages, `identity/traceability-realm.json`, importé au démarrage (`--import-realm`) : un realm `traceability` (l'espace isolé de comptes de l'application), deux rôles `reader` (lecture seule) et `writer` (saisie), et un client d'essai `traceability-trial` qui permet d'obtenir un jeton avec un nom d'utilisateur et un mot de passe. Le fichier ne contient ni utilisateur ni mot de passe.
+- Deux comptes d'essai, un par rôle, créés à la main dans la console d'administration. Leurs mots de passe sont saisis dans cette console et ne sont écrits dans aucun fichier du dépôt.
+- Un jeton obtenu pour chaque compte, dont le contenu est lu pour y relever les rôles.
+- Le port 8180 du PC est utilisé pour Keycloak dans les deux modes (un seul mode à la fois), car l'API en conteneur du lot 8 utilise le port 8080. Sous Windows, Keycloak n'écoute que sur `127.0.0.1` (`--http-host=127.0.0.1`) ; en Docker, le port est publié sur `127.0.0.1`.
+- Le flux « mot de passe direct » du client d'essai ne sert qu'aux essais à la main : les sources consultées le réservent aux applications de confiance et le déconseillent en production. L'interface utilisera un autre flux (lot 10c).
+- Aucun code C#, script SQL, fichier de la CI ni fichier de l'interface n'est modifié sur la branche du lot.
+
+### 18.2 Liste de contrôle
+
+| N° | À observer | Résultat |
+|---|---|---|
+| H1 | L'image `quay.io/keycloak/keycloak:26.6.2` se télécharge (`docker pull`). Relever sa taille et son empreinte (`docker image ls --digests`). | Observé le 2026-11-05. `docker ps -a` : aucun conteneur. `docker pull` : « Downloaded newer image for quay.io/keycloak/keycloak:26.6.2 », empreinte `sha256:f9ba7b2af90db8dc749a57ca9aedca51e840cb9224441ab546a968da941da900`. `docker image ls --digests` : identifiant `f9ba7b2af90d`, créée « 5 months ago », taille 751MB. |
+| H2 | Le conteneur démarre avec `start-dev --import-realm` : le fichier `identity/traceability-realm.json` est monté en lecture seule dans `/opt/keycloak/data/import`, le port 8180 du PC est publié sur `127.0.0.1`, l'administrateur est créé par `KC_BOOTSTRAP_ADMIN_USERNAME` et `KC_BOOTSTRAP_ADMIN_PASSWORD` (mot de passe saisi en masqué). Relever le message de fin de démarrage et la durée. | Observé. `docker run -d --name traceability-keycloak -p 127.0.0.1:8180:8080 …` avec le fichier monté en lecture seule (`:ro`) ; mot de passe administrateur saisi masqué. `docker ps` après 40 s : `Up 41 seconds`, `127.0.0.1:8180->8080/tcp`. Premier filtre des journaux après 40 s : aucune ligne, Keycloak n'avait pas fini de démarrer. Journal : `Quarkus augmentation completed in 42776ms`, `Bootstrap completed in 31.418000 seconds`, `Keycloak 26.6.2 on JVM (powered by Quarkus 3.33.1.1) started in 47.631s. Listening on: http://0.0.0.0:8080`, `Profile dev activated`, `Running the server in development mode. DO NOT use this configuration in production.` ; `jdbc-h2` figure dans la liste des fonctions installées. |
+| H3 | Le journal indique l'import du realm `traceability`. | Observé. Journal : `Importing from directory /opt/keycloak/bin/../data/import`, `KC-SERVICES0030: Full model import requested. Strategy: IGNORE_EXISTING`, `Realm 'traceability' imported`, `KC-SERVICES0032: Import finished successfully`, `KC-SERVICES0077: Created temporary admin user with username admin`. Aucune ligne `WARN` ni `ERROR` dans les 40 dernières lignes, qui couvrent tout le journal. |
+| H4 | La console d'administration (`http://localhost:8180`) montre le realm `traceability`, ses rôles `reader` et `writer` et le client `traceability-trial`. | Observé, sur captures de la console (`http://localhost:8180/admin`, realm `traceability`). Realm roles : cinq rôles, `default-roles-traceability` (composite), `offline_access`, `reader` (« Read-only access: can list and view farms, stations and batches. »), `uma_authorization` et `writer` (« Data entry: can also create farms, batches and movements. »). Clients : sept, `account`, `account-console`, `admin-cli`, `broker`, `realm-management`, `security-admin-console` et `traceability-trial`. Bandeau jaune : « You are logged in as a temporary admin user. To harden security, create a permanent admin account and delete the temporary one. » |
+| H5 | Deux comptes sont créés à la main dans la console, un par rôle, avec le rôle affecté. Les mots de passe sont saisis dans la console. | Observé, sur captures. `reader-test` et `writer-test` créés (adresses `reader-test@example.com` et `writer-test@example.com`, prénoms `Reader` et `Writer`, nom `Test`), sans action requise ni groupe. Onglet Role mapping : `reader` et `default-roles-traceability` pour le premier, `writer` et `default-roles-traceability` pour le second, tous en `Inherited : False`. Les mots de passe sont saisis dans la console et ne sont pas visibles. Dans la liste Users, un point d'exclamation rouge marque chaque adresse. |
+| H6 | Un jeton est obtenu pour chaque compte auprès de `/realms/traceability/protocol/openid-connect/token` (`curl.exe`, mot de passe saisi en masqué). Relever le code, `token_type` et `expires_in`. | Observé. Fonction PowerShell `Get-Trial` (`curl.exe`, flux « mot de passe direct » du client `traceability-trial`, mot de passe saisi masqué) : `Code : HTTP:200`, `token_type : Bearer`, `expires_in : 300` pour `reader-test` et pour `writer-test`. Seul le contenu décodé du jeton est affiché, jamais le jeton brut. |
+| H7 | Le contenu du jeton du compte « lecture seule » contient le rôle `reader` et pas `writer` ; celui du compte « saisie » contient `writer`. Relever dans quel champ du jeton se trouvent les rôles, ainsi que l'émetteur (`iss`), la date d'expiration (`exp`) et le public visé (`aud`). | Observé. `reader-test` : `realm_access.roles` contient `reader`, `offline_access`, `default-roles-traceability` et `uma_authorization`, pas `writer`. `writer-test` : `offline_access`, `default-roles-traceability`, `writer` et `uma_authorization`, pas `reader`. Les rôles sont dans `realm_access.roles`. `iss` : `http://localhost:8180/realms/traceability` ; `aud` : `account` ; `azp` : `traceability-trial` ; `exp` moins `iat` : 300 s (1793869060 − 1793868760 et 1793869066 − 1793868766) ; `scope` : `profile email` ; `email_verified` : `false`. |
+| H8 | Un mauvais mot de passe est refusé. Relever le code et le corps de la réponse. | Observé. Mauvais mot de passe pour `reader-test` : `Code : HTTP:400`, corps `{"error":"invalid_grant","error_description":"Invalid user credentials"}` (code 400 et non 401). |
+| H9 | Relever la mémoire du conteneur (`docker stats --no-stream`) après l'obtention des jetons. | Observé, après les jetons et un essai refusé seulement : la mémoire juste après le démarrage n'a pas été relevée. `traceability-keycloak` : 706.3MiB / 3.825GiB (18,03 %), 0,77 % de processeur, 44 processus, E/S réseau 262kB / 7.43MB. |
+| H10 | Le conteneur supprimé puis recréé avec le même fichier réimporte le realm, les rôles et le client (sans les comptes, à recréer). | Observé. `docker rm -f traceability-keycloak`, puis le même `docker run` : journal `Realm 'traceability' imported` et `started in 50.183s`. Console : Realm roles avec les mêmes cinq rôles ; Clients avec les sept clients dont `traceability-trial` ; Users : « No users found ». Un `Get-Trial` lancé ensuite a répondu `HTTP:400` `invalid_grant`, mais le mot de passe a peut-être été mal saisi : non retenu comme preuve. |
+| H11 | Un JDK 21 est extrait d'une archive `.zip` à côté du Java 24, sans installation. Relever sa version exacte et son dossier. `java -version` affiche toujours la version 24. | Observé. Archive `OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip` (Eclipse Temurin) extraite dans `$HOME\tools\jdk-21.0.13+9`. `java.exe -version` de ce dossier : `openjdk version "21.0.13" 2026-10-20 LTS`, `OpenJDK Runtime Environment Temurin-21.0.13+9 (build 21.0.13+9-LTS)`. `java -version` dans la même fenêtre : `java version "24" 2025-03-18`, `Java(TM) SE Runtime Environment (build 24+36-3646)`. |
+| H12 | Keycloak 26.6.2 (archive zip) est extrait hors du dépôt, le fichier de réglages est copié dans `data\import`, et Keycloak démarre dans une nouvelle fenêtre avec `bin\kc.bat start-dev --import-realm --http-port=8180 --http-host=127.0.0.1`, `JAVA_HOME` posé pour cette fenêtre seulement. Relever le message de fin de démarrage et la durée. | Observé. Archive `keycloak-26.6.2.zip` (page « Downloads 26.6.2 » de keycloak.org) extraite dans `$HOME\tools\keycloak-26.6.2` ; fichier copié dans `data\import` (738 octets). Un premier lancement, sans mot de passe administrateur défini, s'est arrêté aussitôt avec `bootstrap-admin-username available only when bootstrap admin password is set` : rien n'a démarré. Avec `KC_BOOTSTRAP_ADMIN_USERNAME` et `KC_BOOTSTRAP_ADMIN_PASSWORD` (saisi masqué) définis, journal : `Quarkus augmentation completed in 18138ms`, `Importing from directory …\keycloak-26.6.2\bin\..\data\import`, `Realm 'traceability' imported`, `Import finished successfully`, `Bootstrap completed in 16.741000 seconds`, `Keycloak 26.6.2 on JVM (powered by Quarkus 3.33.1.1) started in 26.456s. Listening on: http://127.0.0.1:8180`. L'option `--http-host=127.0.0.1` a été acceptée. |
+| H13 | Sous Windows, les contrôles H3 à H8 donnent les mêmes résultats que dans Docker. Relever toute différence. | Observé. Mêmes résultats que dans Docker pour H3 (journal), H4 (cinq rôles, sept clients), H5 (comptes recréés, mêmes rôles), H6 (`HTTP:200`, `Bearer`, 300), H7 (`reader` sans `writer`, `writer` sans `reader`, mêmes `iss`, `aud` et durée) et H8 (`HTTP:400`, même corps). Différences relevées : l'ordre des rôles dans `realm_access.roles` et celui du champ `scope` (`email profile` sous Windows, `profile email` en Docker) ; l'adresse d'écoute (`127.0.0.1:8180` sous Windows ; port 8080 du conteneur publié sur `127.0.0.1:8180` en Docker). |
+| H14 | Relever la mémoire du processus Java de Keycloak sous Windows (`Get-Process java`). | Observé, après les jetons et le refus. `Get-Process java` : un seul processus, `MemMiB : 512,5` (mémoire de travail du processus Windows), chemin `…\tools\jdk-21.0.13+9\bin\java.exe` : c'est le JDK 21 qui fait tourner Keycloak. Cette mesure n'est pas comparable terme à terme à celle de `docker stats` (H9). |
+| H15 | Après l'essai, le serveur est arrêté (Ctrl+C), aucun `java.exe` lancé pour l'essai ne reste, le conteneur est supprimé et `java -version` affiche encore la version 24. | Observé. Docker : `docker rm -f traceability-keycloak`, puis `docker ps -a` ne liste aucun conteneur. Windows : après Ctrl+C dans la fenêtre de Keycloak, `Get-Process java` n'affiche rien et `java -version` affiche `java version "24" 2025-03-18`. L'image `quay.io/keycloak/keycloak:26.6.2` et le dossier `tools` (JDK 21 et Keycloak) sont conservés. |
+| H16 | Le fichier `identity/traceability-realm.json` ne contient aucun mot de passe ni secret : relever le résultat d'une recherche des mots `password`, `secret` et `credentials`. | Observé. Recherche (insensible à la casse) de `password`, `secret` et `credentials` dans `identity/traceability-realm.json` : aucune ligne. Le fichier fait 28 lignes et 738 octets, la taille de la copie importée sous Windows. |
+
+### 18.3 Ce qui n'est pas essayé
+
+Écrit avant l'essai.
+
+- Keycloak avec Java 24 : cette version n'est pas dans la liste des JDK pris en charge. Java 25, qui y figure, n'est pas essayé non plus.
+- Le mode production (`start`), HTTPS, une base de données externe, la conservation des données entre deux démarrages (aucun volume) et la haute disponibilité.
+- Un vrai annuaire d'entreprise (LDAP, Active Directory, Entra ID) et la fédération de comptes.
+- La vérification du jeton par l'API et le refus selon le rôle : lot 10b. La connexion depuis l'interface, avec le flux par code d'autorisation : lot 10c.
+- La CI : elle ne lance pas Keycloak à ce lot.
+- L'enregistrement de l'utilisateur sur chaque mouvement : lot suivant.
+- Un fichier `docker-compose.yml`, un registre, un déploiement.
+
+Ajouté après l'essai (2026-11-05) :
+
+- Une version de Keycloak plus récente que 26.6.2 : des versions plus récentes existent (par exemple 26.6.3, 26.6.4 et 26.7.2). La 26.6.2 est gardée dans les deux modes pour qu'ils soient comparables.
+- Un compte administrateur permanent : l'essai utilise l'administrateur temporaire de démarrage, que la console signale par un bandeau.
+- La mémoire de Keycloak juste après le démarrage : H9 est relevée après les jetons seulement.
+- La conservation des données : en Docker, la base H2 est dans le conteneur et les comptes disparaissent avec lui (H10).
+- Le flux par code d'autorisation avec PKCE (lot 10c). Le flux « mot de passe direct » n'est utilisé qu'à la main, avec le client d'essai.
+- L'effet de l'adresse utilisée pour demander le jeton sur `iss` : observé seulement avec `http://localhost:8180`.
+- Le contenu du jeton face à une API qui le vérifie : lot 10b.
+
+### 18.4 Ce qui est prouvé
+
+Essais du 2026-11-05.
+
+- **Keycloak 26.6.2 démarre** en mode développement dans Docker (`started in 47.631s`, puis `50.183s` au second lancement) et sous Windows avec un JDK 21 (`started in 26.456s`), sans ligne `WARN` ni `ERROR` relevée (H2, H3, H10, H12).
+- **Le fichier `identity/traceability-realm.json` suffit à reconstruire le realm** `traceability`, ses rôles `reader` et `writer` et le client `traceability-trial`, sans aucun utilisateur, dans les deux modes. Un conteneur supprimé puis recréé réimporte le même fichier (H4, H10, H13).
+- **Deux comptes créés à la main, un par rôle, obtiennent un jeton** (`HTTP:200`, `Bearer`, 300 s). Le jeton de `reader-test` contient `reader` et pas `writer`, celui de `writer-test` contient `writer` et pas `reader`, dans `realm_access.roles` (H5 à H7, H13).
+- **Un mauvais mot de passe est refusé** : `HTTP:400`, `invalid_grant`, `Invalid user credentials` (H8).
+- **Sous Windows, c'est le JDK 21 qui fait tourner Keycloak** (chemin du `java.exe`), le Java 24 reste celui par défaut, et il ne reste aucun processus Java après l'arrêt (H11, H14, H15).
+- **Le fichier de réglages ne contient ni mot de passe ni secret** (H16). Les mots de passe de l'administrateur et des deux comptes sont saisis masqués dans PowerShell ou dans la console, et ne sont écrits dans aucun fichier du dépôt.
+- **Mémoire** (après les jetons) : 706,3 MiB pour le conteneur et 512,5 MiB pour le processus Java sous Windows ; ce sont deux mesures différentes (H9 et H14).
+- **Constats à traiter au lot 10b** (non essayés) : le jeton du rôle `writer` ne contient pas `reader`, donc l'API devra accepter l'un ou l'autre rôle pour consulter, ou les rôles devront être redéfinis ; `aud` vaut `account` et non l'API, donc l'API devra soit exiger un public qui lui est propre, soit ne pas contrôler ce champ ; `iss` n'a été observé qu'avec `http://localhost:8180`.
+- Le lot ne modifie ni l'API, ni l'interface, ni la CI, ni la base : seuls `identity/traceability-realm.json` et des documents sont ajoutés.
+
+### 18.5 Rejouer la vérification
+
+Dans PowerShell, depuis la racine du dépôt. Les mots de passe sont saisis masqués et ne sont jamais écrits dans un fichier.
+
+**Dans Docker** (Docker Desktop démarré) :
+
+```powershell
+docker pull quay.io/keycloak/keycloak:26.6.2
+$env:KC_BOOTSTRAP_ADMIN_PASSWORD = [Net.NetworkCredential]::new('', (Read-Host 'Mot de passe admin Keycloak' -AsSecureString)).Password
+docker run -d --name traceability-keycloak -p 127.0.0.1:8180:8080 -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD -v "${PWD}\identity\traceability-realm.json:/opt/keycloak/data/import/traceability-realm.json:ro" quay.io/keycloak/keycloak:26.6.2 start-dev --import-realm
+```
+
+Attendre environ 2 minutes, puis `docker logs traceability-keycloak` doit contenir `Realm 'traceability' imported` et `started in`. Ouvrir `http://localhost:8180/admin`, se connecter avec `admin`, choisir le realm `traceability` (Manage realms). Créer à la main `reader-test` et `writer-test` (Users, Create new user ; adresse, prénom et nom renseignés ; aucune action requise ; Credentials : mot de passe avec Temporary sur Off ; Role mapping : `reader` ou `writer`). Pour nettoyer : `docker rm -f traceability-keycloak`.
+
+**Sous Windows** (sans installer quoi que ce soit) : télécharger l'archive `.zip` du JDK 21 (Eclipse Temurin, Windows x64, JDK) sur adoptium.net et l'archive `keycloak-26.6.2.zip` sur `https://www.keycloak.org/archive/downloads-26.6.2.html`, puis :
+
+```powershell
+$zip = Get-ChildItem "$HOME\Downloads" -Filter "OpenJDK21U-jdk_x64_windows_hotspot_*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+New-Item -ItemType Directory -Force "$HOME\tools" | Out-Null
+Expand-Archive -Path $zip.FullName -DestinationPath "$HOME\tools"
+$jdk = (Get-ChildItem "$HOME\tools" -Directory -Filter "jdk-21*").FullName
+Expand-Archive -Path "$HOME\Downloads\keycloak-26.6.2.zip" -DestinationPath "$HOME\tools"
+$kc = "$HOME\tools\keycloak-26.6.2"
+New-Item -ItemType Directory -Force "$kc\data\import" | Out-Null
+Copy-Item .\identity\traceability-realm.json "$kc\data\import\traceability-realm.json" -Force
+$env:KC_BOOTSTRAP_ADMIN_PASSWORD = [Net.NetworkCredential]::new('', (Read-Host 'Mot de passe admin Keycloak' -AsSecureString)).Password
+$cmd = "`$env:JAVA_HOME = '$jdk'; `$env:KC_BOOTSTRAP_ADMIN_USERNAME = 'admin'; & '$kc\bin\kc.bat' start-dev --import-realm --http-port=8180 --http-host=127.0.0.1"
+Start-Process powershell -ArgumentList "-NoExit -Command `"$cmd`""
+```
+
+La commande `Start-Process` ouvre une nouvelle fenêtre où Keycloak démarre (environ 2 minutes) : elle hérite du mot de passe administrateur défini dans la fenêtre d'origine. La suite est la même qu'en Docker (console, deux comptes à créer). Pour arrêter : Ctrl+C dans la fenêtre de Keycloak.
+
+**Obtenir un jeton** (le mot de passe du compte est saisi masqué) :
+
+```powershell
+$pw = [Net.NetworkCredential]::new('', (Read-Host 'Mot de passe du compte' -AsSecureString)).Password
+curl.exe -s -d "grant_type=password&client_id=traceability-trial&username=reader-test&password=$([uri]::EscapeDataString($pw))" http://localhost:8180/realms/traceability/protocol/openid-connect/token
+```
+
+La réponse contient `access_token` : un jeton dont la partie du milieu (entre les deux points) est du JSON codé en base64url. Il se décode et contient `realm_access.roles`. Un jeton brut ne se colle jamais dans un message ni dans un fichier. Un mauvais mot de passe donne `HTTP 400` et `invalid_grant`.

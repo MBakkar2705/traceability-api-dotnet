@@ -28,10 +28,11 @@ Dans ce README, « Prévu » veut dire « on a l'intention de le faire », pas �
 | 7 | SQL Server en conteneur Docker : base reconstruite par les scripts, API et interface essayées à la main (fermes seulement) | Terminé |
 | 8 | L'API dans une image Docker (`Dockerfile`) : image construite, lancée avec SQL Server en conteneur, interface essayée (fermes seulement) | Terminé |
 | 9 | CI dédiée : image Docker construite par la CI, scripts `006` et `012` rejoués (une erreur met la CI au rouge), `SQLCMDPASSWORD` limité aux étapes `sqlcmd`, actions fixées par empreinte, badge, `docker` exigé pour fusionner | Terminé |
+| 10a | Pseudo annuaire Keycloak 26.6.2 (OAuth 2.0 et OpenID Connect) : realm, rôles `reader` et `writer` et client d'essai importés depuis `identity/traceability-realm.json`, jetons obtenus par deux comptes d'essai, dans Docker et sous Windows (JDK 21). L'API n'est pas modifiée | Terminé |
 
 ## Technologies
 
-ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Server 2025, procédures stockées T-SQL, xUnit, Git et GitHub. Interface web : React, TypeScript, Vite, Tailwind CSS, React Router, Vitest et React Testing Library, Oxlint (voir l'[ADR 0006](docs/adr/0006-interface-web-vite-react.md)). Intégration continue : GitHub Actions (lot 6, voir l'[ADR 0009](docs/adr/0009-integration-continue-github-actions.md)). Conteneurs : Docker (lots 7 et 8, voir l'[ADR 0011](docs/adr/0011-api-dans-une-image-docker.md)).
+ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Server 2025, procédures stockées T-SQL, xUnit, Git et GitHub. Interface web : React, TypeScript, Vite, Tailwind CSS, React Router, Vitest et React Testing Library, Oxlint (voir l'[ADR 0006](docs/adr/0006-interface-web-vite-react.md)). Intégration continue : GitHub Actions (lot 6, voir l'[ADR 0009](docs/adr/0009-integration-continue-github-actions.md)). Conteneurs : Docker (lots 7 et 8, voir l'[ADR 0011](docs/adr/0011-api-dans-une-image-docker.md)). Identification : Keycloak, essayé seul, sans l'API (lot 10a, voir l'[ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md)).
 
 ## Documentation
 
@@ -52,15 +53,17 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 - [ADR 0009](docs/adr/0009-integration-continue-github-actions.md) : intégration continue avec GitHub Actions : SQL Server en conteneur (authentification SQL), déclenchement à chaque push et pull request, runner et actions fixés. Les changements du lot 9 sont dans ses notes.
 - [ADR 0010](docs/adr/0010-protection-de-main-par-ruleset.md) : protection de `main` par un ruleset GitHub : pull request obligatoire, vérifications `backend` et `frontend` exigées (`docker` ajoutée au lot 9, voir ses notes).
 - [ADR 0011](docs/adr/0011-api-dans-une-image-docker.md) : l'API dans une image Docker, construite par un `Dockerfile` à la racine ; environnement et secrets donnés au lancement. La CI construit l'image depuis le lot 9 (voir ses notes).
+- [ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md) : Keycloak comme serveur d'identification (OAuth 2.0 et OpenID Connect), réglages gardés dans `identity/traceability-realm.json`, essayé dans Docker et sous Windows.
 
 ## Ce que ce projet ne prouve pas
 
 - Il ne représente aucun système réel : le scénario est simplifié et inventé.
-- Pour chaque lot, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3, 9.3, 10.3, 11.3, 12.3, 13.3, 14.8, 15.3, 16.3 et 17.3. Chaque liste date de son lot : un point peut avoir été réglé depuis, et la preuve est alors dans la section « Ce qui est prouvé » du lot concerné.
+- Pour chaque lot, tout n'est pas prouvé : les listes sont dans [docs/verification.md](docs/verification.md), sections 4, 6.4, 7.3, 8.3, 9.3, 10.3, 11.3, 12.3, 13.3, 14.8, 15.3, 16.3, 17.3 et 18.3. Chaque liste date de son lot : un point peut avoir été réglé depuis, et la preuve est alors dans la section « Ce qui est prouvé » du lot concerné.
 - La CI (lot 6) prouve que les 163 tests C# et les 178 tests de l'interface passent sur une machine vierge en authentification SQL, et qu'un test en échec bloque la fusion. Elle ne prouve ni l'authentification Windows, ni les scripts `006` et `012` (rejoués par la CI depuis le lot 9), ni une pull request venue d'un fork (le secret n'y serait pas transmis), ni la migration annoncée d'`ubuntu-latest`, ni le lancement à la main de l'application contre un SQL Server en conteneur. Son moteur SQL Server est plus récent que celui de la machine de développement (17.0.5035.5 contre 17.0.1145.4).
 - Le lot 7 prouve que l'application, lancée à la main, lit et écrit les fermes dans un SQL Server 2025 en conteneur (authentification SQL, une seule machine). Il ne prouve ni les lots, les stations et les mouvements dans ce conteneur, ni les données volumineuses, ni l'authentification Windows, ni l'application dans un conteneur, essayée au lot 8 (voir [docs/verification.md](docs/verification.md), section 15).
 - Le lot 8 prouve que l'image de l'API se construit et que l'API en conteneur lit et écrit les fermes dans SQL Server en conteneur, avec l'interface web. Il ne prouve ni les stations, les mouvements ou la création d'un lot dans ce montage, ni le HTTPS, ni un coffre à secrets, ni que le `Dockerfile` reste valable : la CI ne le construisait pas à ce lot, elle le construit depuis le lot 9 (voir [docs/verification.md](docs/verification.md), sections 16 et 17, et l'[ADR 0011](docs/adr/0011-api-dans-une-image-docker.md)).
 - Le lot 9 prouve que la CI construit l'image de l'API (tâche `docker`, sans la lancer) et que, dans les essais jetables, un `Dockerfile` cassé rend la CI rouge, que `006` rejoué par la CI la rend rouge quand une règle d'une procédure est cassée, et qu'avec `docker` exigé par `protect-main` le bouton de fusion d'une pull request au `Dockerfile` cassé est grisé. Il ne prouve ni le contenu des tests « à vérifier à l'œil » (un seul cas essayé : un test C# l'a détecté, pas `012`), ni une règle cassée vue par `012`, ni le démarrage de l'image dans la CI ou son envoi dans un registre, ni la mise à jour future des empreintes des actions, ni un badge « failing » (voir [docs/verification.md](docs/verification.md), sections 17.3 et 17.4).
+- Le lot 10a prouve que Keycloak 26.6.2 démarre dans Docker et sous Windows (JDK 21 à côté du Java 24), qu'il recrée depuis `identity/traceability-realm.json` le realm, les rôles `reader` et `writer` et le client d'essai, et que deux comptes créés à la main obtiennent un jeton contenant leur rôle. Il ne prouve ni que l'API vérifie un jeton ou applique un rôle (lot 10b), ni la connexion dans l'interface web (lot 10c), ni le mode de production, le HTTPS, une base externe, ni la conservation des comptes, ni un mot de passe d'administrateur permanent (voir [docs/verification.md](docs/verification.md), sections 18.3 et 18.4, et l'[ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md)).
 - Le CORS n'est configuré que pour le serveur de développement de l'interface (`http://localhost:5173`, `GET` et `POST`). L'interface n'a été vue que dans Edge. Le bouton « Fin » de la liste des lots a été accéléré au lot 5, mais la correction de ses échecs n'est pas prouvée (voir [docs/verification.md](docs/verification.md), section 13.3). Une observation hors protocole du 2026-10-23 montre, avec un budget de mémoire de 5 Mo, l'ancienne requête de la dernière page en attente de sa mémoire pendant que la nouvelle répondait en moins d'une seconde ([docs/mesures.md](docs/mesures.md), section 9.7) : elle ne démontre pas la cause des échecs d'origine. Swagger UI décrit les 10 routes et leurs erreurs, mais son exemple d'erreur n'affiche pas les champs ajoutés par l'API (`errorCode`, `errors`).
 - Les mesures des lots 2b et 5 portent sur un million de lots inventés et une seule machine : elles ne disent rien d'un autre volume ni d'une autre machine ; le coût en écriture n'est mesuré que pour `IX_Batch_FarmId` (voir [docs/mesures.md](docs/mesures.md), sections 5 et 9.4).
 - Il donne une base de travail, pas une expérience de production.
@@ -80,7 +83,7 @@ Ce sont des choses qui se font en entreprise, mais elles sont hors périmètre d
 
 Ces points ne sont pas planifiés dans un lot : ce sont des intentions, pas des promesses.
 
-- la gestion des utilisateurs et des droits (authentification) ;
+- la gestion des utilisateurs et des droits : le serveur d'identification est essayé seul au lot 10a ; la vérification des jetons par l'API (10b), la connexion dans l'interface web (10c) et l'enregistrement de l'auteur de chaque mouvement restent à faire ;
 - la correction des mouvements : aujourd'hui, une faute de saisie ne peut pas être corrigée (voir [docs/fonctionnel.md](docs/fonctionnel.md), section 9) ;
 - les retours de marchandise ;
 - l'archivage ou la purge des anciennes données ;
@@ -223,3 +226,14 @@ Prérequis : Docker Desktop (version 4.81.0 observée). Ces deux lots essaient l
 - **Ce que ce montage n'est pas** : un seul poste, des conteneurs lancés à la main, sans registre d'images ni déploiement, l'API en HTTP seulement, aucun coffre à secrets. Depuis le lot 9, la CI construit l'image (sans la lancer).
 
 Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), sections 15 et 16, et [ADR 0011](docs/adr/0011-api-dans-une-image-docker.md).
+
+### Keycloak : pseudo annuaire (lot 10a)
+
+Prérequis : Docker Desktop pour le mode Docker ; pour le mode Windows, un JDK 21 et l'archive de Keycloak 26.6.2, extraits d'archives `.zip` (aucun installateur). Keycloak est lancé à la main, en mode développement seulement, sur `127.0.0.1:8180`. L'API et l'interface ne l'utilisent pas encore.
+
+- **Réglages** : `identity/traceability-realm.json`, importés au démarrage (`--import-realm`). Le fichier décrit le realm `traceability`, les rôles `reader` et `writer` et le client d'essai `traceability-trial`. Il ne contient aucun utilisateur ni mot de passe.
+- **Comptes et mots de passe** : l'administrateur est donné par des variables d'environnement au lancement, et les comptes `reader-test` et `writer-test` sont créés à la main dans la console (`http://localhost:8180/admin`). Les mots de passe sont saisis masqués et ne sont écrits dans aucun fichier.
+- **Rejouer** : les commandes complètes, dans Docker et sous Windows, sont dans [docs/verification.md](docs/verification.md), section 18.5.
+- **Ce que ce montage n'est pas** : un mode de développement (base H2 intégrée, comptes perdus avec le conteneur), en HTTP, avec un administrateur temporaire.
+
+Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), section 18, et [ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md).
