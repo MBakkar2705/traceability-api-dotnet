@@ -25,6 +25,7 @@ Depuis la racine du dépôt, dans PowerShell (la solution est `Traceability.slnx
 - Interface web, dans `web/`, lancée par Mohamed (le texte affiché est en français) : `npm install` (une fois), `npm run dev` (serveur Vite sur `http://localhost:5173/`, port fixé ; il demande l'API lancée dans un autre terminal), `npm run lint`, `npm run build` (vérifie les types, écrit `dist/`) et `npm test` (Vitest, 178 tests, sans API ni base). Aucun fichier `.env` n'est créé par Claude ; l'adresse de l'API est `https://localhost:7080`, ou `VITE_API_URL`.
 - Arrêter l'API (Ctrl+C) avant `dotnet test`, qui doit pouvoir recompiler. Après avoir remis un fichier par copie (casse volontaire), mettre à jour sa date de modification, sinon `dotnet` peut ne pas recompiler (observé au lot 4a).
 - CI : `.github/workflows/ci.yml`, lancée à chaque push et à chaque pull request (tâches `backend`, `frontend` et `docker` : `backend` rejoue aussi les scripts `006` et `012`, `docker` construit l'image de l'API sans la lancer). Pour la rejouer : onglet Actions de GitHub, « Re-run all jobs ». Une CI verte ne remplace pas les essais à la main décrits dans `docs/verification.md`.
+- Keycloak (lot 10a), lancé par Mohamed, en mode développement seulement : réglages dans `identity/traceability-realm.json`, console sur `http://localhost:8180/admin`, jeton demandé à `/realms/traceability/protocol/openid-connect/token`. Docker : image `quay.io/keycloak/keycloak:26.6.2`, conteneur `traceability-keycloak`, port publié sur `127.0.0.1:8180`. Windows : JDK 21 et Keycloak extraits dans `$HOME\tools`, `JAVA_HOME` posé seulement dans la fenêtre de Keycloak. Les commandes complètes sont dans `docs/verification.md`, section 18.5.
 Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
 
 ## Secrets
@@ -32,6 +33,7 @@ Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
   chaînes de connexion avec identifiants.
 - Connexion locale en authentification Windows (pas de mot de passe). La CI utilise l'authentification SQL (voir ci-dessous).
 - La CI (`.github/workflows/ci.yml`) se connecte à SQL Server avec le secret de dépôt `MSSQL_SA_PASSWORD`. Claude ne lit, ne crée, ne modifie ni n'affiche jamais ce secret ni sa valeur : Mohamed le gère dans les réglages de GitHub.
+- Keycloak : Claude ne lit, ne crée, ne modifie ni n'affiche jamais le mot de passe de l'administrateur ni ceux des comptes d'essai (`reader-test`, `writer-test`), et ne demande jamais à Mohamed de les écrire dans le chat ou dans un fichier : ils sont saisis masqués par Mohamed. Un jeton brut (`access_token`) ne s'affiche pas non plus : seul son contenu décodé (rôles, `iss`, `aud`, `exp`) est relevé. Le fichier `identity/traceability-realm.json` ne contient aucun utilisateur ni mot de passe.
 
 ## Vérité
 - Ne jamais dire que ça marche sans l'avoir exécuté et observé.

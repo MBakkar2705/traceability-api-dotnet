@@ -217,3 +217,25 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 **Vérification requise (required status check)** : une tâche de la CI dont la réussite est obligatoire pour fusionner. Ici : `backend` et `frontend`. Avec un test en échec, GitHub affiche « Merging is blocked due to failing merge requirements » (voir verification.md, section 14.12).
 
 **Étiquette et digest d'une image** : une étiquette (tag) est un nom pratique donné à une version d'une image, mais son contenu peut changer avec le temps ; le digest est l'empreinte (SHA-256) qui identifie une version précise. Ici : `2025-latest` est une étiquette qui se déplace ; le digest de l'image de la CI est noté dans verification.md, section 14.5.
+
+## Identification
+
+**Authentification et autorisation** : l'authentification vérifie qui est la personne (elle prouve son identité) ; l'autorisation décide ce qu'elle a le droit de faire. Ici : jusqu'au lot 9, l'API ne fait ni l'une ni l'autre ; le lot 10a n'ajoute que le serveur qui prouve l'identité, et l'API ne vérifie encore rien.
+
+**OAuth 2.0** : un cadre standard où l'utilisateur obtient un jeton auprès d'un serveur d'identification, puis le présente à l'API, qui l'accepte sans jamais voir le mot de passe. Ici : Keycloak fournit ce cadre, notre code n'a pas à le réécrire (voir l'ADR 0012).
+
+**OpenID Connect** : une couche posée sur OAuth 2.0 qui sert à savoir qui est l'utilisateur (identité), là où OAuth 2.0 seul décrit surtout ce qu'il peut faire. Ici : Keycloak parle OpenID Connect ; le chemin du jeton est `/realms/traceability/protocol/openid-connect/token`.
+
+**Serveur d'identification (Keycloak)** : le programme qui connaît les comptes, vérifie les mots de passe et délivre les jetons. Il est séparé de l'API. Ici : Keycloak 26.6.2, lancé à la main dans Docker ou sous Windows, en mode développement.
+
+**Realm** : l'espace de Keycloak qui regroupe des comptes, des rôles et des clients, isolé des autres realms. Ici : le realm `traceability`, décrit par `identity/traceability-realm.json`.
+
+**Client (au sens OAuth)** : un programme autorisé à demander des jetons au serveur d'identification. Ce n'est pas un client de la ferme. Ici : `traceability-trial`, un client d'essai à la main ; l'interface web aura son propre client au lot 10c.
+
+**Rôle** : un nom qui résume des droits, attribué à des comptes. Ici : `reader` (consulter) et `writer` (saisir). Dans le jeton, ils sont listés dans `realm_access.roles`.
+
+**Jeton d'accès (JWT)** : une chaîne que le serveur délivre après la connexion et que l'API reçoit à chaque appel. Elle a trois parties séparées par des points ; celle du milieu est du JSON codé en base64url (et donc lisible : un jeton brut ne se colle jamais dans un message). Ici : durée de 300 secondes (`exp` moins `iat`), `iss` pour l'émetteur, `aud` pour le public visé, `azp` pour le client demandeur.
+
+**Mode développement (`start-dev`)** : un démarrage de Keycloak pratique pour essayer (HTTP, base intégrée H2, réglages permissifs) mais que Keycloak déconseille en production, ce qu'il écrit lui-même dans son journal. Ici : le seul mode essayé.
+
+**JDK** : le kit de développement Java ; Keycloak est un programme Java et demande un JDK pour tourner. Ici : sous Windows, un JDK 21 extrait d'une archive `.zip` à côté du Java 24, sans modifier le PATH ; `JAVA_HOME` n'est posé que dans la fenêtre qui lance Keycloak.

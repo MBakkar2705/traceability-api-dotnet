@@ -1,0 +1,28 @@
+{
+  "realm": "traceability",
+  "enabled": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "reader",
+        "description": "Read-only access: can list and view farms, stations and batches."
+      },
+      {
+        "name": "writer",
+        "description": "Data entry: can also create farms, batches and movements."
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "traceability-trial",
+      "name": "Traceability trial client (hand trials only, not used by the web interface)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true
+    }
+  ]
+}
