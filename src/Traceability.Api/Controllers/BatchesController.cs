@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Traceability.Api.Authentication;
 using Traceability.Api.Models;
 using Traceability.Api.Validation;
 using Traceability.Data;
@@ -15,7 +17,12 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     /// <response code="404">Unknown farm (errorCode 50101) or unknown station (errorCode 50102).</response>
     /// <response code="409">The batch code is already taken (errorCode 50202).</response>
     /// <response code="422">The station does not have the RECEPTION function (errorCode 50303).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token does not have the role writer.</response>
     [HttpPost]
+    [Authorize(Policy = Policies.CanWrite)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -60,7 +67,12 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     /// <response code="200">A page of batches: items, totalCount, pageNumber and pageSize. A page beyond the end has no items.</response>
     /// <response code="400">A filter is malformed or too long (no errorCode); or the status is unknown (errorCode 50403); or the page number or size is invalid (errorCode 50404).</response>
     /// <response code="404">Unknown farm (errorCode 50101).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token has neither the role reader nor the role writer.</response>
     [HttpGet]
+    [Authorize(Policy = Policies.CanRead)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<PageResponse<BatchResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -101,7 +113,12 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     /// <response code="200">The batch and its movements. Times are in UTC and end with Z.</response>
     /// <response code="400">The code is malformed or too long (no errorCode).</response>
     /// <response code="404">Unknown batch (errorCode 50100).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token has neither the role reader nor the role writer.</response>
     [HttpGet("{batchCode}")]
+    [Authorize(Policy = Policies.CanRead)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<BatchDetailsResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -139,7 +156,12 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     /// <response code="400">A field is missing, malformed or too long, or the time has no Z or offset (no errorCode); or the quantity is 0 or less (errorCode 50401); or the movement type is unknown (errorCode 50402).</response>
     /// <response code="404">Unknown batch (errorCode 50100) or unknown station (errorCode 50102).</response>
     /// <response code="422">The batch is already SHIPPED (errorCode 50300); or the movement is not the next step (errorCode 50301); or the quantity is higher than the current one (errorCode 50302); or the station does not have the function (errorCode 50303).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token does not have the role writer.</response>
     [HttpPost("{batchCode}/movements")]
+    [Authorize(Policy = Policies.CanWrite)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]

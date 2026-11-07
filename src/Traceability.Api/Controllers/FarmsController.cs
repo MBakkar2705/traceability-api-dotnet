@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Traceability.Api.Authentication;
 using Traceability.Api.Models;
 using Traceability.Api.Validation;
 using Traceability.Data;
@@ -13,7 +15,12 @@ public sealed class FarmsController(TraceabilityDb db) : ControllerBase
     /// <response code="201">The farm is created. The body has the farm; there is no Location header (no route reads one farm).</response>
     /// <response code="400">A field is missing or malformed or too long (no errorCode), or the code is empty (errorCode 50400).</response>
     /// <response code="409">The code is already taken (errorCode 50200).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token does not have the role writer.</response>
     [HttpPost]
+    [Authorize(Policy = Policies.CanWrite)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<FarmResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
@@ -40,7 +47,12 @@ public sealed class FarmsController(TraceabilityDb db) : ControllerBase
     /// <param name="cancellationToken">Cancels the call if the client disconnects.</param>
     /// <response code="200">A page of farms: items, totalCount, pageNumber and pageSize.</response>
     /// <response code="400">The page number or the page size is invalid (errorCode 50404).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token has neither the role reader nor the role writer.</response>
     [HttpGet]
+    [Authorize(Policy = Policies.CanRead)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<PageResponse<FarmResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PageResponse<FarmResponse>>> List(

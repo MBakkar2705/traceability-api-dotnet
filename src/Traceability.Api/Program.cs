@@ -1,10 +1,46 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.OpenApi;
+using Traceability.Api.Authentication;
 using Traceability.Api.Errors;
 using Traceability.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+// OpenAPI document: declares the "Bearer" security scheme, so that Swagger UI (Development only)
+// shows the Authorize button and sends the token that is pasted there (lot 10b). The routes are
+// protected by the policies below, not by this declaration.
+builder.Services.AddOpenApi(options =>
+    options.AddDocumentTransformer((document, context, cancellationToken) =>
+    {
+        document.Components ??= new OpenApiComponents();
+        document.Components.SecuritySchemes = new Dictionary<string, IOpenApiSecurityScheme>
+        {
+            ["Bearer"] = new OpenApiSecurityScheme
+            {
+                Type = SecuritySchemeType.Http,
+                Scheme = "bearer",
+                BearerFormat = "JWT",
+                In = ParameterLocation.Header,
+            },
+        };
+
+        var operations = document.Paths.Values
+            .Where(path => path.Operations is not null)
+            .SelectMany(path => path.Operations!);
+
+        foreach (var operation in operations)
+        {
+            operation.Value.Security ??= [];
+            operation.Value.Security.Add(new OpenApiSecurityRequirement
+            {
+                [new OpenApiSecuritySchemeReference("Bearer", document)] = [],
+            });
+        }
+
+        return Task.CompletedTask;
+    }));
 
 // Errors: Problem Details answers; SQL errors are translated by SqlExceptionHandler.
 builder.Services.AddProblemDetails();
@@ -24,6 +60,64 @@ if (builder.Environment.IsDevelopment())
             .WithMethods("GET", "POST")
             .WithHeaders("Content-Type")));
 }
+
+// Authentication (lot 10b): the API accepts a JWT access token issued by Keycloak. Its signature,
+// issuer, expiry and audience are checked; the public keys are read from the configuration that
+// Keycloak publishes, so the API needs no secret. The settings come from the environment
+// variables Authentication__Authority (the address of the realm) and Authentication__Audience
+// (the name the token must be meant for), never from a file of the repository. They are read
+// when the options are first needed, so that the integration tests, which replace this scheme
+// by a test scheme, need neither.
+static string RequiredSetting(IConfiguration configuration, string key)
+{
+    var value = configuration[key];
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        throw new InvalidOperationException(
+            $"The setting '{key}' is not set. Define the environment variable {key.Replace(":", "__")}.");
+    }
+
+    return value;
+}
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer();
+
+builder.Services
+    .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IConfiguration, IHostEnvironment>((options, configuration, environment) =>
+    {
+        options.Authority = RequiredSetting(configuration, "Authentication:Authority");
+        options.Audience = RequiredSetting(configuration, "Authentication:Audience");
+
+        // Keycloak runs in plain HTTP on the development machine; everywhere else the
+        // configuration of the issuer must be read over HTTPS.
+        options.RequireHttpsMetadata = !environment.IsDevelopment();
+
+        options.Events = new JwtBearerEvents
+        {
+            // The roles are in the token under realm_access.roles (observed in lot 10a).
+            OnTokenValidated = context =>
+            {
+                if (context.Principal?.Identity is ClaimsIdentity identity)
+                {
+                    KeycloakRoles.AddRoleClaims(identity);
+                }
+
+                return Task.CompletedTask;
+            },
+        };
+    });
+
+// Reading routes: reader or writer. Writing routes: writer.
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(Policies.CanRead, policy => policy
+        .RequireAuthenticatedUser()
+        .RequireRole(Policies.ReaderRole, Policies.WriterRole))
+    .AddPolicy(Policies.CanWrite, policy => policy
+        .RequireAuthenticatedUser()
+        .RequireRole(Policies.WriterRole));
 
 // The connection string comes from the environment variable ConnectionStrings__Default
 // (ASP.NET Core reads it as the key ConnectionStrings:Default). It is never written in a
@@ -65,6 +159,8 @@ if (app.Environment.IsDevelopment())
 {
     app.UseCors(WebUiCorsPolicy);
 }
+
+app.UseAuthentication();
 
 app.UseAuthorization();
 
