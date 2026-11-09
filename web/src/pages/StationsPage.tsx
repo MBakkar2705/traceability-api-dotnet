@@ -6,6 +6,7 @@ import type { Column } from '../components/column'
 import ListView from '../components/ListView'
 import PageTitle from '../components/PageTitle'
 import { BUTTON } from '../components/styles'
+import WriterOnly from '../components/WriterOnly'
 import { PAGE_SIZE } from '../config'
 import { readPageNumber } from '../lib/page'
 import { useApi } from '../lib/useApi'
@@ -37,9 +38,11 @@ export default function StationsPage() {
     <section>
       <div className="flex flex-wrap items-start gap-x-3">
         <PageTitle>Stations</PageTitle>
-        <Link to="/new-station" className={`${BUTTON} mb-3 inline-block`}>
-          Nouvelle station
-        </Link>
+        <WriterOnly>
+          <Link to="/new-station" className={`${BUTTON} mb-3 inline-block`}>
+            Nouvelle station
+          </Link>
+        </WriterOnly>
       </div>
       <ListView
         state={state}

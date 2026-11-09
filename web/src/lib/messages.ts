@@ -47,6 +47,12 @@ export function describeError(error: unknown): ErrorMessage {
     if (error.status === 400) {
       return { message: 'Adresse ou filtre invalide.' }
     }
+    if (error.status === 401) {
+      return { message: "Vous n'êtes pas connecté, ou votre session a expiré. Rechargez la page pour vous reconnecter." }
+    }
+    if (error.status === 403) {
+      return { message: "Vous n'avez pas le droit de faire cela." }
+    }
     if (error.status === 404) {
       return { message: 'Élément introuvable.' }
     }

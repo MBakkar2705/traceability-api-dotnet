@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { setAccessToken } from '../auth/token'
 import { created, ok, problem, stubFetch } from '../test/helpers'
 import {
   addCapability,
@@ -230,5 +231,52 @@ describe('the writes', () => {
     expect(error).toBeInstanceOf(NetworkError)
     expect((error as NetworkError).cause).toBe(cause)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the access token (lot 10c)', () => {
+  // The token is kept in memory by the module: put it back to nothing after each test.
+  afterEach(() => setAccessToken(null))
+
+  const answer = (_url: string, init?: RequestInit) => Promise.resolve(init?.method === 'POST' ? created() : ok({}))
+
+  it('sends the token of the signed-in user with a read and with a write', async () => {
+    const fetchMock = stubFetch(answer)
+    setAccessToken('token-1')
+
+    await listFarms()
+    await createStation({ code: 'ZT-STATION', name: 'Test station' })
+
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual({ Accept: 'application/json', Authorization: 'Bearer token-1' })
+    expect(fetchMock.mock.calls[1][1]?.headers).toEqual({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer token-1',
+    })
+  })
+
+  it('sends no Authorization header when nobody is signed in', async () => {
+    const fetchMock = stubFetch(answer)
+
+    await listFarms()
+    await createStation({ code: 'ZT-STATION', name: 'Test station' })
+
+    expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty('Authorization')
+    expect(fetchMock.mock.calls[1][1]?.headers).not.toHaveProperty('Authorization')
+  })
+
+  it('sends the new token after a renewal, and none after a sign-out', async () => {
+    const fetchMock = stubFetch(answer)
+
+    setAccessToken('old')
+    await listFarms()
+    setAccessToken('new')
+    await listFarms()
+    setAccessToken(null)
+    await listFarms()
+
+    expect(fetchMock.mock.calls[0][1]?.headers).toHaveProperty('Authorization', 'Bearer old')
+    expect(fetchMock.mock.calls[1][1]?.headers).toHaveProperty('Authorization', 'Bearer new')
+    expect(fetchMock.mock.calls[2][1]?.headers).not.toHaveProperty('Authorization')
   })
 })

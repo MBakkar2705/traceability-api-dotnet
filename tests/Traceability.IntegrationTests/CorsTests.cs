@@ -98,6 +98,20 @@ public class CorsTests(ApiFixture api)
             header => string.Equals(header, "content-type", StringComparison.OrdinalIgnoreCase));
     }
 
+    // Lot 10c: the web interface sends the access token of the signed-in user in the Authorization
+    // header, so the browser asks about that header too before it sends the real request.
+    [Fact]
+    public async Task A_preflight_for_GET_with_Authorization_allows_both()
+    {
+        var response = await Client.SendAsync(Preflight("GET", "authorization"));
+
+        Assert.Equal(WebUiOrigin, AllowOrigin(response));
+        Assert.Contains("GET", ListedValues(response, "Access-Control-Allow-Methods"));
+        Assert.Contains(
+            ListedValues(response, "Access-Control-Allow-Headers"),
+            header => string.Equals(header, "authorization", StringComparison.OrdinalIgnoreCase));
+    }
+
     // The policy opens GET and POST and nothing else: an open policy would pass the test above too.
     [Fact]
     public async Task A_preflight_does_not_list_PUT_or_DELETE()

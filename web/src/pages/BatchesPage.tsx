@@ -9,6 +9,7 @@ import ListView from '../components/ListView'
 import PageTitle from '../components/PageTitle'
 import StatusBadge from '../components/StatusBadge'
 import { BUTTON, FIELD } from '../components/styles'
+import WriterOnly from '../components/WriterOnly'
 import { PAGE_SIZE } from '../config'
 import { formatDate, formatKg } from '../lib/format'
 import { statusLabel } from '../lib/labels'
@@ -73,9 +74,11 @@ export default function BatchesPage() {
       {/* The title and the filters share a line (they go under each other on a narrow screen). */}
       <div className="flex flex-wrap items-start gap-x-3">
         <PageTitle>Lots</PageTitle>
-        <Link to="/new-batch" className={`${BUTTON} mb-3 inline-block`}>
-          Nouveau lot
-        </Link>
+        <WriterOnly>
+          <Link to="/new-batch" className={`${BUTTON} mb-3 inline-block`}>
+            Nouveau lot
+          </Link>
+        </WriterOnly>
 
         {/* The key makes the form start again from the address when the address changes. */}
         <form

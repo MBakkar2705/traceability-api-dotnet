@@ -13,6 +13,7 @@ import Loading from '../components/Loading'
 import PageTitle from '../components/PageTitle'
 import StatusBadge from '../components/StatusBadge'
 import SuccessMessage from '../components/SuccessMessage'
+import WriterOnly from '../components/WriterOnly'
 import { formatDate, formatKg, formatUtc } from '../lib/format'
 import { movementLabel } from '../lib/labels'
 import { useApi } from '../lib/useApi'
@@ -76,27 +77,29 @@ export default function BatchPage() {
             </ListCard>
           </div>
 
-          <h2 className="mt-5 mb-2 inline-block rounded bg-veil px-3 py-1 text-lg font-semibold">Ajouter un mouvement</h2>
-          {added?.batchCode === batchCode && (
-            <div className="mb-3">
-              <SuccessMessage>{`Mouvement ${movementLabel(added.type)} ajouté.`}</SuccessMessage>
-            </div>
-          )}
-          {state.data.status === 'SHIPPED' ? (
-            <p className="rounded bg-veil p-3">Ce lot est expédié : aucun mouvement n'est plus possible.</p>
-          ) : (
-            <AddMovementForm
-              key={state.data.status}
-              batchCode={batchCode}
-              status={state.data.status}
-              quantityKg={state.data.quantityKg}
-              onStart={() => setAdded(null)}
-              onAdded={(type) => {
-                setAdded({ batchCode, type })
-                setRefresh((n) => n + 1)
-              }}
-            />
-          )}
+          <WriterOnly>
+            <h2 className="mt-5 mb-2 inline-block rounded bg-veil px-3 py-1 text-lg font-semibold">Ajouter un mouvement</h2>
+            {added?.batchCode === batchCode && (
+              <div className="mb-3">
+                <SuccessMessage>{`Mouvement ${movementLabel(added.type)} ajouté.`}</SuccessMessage>
+              </div>
+            )}
+            {state.data.status === 'SHIPPED' ? (
+              <p className="rounded bg-veil p-3">Ce lot est expédié : aucun mouvement n'est plus possible.</p>
+            ) : (
+              <AddMovementForm
+                key={state.data.status}
+                batchCode={batchCode}
+                status={state.data.status}
+                quantityKg={state.data.quantityKg}
+                onStart={() => setAdded(null)}
+                onAdded={(type) => {
+                  setAdded({ batchCode, type })
+                  setRefresh((n) => n + 1)
+                }}
+              />
+            )}
+          </WriterOnly>
         </>
       )}
     </section>

@@ -8,7 +8,6 @@ Elle suit le parcours de lots de tomates, de la ferme à l'expédition : fermes,
 
 Ce projet est réalisé avec l'assistance de Claude (Anthropic), sous ma supervision.
 
-Dans ce README, « Prévu » veut dire « on a l'intention de le faire », pas « on sait que ça marchera ». « Prouvé » n'est écrit que pour ce qui a été exécuté et observé.
 
 ## État
 
@@ -30,6 +29,7 @@ Dans ce README, « Prévu » veut dire « on a l'intention de le faire », pas �
 | 9 | CI dédiée : image Docker construite par la CI, scripts `006` et `012` rejoués (une erreur met la CI au rouge), `SQLCMDPASSWORD` limité aux étapes `sqlcmd`, actions fixées par empreinte, badge, `docker` exigé pour fusionner | Terminé |
 | 10a | Pseudo annuaire Keycloak 26.6.2 (OAuth 2.0 et OpenID Connect) : realm, rôles `reader` et `writer` et client d'essai importés depuis `identity/traceability-realm.json`, jetons obtenus par deux comptes d'essai, dans Docker et sous Windows (JDK 21). L'API n'est pas modifiée | Terminé |
 | 10b | L'API vérifie les jetons de Keycloak (signature, émetteur, expiration, public visé `traceability-api`) et applique les rôles : `reader` ou `writer` pour les 5 routes `GET`, `writer` pour les 5 routes `POST` ; 55 tests ajoutés (faux schéma d'authentification), essais à la main avec de vrais jetons dans Docker puis sous Windows. L'interface reçoit 401 jusqu'au lot 10c | Terminé |
+| 10c | La connexion dans l'interface web : écran « Connexion », flux code d'autorisation avec PKCE (bibliothèque `oidc-client-ts`), client Keycloak `traceability-web`, jeton gardé en mémoire, renouvelé automatiquement et envoyé à l'API ; boutons et formulaires d'écriture cachés sans le rôle `writer` ; 70 tests de l'interface et 1 test CORS ajoutés (connexion simulée), essais à la main avec Keycloak dans Docker puis sous Windows | Terminé |
 
 ## Technologies
 
@@ -67,7 +67,8 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 - Le lot 9 prouve que la CI construit l'image de l'API (tâche `docker`, sans la lancer) et que, dans les essais jetables, un `Dockerfile` cassé rend la CI rouge, que `006` rejoué par la CI la rend rouge quand une règle d'une procédure est cassée, et qu'avec `docker` exigé par `protect-main` le bouton de fusion d'une pull request au `Dockerfile` cassé est grisé. Il ne prouve ni le contenu des tests « à vérifier à l'œil » (un seul cas essayé : un test C# l'a détecté, pas `012`), ni une règle cassée vue par `012`, ni le démarrage de l'image dans la CI ou son envoi dans un registre, ni la mise à jour future des empreintes des actions, ni un badge « failing » (voir [docs/verification.md](docs/verification.md), sections 17.3 et 17.4).
 - Le lot 10a prouve que Keycloak 26.6.2 démarre dans Docker et sous Windows (JDK 21 à côté du Java 24), qu'il recrée depuis `identity/traceability-realm.json` le realm, les rôles `reader` et `writer` et le client d'essai, et que deux comptes créés à la main obtiennent un jeton contenant leur rôle. Il ne prouve ni que l'API vérifie un jeton ou applique un rôle (lot 10b), ni la connexion dans l'interface web (lot 10c), ni le mode de production, le HTTPS, une base externe, ni la conservation des comptes, ni un mot de passe d'administrateur permanent (voir [docs/verification.md](docs/verification.md), sections 18.3 et 18.4, et l'[ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md)).
 - Le lot 10b prouve que l'API refuse un appel sans jeton valide (401) et applique les rôles (403 pour un `reader` qui écrit), avec de vrais jetons de Keycloak dans Docker et, pour les contrôles principaux, sous Windows, et par des tests automatiques qui n'utilisent aucun vrai jeton. Il ne prouve ni l'API dans un conteneur avec Keycloak, ni le mode de production et le HTTPS, ni la révocation d'un jeton, ni la cause du délai d'environ 5 minutes avant le refus d'un jeton expiré, ni la connexion dans l'interface web (lot 10c) : en attendant, l'interface reçoit 401 (voir [docs/verification.md](docs/verification.md), sections 19.3 et 19.4, et l'[ADR 0013](docs/adr/0013-jetons-keycloak-et-roles-dans-l-api.md)).
-- Le CORS n'est configuré que pour le serveur de développement de l'interface (`http://localhost:5173`, `GET` et `POST`). L'interface n'a été vue que dans Edge. Le bouton « Fin » de la liste des lots a été accéléré au lot 5, mais la correction de ses échecs n'est pas prouvée (voir [docs/verification.md](docs/verification.md), section 13.3). Une observation hors protocole du 2026-10-23 montre, avec un budget de mémoire de 5 Mo, l'ancienne requête de la dernière page en attente de sa mémoire pendant que la nouvelle répondait en moins d'une seconde ([docs/mesures.md](docs/mesures.md), section 9.7) : elle ne démontre pas la cause des échecs d'origine. Swagger UI décrit les 10 routes et leurs erreurs, mais son exemple d'erreur n'affiche pas les champs ajoutés par l'API (`errorCode`, `errors`).
+- Le lot 10c prouve que l'interface web se connecte à Keycloak par le flux code d'autorisation avec PKCE (dans Chrome, avec Keycloak dans Docker puis, pour les contrôles principaux, sous Windows), envoie le jeton à l'API, ne le stocke pas dans le navigateur, le renouvelle automatiquement (deux renouvellements observés à 4 minutes d'intervalle) et cache l'écriture sans le rôle `writer` ; un compte sans rôle voit le message du 403 de l'API. Il ne prouve ni le moyen exact du renouvellement (déduit, non lu), ni un renouvellement qui échoue, ni la déconnexion quand Keycloak est injoignable, ni plusieurs onglets, un autre navigateur, le mode de production et le HTTPS, ni l'enregistrement de l'auteur de chaque mouvement (voir [docs/verification.md](docs/verification.md), sections 20.3 et 20.4, et l'[ADR 0014](docs/adr/0014-connexion-dans-l-interface-web-pkce-et-jeton-en-memoire.md)).
+- Le CORS n'est configuré que pour le serveur de développement de l'interface (`http://localhost:5173`, `GET` et `POST`). L'interface a été vue dans Edge (lots 4 à 8) et dans Chrome (lot 10c). Le bouton « Fin » de la liste des lots a été accéléré au lot 5, mais la correction de ses échecs n'est pas prouvée (voir [docs/verification.md](docs/verification.md), section 13.3). Une observation hors protocole du 2026-10-23 montre, avec un budget de mémoire de 5 Mo, l'ancienne requête de la dernière page en attente de sa mémoire pendant que la nouvelle répondait en moins d'une seconde ([docs/mesures.md](docs/mesures.md), section 9.7) : elle ne démontre pas la cause des échecs d'origine. Swagger UI décrit les 10 routes et leurs erreurs, mais son exemple d'erreur n'affiche pas les champs ajoutés par l'API (`errorCode`, `errors`).
 - Les mesures des lots 2b et 5 portent sur un million de lots inventés et une seule machine : elles ne disent rien d'un autre volume ni d'une autre machine ; le coût en écriture n'est mesuré que pour `IX_Batch_FarmId` (voir [docs/mesures.md](docs/mesures.md), sections 5 et 9.4).
 - Il donne une base de travail, pas une expérience de production.
 
@@ -86,7 +87,7 @@ Ce sont des choses qui se font en entreprise, mais elles sont hors périmètre d
 
 Ces points ne sont pas planifiés dans un lot : ce sont des intentions, pas des promesses.
 
-- la gestion des utilisateurs et des droits : le serveur d'identification (10a) et la vérification des jetons par l'API avec les rôles (10b) sont essayés ; la connexion dans l'interface web (10c) et l'enregistrement de l'auteur de chaque mouvement restent à faire ;
+- la gestion des utilisateurs et des droits : le serveur d'identification (10a), la vérification des jetons par l'API avec les rôles (10b) et la connexion dans l'interface web (10c) sont essayés ; l'enregistrement de l'auteur de chaque mouvement reste à faire ;
 - la correction des mouvements : aujourd'hui, une faute de saisie ne peut pas être corrigée (voir [docs/fonctionnel.md](docs/fonctionnel.md), section 9) ;
 - les retours de marchandise ;
 - l'archivage ou la purge des anciennes données ;
@@ -171,15 +172,15 @@ Formats (observés au lot 3c) : les champs sont en camelCase ; la date de récol
 
 Attention : `GET /batches` calcule le total à chaque appel. Depuis le lot 5, il lit 1 737 pages sans filtre (47 pour une ferme de 25 000 lots) ; le filtre par statut lit encore 10 574 pages (voir [docs/mesures.md](docs/mesures.md), section 9.6). L'interface web appelle cette route à chaque page : la dernière page répond en 0,45 à 1,59 s par l'API (10 appels), mais la correction des échecs observés au lot 4a n'est pas prouvée (voir [docs/verification.md](docs/verification.md), sections 11.3 et 13.3). Les routes `POST` écrivent dans la base que l'API lit : pour des essais à la main, préférer une base de test.
 
-### Interface web (lots 4a et 4b)
+### Interface web (lots 4a, 4b et 10c)
 
-Prérequis : Node.js (v22.23.4 et npm 10.9.9 observés), l'API et ses deux bases (voir la section précédente). Les commandes sont à lancer dans PowerShell.
+Prérequis : Node.js (v22.23.4 et npm 10.9.9 observés), l'API et ses deux bases (voir la section précédente). Depuis le lot 10c, Keycloak doit aussi tourner et l'API doit être lancée avec ses variables `Authentication__` (section Keycloak plus bas). Les commandes sont à lancer dans PowerShell.
 
 1. Dans un terminal, lancer l'API (étape 3 de la section précédente).
 2. Dans un autre terminal, depuis le dossier `web/` : `npm install` (une seule fois), puis `npm run dev`. Vite écoute sur `http://localhost:5173/`. Le port est fixé (`strictPort`) : s'il est pris, le serveur s'arrête avec une erreur au lieu de changer de port, ce qui ferait échouer le CORS (voir l'[ADR 0007](docs/adr/0007-cors-dans-l-api.md)). L'API n'accepte l'interface qu'en développement (environnement `Development`, ce que donne le profil `https`).
-3. Autres commandes, dans `web/` : `npm run lint`, `npm run build` (vérifie les types et écrit dans `dist/`, ignoré par git) et `npm test` (178 tests, sans API ni base).
+3. Autres commandes, dans `web/` : `npm run lint`, `npm run build` (vérifie les types et écrit dans `dist/`, ignoré par git) et `npm test` (248 tests, sans API, sans Keycloak ni base).
 
-L'interface appelle l'API sur `https://localhost:7080` ; la variable d'environnement `VITE_API_URL` remplace cette adresse. Aucun fichier `.env` n'est fourni.
+L'interface appelle l'API sur `https://localhost:7080` ; la variable d'environnement `VITE_API_URL` remplace cette adresse. Depuis le lot 10c, `VITE_AUTH_AUTHORITY` (par défaut `http://localhost:8180/realms/traceability`) et `VITE_AUTH_CLIENT_ID` (par défaut `traceability-web`) règlent la connexion. Aucun fichier `.env` n'est fourni, et aucune de ces valeurs n'est un secret.
 
 Les 5 écrans de lecture (15 lignes par page) :
 
@@ -205,7 +206,7 @@ Les écrans d'écriture (lot 4b) : chaque liste a un lien vers la page de créat
 
 Ces écrans écrivent dans la base que l'API utilise. Pour les essayer sans toucher à `TraceabilityDev`, voir [docs/verification.md](docs/verification.md), section 12.4.
 
-Depuis le lot 10b, l'API refuse les appels sans jeton : tant que le lot 10c n'a pas ajouté la connexion, l'interface affiche « Erreur 401. » sur les pages Lots et Fermes quand elle vise une API qui vérifie les jetons ([docs/verification.md](docs/verification.md), 19.2, I19).
+Connexion (lot 10c) : tant que personne n'est connecté, l'interface affiche l'écran « Connexion » (un bouton « Se connecter ») et n'appelle pas l'API. Le bouton envoie l'utilisateur à Keycloak (flux code d'autorisation avec PKCE, client `traceability-web`) ; au retour sur `/auth/callback`, l'interface va à l'accueil, et son nom et « Se déconnecter » apparaissent en haut. Le jeton n'est gardé qu'en mémoire : recharger la page déconnecte (Keycloak garde sa session, donc « Se connecter » reconnecte sans mot de passe). Il est renouvelé automatiquement avant son expiration (5 minutes). Sans le rôle `writer`, les boutons et formulaires d'écriture sont cachés et les pages de création affichent un message ; l'API refuse de toute façon l'écriture (403), et un compte sans rôle `reader` ni `writer` voit « Vous n'avez pas le droit de faire cela. » à la place des listes. Si Keycloak est arrêté, l'écran « Connexion » le dit. Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), section 20, et [ADR 0014](docs/adr/0014-connexion-dans-l-interface-web-pkce-et-jeton-en-memoire.md).
 
 ### Intégration continue (lots 6 et 9)
 
@@ -235,14 +236,14 @@ Prérequis : Docker Desktop (version 4.81.0 observée). Ces deux lots essaient l
 
 Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), sections 15 et 16, et [ADR 0011](docs/adr/0011-api-dans-une-image-docker.md).
 
-### Keycloak : pseudo annuaire et jetons de l'API (lots 10a et 10b)
+### Keycloak : pseudo annuaire, jetons de l'API et connexion de l'interface (lots 10a, 10b et 10c)
 
-Prérequis : Docker Desktop pour le mode Docker ; pour le mode Windows, un JDK 21 et l'archive de Keycloak 26.6.2, extraits d'archives `.zip` (aucun installateur). Keycloak est lancé à la main, en mode développement seulement, sur `127.0.0.1:8180`. Depuis le lot 10b, l'API vérifie ses jetons ; l'interface ne l'utilise pas encore (lot 10c).
+Prérequis : Docker Desktop pour le mode Docker ; pour le mode Windows, un JDK 21 et l'archive de Keycloak 26.6.2, extraits d'archives `.zip` (aucun installateur). Keycloak est lancé à la main, en mode développement seulement, sur `127.0.0.1:8180`. Depuis le lot 10b, l'API vérifie ses jetons ; depuis le lot 10c, l'interface web s'y connecte.
 
-- **Réglages** : `identity/traceability-realm.json`, importés au démarrage (`--import-realm`). Le fichier décrit le realm `traceability`, les rôles `reader` et `writer` et le client d'essai `traceability-trial`, avec un mappeur qui met `traceability-api` dans le champ `aud` des jetons (lot 10b). Il ne contient aucun utilisateur ni mot de passe. Un realm déjà importé n'est pas réimporté : un Keycloak créé avant le lot 10b est à recréer pour avoir le mappeur (19.3).
-- **Comptes et mots de passe** : l'administrateur est donné par des variables d'environnement au lancement, et les comptes `reader-test` et `writer-test` sont créés à la main dans la console (`http://localhost:8180/admin`). Les mots de passe sont saisis masqués et ne sont écrits dans aucun fichier.
+- **Réglages** : `identity/traceability-realm.json`, importés au démarrage (`--import-realm`). Le fichier décrit le realm `traceability`, les rôles `reader` et `writer` et le client d'essai `traceability-trial` et le client `traceability-web` de l'interface (lot 10c), avec un mappeur qui met `traceability-api` dans le champ `aud` des jetons (lot 10b). Il ne contient aucun utilisateur ni mot de passe. Un realm déjà importé n'est pas réimporté : un Keycloak créé avant le lot 10c est à recréer pour avoir le mappeur et le client `traceability-web` (19.3, 20.5).
+- **Comptes et mots de passe** : l'administrateur est donné par des variables d'environnement au lancement, et les comptes `reader-test`, `writer-test` et `norole-test` (sans rôle, pour voir le refus 403) sont créés à la main dans la console (`http://localhost:8180/admin`). Les mots de passe sont saisis masqués et ne sont écrits dans aucun fichier.
 - **L'API** (lot 10b) : deux variables d'environnement, dans la fenêtre qui lance l'API, jamais dans un fichier du dépôt : `Authentication__Authority` (`http://localhost:8180/realms/traceability`) et `Authentication__Audience` (`traceability-api`). L'API refuse tout appel dont le jeton n'est pas émis par ce realm pour ce nom.
-- **Rejouer** : les commandes complètes, dans Docker et sous Windows, sont dans [docs/verification.md](docs/verification.md), section 18.5 (Keycloak) et section 19.5 (jetons et API).
+- **Rejouer** : les commandes complètes, dans Docker et sous Windows, sont dans [docs/verification.md](docs/verification.md), section 18.5 (Keycloak), section 19.5 (jetons et API) et section 20.5 (interface).
 - **Ce que ce montage n'est pas** : un mode de développement (base H2 intégrée, comptes perdus avec le conteneur), en HTTP, avec un administrateur temporaire.
 
-Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), sections 18 et 19, [ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md) et [ADR 0013](docs/adr/0013-jetons-keycloak-et-roles-dans-l-api.md).
+Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), sections 18, 19 et 20, [ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md), [ADR 0013](docs/adr/0013-jetons-keycloak-et-roles-dans-l-api.md) et [ADR 0014](docs/adr/0014-connexion-dans-l-interface-web-pkce-et-jeton-en-memoire.md).

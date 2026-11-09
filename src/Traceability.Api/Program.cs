@@ -48,8 +48,8 @@ builder.Services.AddExceptionHandler<SqlExceptionHandler>();
 
 // CORS: lets the web interface (the Vite development server) read the answers of the API.
 // Development only. GET for reading (lot 4a), POST and the Content-Type header for writing
-// with a JSON body (lot 4b). An origin is scheme + host + port, written without a trailing
-// slash.
+// with a JSON body (lot 4b), the Authorization header for the access token of the signed-in
+// user (lot 10c). An origin is scheme + host + port, written without a trailing slash.
 const string WebUiCorsPolicy = "WebUi";
 
 if (builder.Environment.IsDevelopment())
@@ -58,7 +58,7 @@ if (builder.Environment.IsDevelopment())
         options.AddPolicy(WebUiCorsPolicy, policy => policy
             .WithOrigins("http://localhost:5173")
             .WithMethods("GET", "POST")
-            .WithHeaders("Content-Type")));
+            .WithHeaders("Content-Type", "Authorization")));
 }
 
 // Authentication (lot 10b): the API accepts a JWT access token issued by Keycloak. Its signature,

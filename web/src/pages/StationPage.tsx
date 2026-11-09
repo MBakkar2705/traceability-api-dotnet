@@ -7,6 +7,7 @@ import DetailCard from '../components/DetailCard'
 import ErrorMessage from '../components/ErrorMessage'
 import Loading from '../components/Loading'
 import PageTitle from '../components/PageTitle'
+import WriterOnly from '../components/WriterOnly'
 import { movementLabel } from '../lib/labels'
 import { useApi } from '../lib/useApi'
 
@@ -49,7 +50,9 @@ export default function StationPage() {
               },
             ]}
           />
-          <AddCapabilityForm stationCode={stationCode} onAdded={() => setRefresh((n) => n + 1)} />
+          <WriterOnly>
+            <AddCapabilityForm stationCode={stationCode} onAdded={() => setRefresh((n) => n + 1)} />
+          </WriterOnly>
         </>
       )}
     </section>

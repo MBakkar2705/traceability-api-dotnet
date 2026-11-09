@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router'
+import { useAuth } from '../auth/AuthContext'
 import Decoration from './Decoration'
 
 const LINKS = [
@@ -8,6 +9,8 @@ const LINKS = [
 ]
 
 export default function Layout() {
+  const { state, signOut } = useAuth()
+
   return (
     <div className="min-h-screen bg-page text-base text-ink">
       <Decoration />
@@ -25,6 +28,14 @@ export default function Layout() {
               {link.label}
             </NavLink>
           ))}
+          {state.status === 'signedIn' && (
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <span className="text-stone-200">{state.userName}</span>
+              <button type="button" onClick={signOut} className="rounded px-3 py-2 text-stone-200 hover:bg-nav-hover">
+                Se déconnecter
+              </button>
+            </div>
+          )}
         </nav>
       </header>
       <main className="relative z-10 mx-auto max-w-4xl px-4 py-4">
