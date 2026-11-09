@@ -1318,3 +1318,192 @@ curl.exe -s -d "grant_type=password&client_id=traceability-trial&username=reader
 ```
 
 La réponse contient `access_token` : un jeton dont la partie du milieu (entre les deux points) est du JSON codé en base64url. Il se décode et contient `realm_access.roles`. Un jeton brut ne se colle jamais dans un message ni dans un fichier. Un mauvais mot de passe donne `HTTP 400` et `invalid_grant`.
+
+## 19. Lot 10b : l'API vérifie les jetons de Keycloak et applique les rôles
+
+Écrit le 2026-11-07, avant l'essai. Tant que l'essai n'est pas fait, chaque ligne de la liste vaut « À observer ». Il n'y a pas de prédiction chiffrée : chaque ligne se terminera par « Observé » ou « Non observé », avec ce qui a été vu. Le lot 10b modifie l'API et le fichier de réglages de Keycloak ; l'interface (lot 10c), la CI et les scripts SQL ne sont pas touchés.
+
+### 19.1 Ce qui est essayé
+
+- L'API accepte un appel seulement s'il porte un jeton d'accès (en-tête `Authorization: Bearer …`) émis par le realm `traceability` de Keycloak. Sont contrôlés la signature, l'émetteur (`iss`), la date d'expiration (`exp`) et le public visé (`aud`). L'API lit la configuration publique de Keycloak (dont les clés de signature) : elle n'a besoin d'aucun secret.
+- Deux variables d'environnement, lues comme `ConnectionStrings__Default` et jamais dans un fichier du dépôt : `Authentication__Authority` (adresse du realm : `http://localhost:8180/realms/traceability`) et `Authentication__Audience` (`traceability-api`).
+- Les rôles. Les rôles du jeton sont dans `realm_access.roles` (observé au lot 10a, section 18) ; l'API les transforme en rôles utilisables par ses règles. Les 5 routes de lecture (`GET`) acceptent `reader` ou `writer`, parce que le jeton d'un `writer` ne contient pas `reader` (observé en 18.2, ligne H7). Les 5 routes d'écriture (`POST`) demandent `writer`. Sans jeton valide : 401. Jeton valide sans le bon rôle : 403.
+- Le public visé. Un mappeur d'audience est ajouté au client `traceability-trial` dans `identity/traceability-realm.json`, pour que `aud` contienne `traceability-api` (il valait `account` au lot 10a) ; l'API exige ce nom.
+- Les tests automatiques utilisent un faux schéma d'authentification : aucun Keycloak, aucun vrai jeton. Ils contrôlent les règles de rôles route par route, pas la vérification d'un vrai jeton. Un test échoue si une route de l'API n'a aucune règle.
+- La vérification d'un vrai jeton est essayée à la main avec Keycloak : dans Docker d'abord, puis les contrôles principaux sous Windows. L'API des essais est lancée sur la base `TraceabilityTest`, qui est vidée à chaque exécution des tests d'intégration : aucune donnée à garder n'y est écrite.
+- Swagger (Development seulement) déclare le schéma « Bearer » : le bouton Authorize permet d'envoyer un jeton depuis la page.
+- Le client d'essai garde le flux « mot de passe direct » (18.1) : il ne sert qu'aux essais à la main.
+
+### 19.2 Liste de contrôle
+
+| N° | À observer | Résultat |
+|---|---|---|
+| I1 | `dotnet test Traceability.slnx`, API arrêtée : relever le nombre de tests unitaires et d'intégration et le résultat. Les tests d'intégration existants ne sont pas modifiés ; leur client agit en `writer`. | Observé le 2026-11-07. `dotnet test Traceability.slnx`, API arrêtée : tests unitaires `échec : 0`, `réussite : 89` (75 avant le lot, 14 ajoutés) ; tests d'intégration `échec : 0`, `réussite : 129` (88 avant le lot, 41 ajoutés). Même résultat en fin d'essais, après le nettoyage. La première compilation (`dotnet build`, 0 erreur) signalait un avertissement CS8603 dans `Program.cs` (la liste des opérations du document OpenAPI peut être nulle) : il est corrigé, et les deux exécutions de `dotnet test` n'affichent aucune ligne d'avertissement. |
+| I2 | Pour chacune des 10 routes : sans jeton, la réponse est 401 ; avec `reader`, 200 sur une lecture et 403 sur une écriture ; avec `writer`, ni 401 ni 403. Relever les tests qui le contrôlent. | Observé. Les 40 cas de `AuthorizationTests` (10 routes, quatre appelants : sans jeton, `reader`, `writer`, un rôle inconnu `other`) passent. Sans jeton : 401 sur les 10 routes. `reader` : ni 401 ni 403 sur les 5 lectures, 403 sur les 5 écritures. `writer` : ni 401 ni 403 sur les 10 routes. Rôle inconnu : 403 sur les 10 routes. Les cas « ni 401 ni 403 » ne relèvent pas le code exact (codes inexistants et corps vides dans les appels). Le test « chaque route demande une règle » trouve 10 routes de contrôleurs, toutes avec une règle. |
+| I3 | Casse volontaire : la règle d'une route est retirée temporairement (puis remise). Le test qui contrôle que chaque route a une règle échoue et nomme la route. Relever le message. | Observé le 2026-11-07. La ligne `[Authorize(Policy = Policies.CanWrite)]` de `POST /farms` est retirée temporairement de `FarmsController.cs`. `AuthorizationTests` : `échec : 4`, `réussite : 37`, `total : 41`. Le test « chaque route demande une règle » échoue : `Assert.Empty() Failure: Collection was not empty`, `Collection: ["Traceability.Api.Controllers.FarmsController.Creat…"]` (nom coupé à l'affichage). Les noms des trois autres tests en échec n'ont pas été relevés. Le fichier est ensuite remis : son empreinte SHA-256 est identique à celle d'avant la casse, et les 10 règles sont de nouveau présentes. |
+| I4 | Keycloak est démarré dans Docker avec le fichier de réglages modifié : le journal indique l'import du realm `traceability` et la console montre le mappeur d'audience sur le client `traceability-trial`. | Observé le 2026-11-07, dans Docker (conteneur `traceability-keycloak`, image 26.6.2, fichier de réglages modifié monté en lecture seule). Journal : `Realm 'traceability' imported`, puis `started in 45.513s` ; le filtre sur `imported`, `started in`, `ERROR` et `WARN` n'affiche aucune ligne `ERROR` ni `WARN` à ce relevé. Console (realm `traceability`, Clients, `traceability-trial`, Client scopes, `traceability-trial-dedicated`, onglet Mappers), sur capture : une ligne `traceability-api-audience`, catégorie Token mapper, type Audience, priorité 0. Les comptes `reader-test` et `writer-test` sont recréés à la main (onglet Role mapping, sur captures : `reader` et `default-roles-traceability` pour le premier, `writer` et `default-roles-traceability` pour le second). Plus tard, le journal montre un `WARN` (`LOGIN_ERROR`, `invalid_user_credentials`, `writer-test`, 09:59:47) : une demande de jeton refusée, cause non confirmée. |
+| I5 | Contenu décodé d'un jeton de `writer-test` : relever `aud`, `iss`, et vérifier que les rôles sont toujours dans `realm_access.roles`. Le jeton brut n'est jamais affiché. | Observé. Jeton de `writer-test` (`HTTP 200`, `Bearer`, `expires_in 300`, reçu à 09:50:24 UTC), contenu décodé : `iss` `http://localhost:8180/realms/traceability` ; `aud` `traceability-api,account` (il valait `account` au lot 10a) ; `azp` `traceability-trial` ; `exp` moins `iat` : 300 ; rôles dans `realm_access.roles` : `offline_access`, `default-roles-traceability`, `writer`, `uma_authorization` (pas `reader`). Seul le contenu décodé est affiché (fonctions `Get-Trial` et `Show-Token`, 19.5). |
+| I6 | L'API est lancée (`--launch-profile https`) avec les deux variables d'environnement, sur la base `TraceabilityTest`. Relever le démarrage et toute erreur. | Observé. `dotnet run --project src/Traceability.Api --launch-profile https`, avec `ConnectionStrings__Default` copiée de `ConnectionStrings__Test` (base `TraceabilityTest`), `Authentication__Authority` et `Authentication__Audience` : `Now listening on: https://localhost:7080`, `Application started`, `Hosting environment: Development`, aucune erreur. |
+| I7 | Sans jeton : `GET /farms` répond 401. Relever l'en-tête `WWW-Authenticate`. | Observé. `GET /farms` sans en-tête `Authorization` : `HTTP/1.1 401 Unauthorized`, `Content-Length: 0`, `WWW-Authenticate: Bearer`. |
+| I8 | Avec le jeton de `reader-test` : `GET /farms` répond 200. | Observé. Jeton de `reader-test` (reçu à 09:54:51 UTC) : `GET /farms` répond `HTTP 200`. |
+| I9 | Avec le jeton de `reader-test` : `POST /farms` répond 403. | Observé. Même jeton : `POST /farms` avec le corps `{}` répond `HTTP 403`. |
+| I10 | Avec le jeton de `writer-test` : `GET /farms` répond 200. | Observé. Jeton de `writer-test` (reçu à 09:55:39 UTC) : `GET /farms` répond `HTTP 200`. |
+| I11 | Avec le jeton de `writer-test` : `POST /farms` (une nouvelle ferme) répond 201. | Observé. Même jeton : `POST /farms` (`AUTH-I11`, `Auth trial farm`, `Test`) répond `HTTP/1.1 201 Created`, corps `{"code":"AUTH-I11","name":"Auth trial farm","region":"Test"}`. La ferme est écrite dans `TraceabilityTest`. |
+| I12 | Un jeton mal formé (`Authorization: Bearer abc`) : relever le code. | Observé. `Authorization: Bearer abc` : `HTTP/1.1 401 Unauthorized`, `WWW-Authenticate: Bearer error="invalid_token"`. |
+| I13 | Un jeton dont la date d'expiration est dépassée : relever le code et le temps écoulé depuis la demande du jeton quand le premier refus apparaît. | Observé. Jeton de `writer-test` reçu à 09:55:39 UTC (`expires_in 300`, expiration estimée à 10:00:38). Un sondage en arrière-plan rappelle `GET /farms` avec ce jeton toutes les 15 secondes : `HTTP 200` jusqu'à 10:05:32, premier `HTTP 401` à 10:05:47, soit entre 4 min 54 s et 5 min 09 s après l'expiration estimée. Cet écart est compatible avec la tolérance d'horloge par défaut de la validation (5 minutes), que le code ne modifie pas ; elle n'a été ni lue ni mesurée séparément. |
+| I14 | Mauvais émetteur : un jeton demandé à `http://127.0.0.1:8180` au lieu de `http://localhost:8180`. Relever son `iss` et le code de l'API. | Observé. Jeton de `writer-test` demandé à `http://127.0.0.1:8180` : `iss` `http://127.0.0.1:8180/realms/traceability` ; `aud` `traceability-api,account`, `azp`, `exp` moins `iat` (300) et rôle `writer` comme pour les autres jetons ; `GET /farms` avec ce jeton : `HTTP 401`. L'émetteur est le seul champ relevé qui diffère ; la raison du refus n'a pas été lue dans le journal de l'API. |
+| I15 | Mauvais public visé : l'API est relancée avec une autre valeur de `Authentication__Audience`, puis appelée avec un jeton valide. Relever le code. | Observé. API relancée avec `Authentication__Audience` égal à `autre-nom`, jeton valide de `writer-test` (reçu à 10:21:05 UTC) : `GET /farms` répond `HTTP 401`. Avec `traceability-api`, des jetons du même type donnent 200 (I8 et I10). La première demande de jeton de cet essai a été refusée (`HTTP 400`, `invalid_grant`) : mot de passe mal saisi. |
+| I16 | Keycloak arrêté pendant que l'API tourne : relever la réponse de l'API à un jeton encore valide, déjà utilisé avant l'arrêt. | Observé, avec une sortie manquante. Un jeton valide de `writer-test` est utilisé avant l'arrêt ; `docker stop traceability-keycloak` (`docker ps -a` : `Exited (143)`), puis le même appel avec le même jeton répond `HTTP 200` (résultat rapporté en une ligne ; les sorties des deux appels n'ont pas été collées). Un jeton que l'API n'avait jamais vu n'a pas pu être essayé (Keycloak arrêté). Après `docker start`, Keycloak repart (`started in 18.303s`) et `writer-test` obtient de nouveau un jeton (I15) : les comptes survivent à un arrêt du conteneur. |
+| I17 | Swagger (`/swagger`) : le bouton Authorize est présent ; avec un jeton, `GET /farms` répond 200 ; sans jeton, 401. | Observé. Swagger (`https://localhost:7080/swagger`) : le bouton Authorize est présent (constaté à l'écran, sans capture). Avec un jeton de `writer-test` collé dans Authorize : `GET /farms` répond 200, avec la ferme `AUTH-I11` (`totalCount` 1). Après Logout : même appel, code 401, en-tête `www-authenticate: Bearer`. |
+| I18 | Sous Windows : relever si le mappeur d'audience est pris en compte (le realm existant est ignoré à l'import, stratégie `IGNORE_EXISTING`, section 18). Puis : sans jeton 401, `reader` sur un `POST` 403, `writer` sur un `POST` 201. | Observé sous Windows (Keycloak 26.6.2, JDK 21). 1) Base de Keycloak du lot 10a conservée : `Realm 'traceability' already exists. Import skipped`, `started in 27.518s` ; `writer-test` (compte conservé) obtient un jeton (`HTTP 200`) avec `aud` `account` seulement : le mappeur n'est pas pris en compte. 2) Dossier `data\h2` supprimé, Keycloak relancé : `Realm 'traceability' imported`, `started in 27.420s` ; comptes recréés à la main. Jeton de `writer-test` : `aud` `traceability-api,account`, `iss` `http://localhost:8180/realms/traceability`, rôle `writer`. Contrôles avec l'API (audience `traceability-api`) : sans jeton, `GET /farms` 401 ; `reader-test`, `POST /farms` 403 ; `writer-test`, `POST /farms` (`AUTH-I18`) `HTTP/1.1 201 Created`. |
+| I19 | L'interface web (Vite) avec l'API protégée : relever ce qu'elle affiche pour la liste des fermes. | Observé, sur captures de l'interface (Vite sur `http://localhost:5173`, API protégée) : les pages Lots (`/batches`) et Fermes (`/farms`) affichent « Erreur 401. ». L'interface n'a pas de connexion avant le lot 10c. |
+| I20 | Aucun jeton brut ni mot de passe dans les fichiers du dépôt : recherche de `eyJ` (début d'un jeton), de `password` et de `secret` dans les fichiers modifiés par le lot, et dans `identity/traceability-realm.json`. | Observé le 2026-11-07, après les essais. Recherche dans les 14 fichiers du lot à ce moment (modifiés et nouveaux) : `eyJ` n'apparaît que dans le texte de cette ligne I20. `identity/traceability-realm.json` : 0 ligne pour `password`, `secret` et `credentials`. Fichiers de tests : 0 ligne. Code de l'API : une seule ligne, un commentaire de `Program.cs` (« the API needs no secret »). `docs/verification.md` : les mots apparaissent dans du texte (noms de variables, commandes avec saisie masquée) ; à la relecture des lignes, aucune valeur de mot de passe ni de secret. Dans le dépôt, `eyJ` apparaît aussi dans `web/package-lock.json`, que le lot ne modifie pas, à l'intérieur d'une empreinte `integrity` (`sha512-…`). |
+| I21 | La CI (`backend`, `frontend`, `docker`) est verte sur la branche, sans modification de `.github/`. Relever les numéros d'exécution. | À observer. |
+
+### 19.3 Ce qui n'est pas essayé
+
+Écrit avant l'essai.
+
+- L'API dans un conteneur Docker avec Keycloak : l'adresse où l'API lit les clés de Keycloak peut différer de l'émetteur attendu quand elle tourne dans un conteneur. Non essayé.
+- Le mode production de Keycloak, HTTPS (la lecture de la configuration de Keycloak en HTTP n'est permise qu'en Development), la rotation des clés de signature.
+- La révocation d'un jeton avant son expiration, le jeton de rafraîchissement, un jeton sans compte utilisateur.
+- Un rôle composite (`writer` qui inclurait `reader`).
+- Le flux code d'autorisation avec PKCE, la connexion dans l'interface et l'en-tête `Authorization` dans la règle CORS (lot 10c).
+- L'enregistrement de l'auteur de chaque mouvement.
+- Une CI avec un vrai Keycloak : les tests automatiques n'utilisent aucun vrai jeton.
+- Les routes de l'API ajoutées après ce lot : seul le test qui contrôle que chaque route a une règle les couvre.
+
+**Ajouté après les essais (2026-11-07)**
+
+- La tolérance d'horloge de la validation du jeton (5 minutes par défaut) n'est ni modifiée ni mesurée : le délai relevé en I13 lui est compatible, sans que sa cause soit isolée.
+- Keycloak arrêté (I16) : seul un jeton déjà vu par l'API a été essayé. Un jeton que l'API n'avait jamais vu, ou une API démarrée pendant l'arrêt de Keycloak, ne l'ont pas été ; le mécanisme (clés mises en mémoire) n'est pas isolé.
+- Sous Windows, un realm déjà présent n'est pas réimporté (I18) : un changement du fichier de réglages n'y est pris en compte qu'après suppression de `data\h2` dans le dossier de Keycloak, ce qui supprime aussi les comptes (à recréer à la main). Dans Docker, le conteneur des essais a été créé avec le fichier modifié.
+- I2 ne relève pas le code exact des réponses « ni 401 ni 403 » ; I3 ne relève pas les noms des trois autres tests en échec ; I16 n'a pas les sorties collées des deux appels.
+- La raison exacte du refus du jeton à mauvais émetteur (I14) et du jeton à mauvais public visé (I15) n'a pas été lue dans le journal de l'API : seul le code 401 est observé.
+- L'interface web affiche « Erreur 401. » tant que le lot 10c n'a pas ajouté la connexion (I19).
+- Les fonctions `Get-Trial` et `Show-Token` de 19.5 sont réécrites pour ce document, les versions utilisées pendant les essais n'étant pas gardées. Leur syntaxe a été contrôlée avec l'analyseur de PowerShell le 2026-11-07 (0 erreur) ; elles n'ont pas été exécutées avec Keycloak sous cette forme.
+
+### 19.4 Ce qui est prouvé
+
+Essais du 2026-11-07.
+
+- **Les règles de rôles sont contrôlées route par route** par 41 tests d'intégration avec un faux schéma d'authentification : les 10 routes, avec quatre appelants (sans jeton, `reader`, `writer`, un rôle inconnu). Les 89 tests unitaires et les 129 tests d'intégration passent (I1, I2). Un test échoue si une route de contrôleur n'a aucune règle, ce qui a été vérifié en en retirant une (I3). Ces tests ne vérifient aucun vrai jeton.
+- **Avec un vrai jeton de Keycloak (Docker), l'API répond comme prévu** : sans jeton 401 avec `WWW-Authenticate: Bearer` ; `reader` 200 sur une lecture et 403 sur une écriture ; `writer` 200 sur une lecture et 201 sur une écriture ; jeton mal formé 401 (I7 à I12). Les rôles sont donc bien lus dans `realm_access.roles` d'un vrai jeton.
+- **Le public visé est fourni par le realm et contrôlé par l'API** : `aud` vaut `traceability-api,account` avec le mappeur ajouté (il valait `account` au lot 10a), et l'API configurée avec un autre nom de public refuse le même jeton (I5, I15).
+- **L'émetteur est contrôlé** : un jeton demandé à `http://127.0.0.1:8180` (seul son `iss` diffère parmi les champs relevés) est refusé en 401 (I14).
+- **L'expiration est contrôlée** : un jeton de 300 s est encore accepté après son expiration puis refusé, le premier 401 apparaissant 4 min 54 s à 5 min 09 s après l'expiration estimée (I13).
+- **Swagger** propose le bouton Authorize : avec un jeton, `GET /farms` répond 200 ; après Logout, 401 (I17).
+- **Sous Windows**, un realm existant n'est pas réimporté, donc le mappeur d'audience n'y est pas pris en compte tant que la base de Keycloak n'est pas supprimée ; après suppression de `data\h2` et réimport, `aud` contient `traceability-api` et les contrôles principaux donnent 401, 403 et 201 (I18).
+- **Keycloak arrêté** : un jeton valide déjà utilisé reste accepté (200) (I16).
+- **Aucun jeton brut ni mot de passe dans les fichiers du lot** relevés lors de la recherche (I20) ; le fichier de réglages de Keycloak ne contient ni mot de passe ni secret.
+- Le lot ne modifie ni l'interface web ni la CI (`.github/`).
+- **La CI sur la branche (I21)** n'est pas encore observée.
+- **Non prouvé** : tout ce qui figure en 19.3, dont la cause du délai de 5 minutes (I13) et le mécanisme du cas Keycloak arrêté (I16).
+
+### 19.5 Rejouer la vérification
+
+Dans PowerShell. Les mots de passe sont saisis masqués ; un jeton n'est jamais affiché en entier, ni collé dans un message ou un fichier. Fenêtres conseillées : `Docker` (Keycloak), `Essais` (jetons et appels), `API` (l'API).
+
+**1. Tests automatiques** (depuis la racine du dépôt, API arrêtée, `ConnectionStrings__Test` définie comme aux sections précédentes) :
+
+```powershell
+dotnet test Traceability.slnx
+```
+
+**2. Keycloak** avec le fichier de réglages modifié : voir 18.5 (Docker ou Windows). Un conteneur ou un dossier de Keycloak créés avant le lot 10b n'ont pas le mappeur d'audience : supprimer le conteneur (`docker rm -f traceability-keycloak`) ou, sous Windows, arrêter Keycloak, supprimer `$kc\data\h2` (les comptes sont supprimés aussi), recopier `identity\traceability-realm.json` dans `$kc\data\import`, relancer. Puis créer à la main `reader-test` et `writer-test` (18.5).
+
+**3. L'API**, dans la fenêtre `API`, depuis la racine du dépôt :
+
+```powershell
+$env:ConnectionStrings__Default = $env:ConnectionStrings__Test
+$env:Authentication__Authority = 'http://localhost:8180/realms/traceability'
+$env:Authentication__Audience = 'traceability-api'
+dotnet run --project src/Traceability.Api --launch-profile https
+```
+
+**4. Deux fonctions d'aide**, dans la fenêtre `Essais` (elles n'affichent jamais le jeton) :
+
+```powershell
+function Get-Trial($User, $Base = 'http://localhost:8180') {
+  $pw = [Net.NetworkCredential]::new('', (Read-Host "Mot de passe de $User" -AsSecureString)).Password
+  $r = curl.exe -s -w "`n%{http_code}" -d "grant_type=password&client_id=traceability-trial&username=$User&password=$([uri]::EscapeDataString($pw))" "$Base/realms/traceability/protocol/openid-connect/token"
+  $code = $r[-1]
+  if ($code -eq '200') {
+    $j = $r[0] | ConvertFrom-Json
+    $global:Token = $j.access_token
+    "HTTP $code $($j.token_type) expires_in $($j.expires_in)"
+  } else { "HTTP $code" }
+}
+
+function Show-Token {
+  $p = $global:Token.Split('.')[1].Replace('-', '+').Replace('_', '/')
+  $p = $p.PadRight($p.Length + (4 - $p.Length % 4) % 4, '=')
+  $c = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p)) | ConvertFrom-Json
+  [pscustomobject]@{
+    iss = $c.iss; aud = ($c.aud -join ','); azp = $c.azp
+    exp_moins_iat = $c.exp - $c.iat
+    exp_utc = [DateTimeOffset]::FromUnixTimeSeconds($c.exp).UtcDateTime.ToString('HH:mm:ss')
+    roles = ($c.realm_access.roles -join ',')
+  } | Format-List
+}
+```
+
+**5. Les appels** (`--ssl-no-revoke` : le certificat de développement de l'API n'a pas de liste de révocation) :
+
+```powershell
+# sans jeton : 401 et WWW-Authenticate: Bearer
+curl.exe -s --ssl-no-revoke -i https://localhost:7080/farms
+
+# jeton de lecture : GET 200, POST 403
+Get-Trial reader-test
+Show-Token
+curl.exe -s --ssl-no-revoke -o NUL -w "HTTP %{http_code}`n" -H "Authorization: Bearer $global:Token" https://localhost:7080/farms
+'{"code":"AUTH-REJEU","name":"Auth trial farm","region":"Test"}' | Set-Content -Encoding ascii "$env:TEMP\farm.json"
+curl.exe -s --ssl-no-revoke -o NUL -w "HTTP %{http_code}`n" -X POST -H "Authorization: Bearer $global:Token" -H "Content-Type: application/json" -d "@$env:TEMP\farm.json" https://localhost:7080/farms
+
+# jeton d'écriture : GET 200, POST 201 (la ferme est écrite dans TraceabilityTest)
+Get-Trial writer-test
+curl.exe -s --ssl-no-revoke -o NUL -w "HTTP %{http_code}`n" -X POST -H "Authorization: Bearer $global:Token" -H "Content-Type: application/json" -d "@$env:TEMP\farm.json" https://localhost:7080/farms
+
+# jeton mal formé : 401, error="invalid_token"
+curl.exe -s --ssl-no-revoke -i -H "Authorization: Bearer abc" https://localhost:7080/farms
+
+# mauvais émetteur : jeton demandé à 127.0.0.1, puis GET /farms (401 attendu)
+Get-Trial writer-test http://127.0.0.1:8180
+Show-Token
+curl.exe -s --ssl-no-revoke -o NUL -w "HTTP %{http_code}`n" -H "Authorization: Bearer $global:Token" https://localhost:7080/farms
+```
+
+Un jeton demandé à `http://localhost:8180` après ces essais redevient accepté. Une ferme `AUTH-REJEU` déjà présente donne un conflit au deuxième `POST` (changer le code) ; la base `TraceabilityTest` est vidée à chaque exécution des tests d'intégration.
+
+**6. Expiration** : avec un jeton de `writer-test` tout juste obtenu, un sondage toutes les 15 secondes jusqu'au premier 401 (compter environ 10 minutes) :
+
+```powershell
+$global:Poll = Start-Job -ArgumentList $global:Token -ScriptBlock {
+  param($t)
+  while ($true) {
+    $c = curl.exe -s --ssl-no-revoke -o NUL -w "%{http_code}" -H "Authorization: Bearer $t" https://localhost:7080/farms
+    "$(Get-Date -Format HH:mm:ss) $c"
+    if ($c -eq '401') { break }
+    Start-Sleep 15
+  }
+}
+$global:Poll.State; Receive-Job $global:Poll -Keep
+```
+
+**7. Mauvais public visé** : arrêter l'API (Ctrl+C), définir `$env:Authentication__Audience = 'autre-nom'`, relancer l'API, obtenir un jeton valide, `GET /farms` doit répondre 401 ; remettre `traceability-api`.
+
+**8. Keycloak arrêté** : obtenir un jeton, appeler `GET /farms` (200), puis `docker stop traceability-keycloak` et rappeler avec le même jeton. Relancer avec `docker start traceability-keycloak`.
+
+**9. Swagger** : ouvrir `https://localhost:7080/swagger`, bouton Authorize, coller le jeton seul (`$global:Token | Set-Clipboard` le met dans le presse-papiers sans l'afficher), puis essayer `GET /farms` ; Logout, puis réessayer (401).
+
+**10. Aucun secret dans les fichiers**, depuis la racine du dépôt :
+
+```powershell
+git grep -n --untracked "eyJ"
+git grep -n --untracked -i "password" -- identity
+```
+
+Le premier ne doit montrer, hors de `web/package-lock.json` (empreintes `sha512-`), que du texte de ce document ; le second ne doit rien montrer.
+
+**11. CI** (I21) : une fois la branche poussée, les trois contrôles `backend`, `frontend` et `docker` doivent être verts sur la branche.

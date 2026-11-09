@@ -48,3 +48,4 @@ Négatives :
 ## Notes
 
 - 2026-11-05 : décision prise après l'essai du lot 10a ([verification.md](../verification.md), section 18). La vérification des jetons par l'API (10b), la connexion dans l'interface web (10c) et l'enregistrement de l'auteur de chaque mouvement sont renvoyés à des lots suivants.
+- 2026-11-07 : le lot 10b ([ADR 0013](0013-jetons-keycloak-et-roles-dans-l-api.md)) a traité les « constats à traiter au lot 10b » ci-dessus. Le corps de cet ADR n'est pas modifié.

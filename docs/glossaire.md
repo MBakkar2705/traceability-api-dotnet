@@ -220,7 +220,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 ## Identification
 
-**Authentification et autorisation** : l'authentification vérifie qui est la personne (elle prouve son identité) ; l'autorisation décide ce qu'elle a le droit de faire. Ici : jusqu'au lot 9, l'API ne fait ni l'une ni l'autre ; le lot 10a n'ajoute que le serveur qui prouve l'identité, et l'API ne vérifie encore rien.
+**Authentification et autorisation** : l'authentification vérifie qui est la personne (elle prouve son identité) ; l'autorisation décide ce qu'elle a le droit de faire. Ici : jusqu'au lot 9, l'API ne fait ni l'une ni l'autre ; le lot 10a ajoute le serveur qui prouve l'identité, et depuis le lot 10b l'API vérifie le jeton (authentification) et applique les rôles `reader` et `writer` (autorisation).
 
 **OAuth 2.0** : un cadre standard où l'utilisateur obtient un jeton auprès d'un serveur d'identification, puis le présente à l'API, qui l'accepte sans jamais voir le mot de passe. Ici : Keycloak fournit ce cadre, notre code n'a pas à le réécrire (voir l'ADR 0012).
 
@@ -234,7 +234,19 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Rôle** : un nom qui résume des droits, attribué à des comptes. Ici : `reader` (consulter) et `writer` (saisir). Dans le jeton, ils sont listés dans `realm_access.roles`.
 
-**Jeton d'accès (JWT)** : une chaîne que le serveur délivre après la connexion et que l'API reçoit à chaque appel. Elle a trois parties séparées par des points ; celle du milieu est du JSON codé en base64url (et donc lisible : un jeton brut ne se colle jamais dans un message). Ici : durée de 300 secondes (`exp` moins `iat`), `iss` pour l'émetteur, `aud` pour le public visé, `azp` pour le client demandeur.
+**Jeton d'accès (JWT)** : une chaîne que le serveur délivre après la connexion et que l'API reçoit à chaque appel. Elle a trois parties séparées par des points ; celle du milieu est du JSON codé en base64url (et donc lisible : un jeton brut ne se colle jamais dans un message). Ici : durée de 300 secondes (`exp` moins `iat`), `iss` pour l'émetteur, `aud` pour le public visé, `azp` pour le client demandeur. Depuis le lot 10b, l'API en vérifie la signature, `iss`, `exp` et `aud`.
+
+**Claim (revendication)** : une information écrite dans le jeton (qui l'a émis, pour qui, jusqu'à quand, quels rôles). Ici : `iss`, `aud`, `azp`, `exp`, `iat` et `realm_access`, qui contient la liste `roles`.
+
+**Émetteur (`iss`) et public visé (`aud`)** : `iss` est l'adresse du realm qui a émis le jeton, `aud` le nom de l'application pour laquelle il est émis. L'API refuse un jeton dont l'un des deux ne correspond pas à ses réglages. Ici : `iss` vaut `http://localhost:8180/realms/traceability` (un jeton demandé à `http://127.0.0.1:8180` a un autre `iss` et est refusé) et `aud` doit contenir `traceability-api`.
+
+**Mappeur d'audience** : un réglage du client Keycloak qui ajoute un nom dans le champ `aud` des jetons. Ici : celui de `traceability-trial` ajoute `traceability-api` ; sans lui, `aud` vaut `account`.
+
+**Jeton « Bearer »** : la façon d'envoyer le jeton à l'API, dans l'en-tête `Authorization: Bearer ` suivi du jeton. Ici : Swagger UI l'envoie après le bouton Authorize.
+
+**401 et 403** : 401 veut dire « pas identifié » (pas de jeton, jeton invalide, expiré ou pour un autre public visé) ; 403 veut dire « identifié, mais pas le droit ». Ici : un `reader` qui fait un `POST` reçoit 403, un appel sans jeton reçoit 401.
+
+**Règle d'autorisation (policy)** : un nom qui regroupe une condition d'accès, posé sur une route avec `[Authorize(Policy = …)]`. Ici : `CanRead` (rôle `reader` ou `writer`) sur les 5 routes `GET`, `CanWrite` (rôle `writer`) sur les 5 routes `POST`.
 
 **Mode développement (`start-dev`)** : un démarrage de Keycloak pratique pour essayer (HTTP, base intégrée H2, réglages permissifs) mais que Keycloak déconseille en production, ce qu'il écrit lui-même dans son journal. Ici : le seul mode essayé.
 

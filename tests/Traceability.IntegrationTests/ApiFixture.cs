@@ -35,6 +35,30 @@ public sealed class ApiFixture : IAsyncLifetime
             BaseAddress = new Uri("https://localhost"),
             AllowAutoRedirect = false,
         });
+
+        // Lot 10b: the routes need a role. This client acts as a writer, who may read and write,
+        // so that the tests written before the authentication stay as they are.
+        Client.DefaultRequestHeaders.Add(TestAuth.RolesHeader, "writer");
+    }
+
+    /// <summary>
+    /// A new client of the same API. With roles (several are separated by commas), it sends the
+    /// test header of TestAuth. With null, it sends no header at all: a caller without a token.
+    /// </summary>
+    public HttpClient CreateClient(string? roles)
+    {
+        var client = Factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            AllowAutoRedirect = false,
+        });
+
+        if (roles is not null)
+        {
+            client.DefaultRequestHeaders.Add(TestAuth.RolesHeader, roles);
+        }
+
+        return client;
     }
 
     public async Task DisposeAsync()

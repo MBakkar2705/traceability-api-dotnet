@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Traceability.Api.Authentication;
 using Traceability.Api.Models;
 using Traceability.Api.Validation;
 using Traceability.Data;
@@ -13,7 +15,12 @@ public sealed class StationsController(TraceabilityDb db) : ControllerBase
     /// <response code="201">The station is created. The Location header points to it.</response>
     /// <response code="400">A field is missing or malformed or too long (no errorCode), or the code is empty (errorCode 50400).</response>
     /// <response code="409">The code is already taken (errorCode 50201).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token does not have the role writer.</response>
     [HttpPost]
+    [Authorize(Policy = Policies.CanWrite)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<StationResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
@@ -42,7 +49,12 @@ public sealed class StationsController(TraceabilityDb db) : ControllerBase
     /// <param name="cancellationToken">Cancels the call if the client disconnects.</param>
     /// <response code="200">A page of stations: items, totalCount, pageNumber and pageSize.</response>
     /// <response code="400">The page number or the page size is invalid (errorCode 50404).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token has neither the role reader nor the role writer.</response>
     [HttpGet]
+    [Authorize(Policy = Policies.CanRead)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<PageResponse<StationResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PageResponse<StationResponse>>> List(
@@ -61,7 +73,12 @@ public sealed class StationsController(TraceabilityDb db) : ControllerBase
     /// <response code="200">The station and its functions (empty if none).</response>
     /// <response code="400">The code is malformed (no errorCode).</response>
     /// <response code="404">Unknown station (errorCode 50102).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token has neither the role reader nor the role writer.</response>
     [HttpGet("{stationCode}")]
+    [Authorize(Policy = Policies.CanRead)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<StationDetailsResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -88,7 +105,12 @@ public sealed class StationsController(TraceabilityDb db) : ControllerBase
     /// <response code="400">A field is missing, malformed or too long (no errorCode), or the movement type is unknown (errorCode 50402).</response>
     /// <response code="404">Unknown station (errorCode 50102).</response>
     /// <response code="409">The function is already declared for this station (errorCode 50203).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token does not have the role writer.</response>
     [HttpPost("{stationCode}/capabilities")]
+    [Authorize(Policy = Policies.CanWrite)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
