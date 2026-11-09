@@ -220,7 +220,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 ## Identification
 
-**Authentification et autorisation** : l'authentification vérifie qui est la personne (elle prouve son identité) ; l'autorisation décide ce qu'elle a le droit de faire. Ici : jusqu'au lot 9, l'API ne fait ni l'une ni l'autre ; le lot 10a ajoute le serveur qui prouve l'identité, et depuis le lot 10b l'API vérifie le jeton (authentification) et applique les rôles `reader` et `writer` (autorisation).
+**Authentification et autorisation** : l'authentification vérifie qui est la personne (elle prouve son identité) ; l'autorisation décide ce qu'elle a le droit de faire. Ici : jusqu'au lot 9, l'API ne fait ni l'une ni l'autre ; le lot 10a ajoute le serveur qui prouve l'identité, et depuis le lot 10b l'API vérifie le jeton (authentification) et applique les rôles `reader` et `writer` (autorisation) ; depuis le lot 10c, l'interface web connecte l'utilisateur chez Keycloak.
 
 **OAuth 2.0** : un cadre standard où l'utilisateur obtient un jeton auprès d'un serveur d'identification, puis le présente à l'API, qui l'accepte sans jamais voir le mot de passe. Ici : Keycloak fournit ce cadre, notre code n'a pas à le réécrire (voir l'ADR 0012).
 
@@ -230,7 +230,17 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Realm** : l'espace de Keycloak qui regroupe des comptes, des rôles et des clients, isolé des autres realms. Ici : le realm `traceability`, décrit par `identity/traceability-realm.json`.
 
-**Client (au sens OAuth)** : un programme autorisé à demander des jetons au serveur d'identification. Ce n'est pas un client de la ferme. Ici : `traceability-trial`, un client d'essai à la main ; l'interface web aura son propre client au lot 10c.
+**Client (au sens OAuth)** : un programme autorisé à demander des jetons au serveur d'identification. Ce n'est pas un client de la ferme. Ici : `traceability-trial`, un client d'essai à la main ; `traceability-web`, le client de l'interface web (lot 10c), qui est un client public.
+
+**Flux code d'autorisation** : la façon courante de connecter un utilisateur dans une page web : la page l'envoie chez le serveur d'identification, qui lui demande son mot de passe, puis le renvoie à la page avec un code à usage unique que la page échange contre un jeton. Le mot de passe ne passe jamais par la page. Ici : c'est ce que fait l'interface web depuis le lot 10c, avec PKCE (voir l'ADR 0014).
+
+**PKCE** (se prononce « pixie ») : une protection de ce flux pour un client qui ne peut garder aucun secret. La page invente un secret jetable, en envoie l'empreinte (`code_challenge`) au début, puis le secret lui-même (`code_verifier`) en échangeant le code : le serveur vérifie qu'ils correspondent, donc un code volé ne sert à rien sans le secret. Ici : la méthode `S256` (empreinte SHA-256), exigée par le client `traceability-web`.
+
+**Client public** : un client OAuth qui ne peut garder aucun secret, parce que tout son code est lu par le navigateur. Il n'a donc pas de mot de passe à lui ; c'est PKCE qui le protège. Ici : `traceability-web`.
+
+**Adresse de redirection (redirect URI)** : l'adresse où le serveur d'identification renvoie le navigateur après la connexion. Keycloak refuse toute adresse qui n'est pas dans la liste du client. Ici : `http://localhost:5173/auth/callback` pour `traceability-web`.
+
+**Jeton de rafraîchissement (refresh token)** : un second jeton, plus durable, qui sert seulement à demander un nouveau jeton d'accès sans redemander le mot de passe. Ici : l'interface renouvelle son jeton d'accès toutes les 4 minutes environ par un appel à `/token` ; que cet appel utilise un jeton de rafraîchissement est déduit, pas lu ([verification.md](verification.md) 20.3).
 
 **Rôle** : un nom qui résume des droits, attribué à des comptes. Ici : `reader` (consulter) et `writer` (saisir). Dans le jeton, ils sont listés dans `realm_access.roles`.
 

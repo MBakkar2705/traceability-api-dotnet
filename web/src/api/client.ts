@@ -3,6 +3,7 @@
 // A read can be cancelled with an AbortSignal. A write never is: cancelling a call does not
 // cancel what the server does, so the screen could not know if the data was saved.
 
+import { getAccessToken } from '../auth/token'
 import { API_BASE_URL } from '../config'
 import { ApiError, NetworkError, isAbortError } from './errors'
 import type {
@@ -96,8 +97,14 @@ async function send(path: string, query: Query, init: RequestInit): Promise<Resp
   return response
 }
 
+// The headers of a call. When someone is signed in (lot 10c), their access token goes with it.
+function withAuthorization(headers: Record<string, string>): Record<string, string> {
+  const token = getAccessToken()
+  return token === null ? headers : { ...headers, Authorization: `Bearer ${token}` }
+}
+
 async function getJson<T>(path: string, query: Query, signal?: AbortSignal): Promise<T> {
-  const response = await send(path, query, { headers: { Accept: 'application/json' }, signal })
+  const response = await send(path, query, { headers: withAuthorization({ Accept: 'application/json' }), signal })
   return (await response.json()) as T
 }
 
@@ -109,7 +116,7 @@ function postJson(path: string, body: unknown): Promise<Response> {
     {},
     {
       method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      headers: withAuthorization({ Accept: 'application/json', 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
     },
   )

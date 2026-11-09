@@ -18,6 +18,26 @@ describe('describeError', () => {
     expect(describeError(new ApiError({ status: 404 })).message).toBe('Élément introuvable.')
   })
 
+  it('asks a user who is not signed in, or whose session ended, to sign in again (401)', () => {
+    const result = describeError(new ApiError({ status: 401 }))
+
+    expect(result.message).toBe(
+      "Vous n'êtes pas connecté, ou votre session a expiré. Rechargez la page pour vous reconnecter.",
+    )
+  })
+
+  it('tells a user who has not the right that they have not (403)', () => {
+    expect(describeError(new ApiError({ status: 403 })).message).toBe("Vous n'avez pas le droit de faire cela.")
+  })
+
+  it('says the same for a write refused with 401 or 403, with no message by field', () => {
+    expect(describeWriteError(new ApiError({ status: 403 }))).toEqual({
+      message: "Vous n'avez pas le droit de faire cela.",
+      fieldMessages: {},
+    })
+    expect(describeWriteError(new ApiError({ status: 401 })).fieldMessages).toEqual({})
+  })
+
   it('falls back on the status when the error code is unknown', () => {
     expect(describeError(new ApiError({ status: 409, errorCode: 59999 })).message).toBe('Erreur 409.')
   })
