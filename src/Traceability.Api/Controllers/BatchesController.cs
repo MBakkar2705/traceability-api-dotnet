@@ -18,7 +18,7 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     /// <response code="409">The batch code is already taken (errorCode 50202).</response>
     /// <response code="422">The station does not have the RECEPTION function (errorCode 50303).</response>
     /// <response code="401">No valid token.</response>
-    /// <response code="403">The token does not have the role writer.</response>
+    /// <response code="403">The token does not have the role writer; or it does not give the claims sub and preferred_username, so the author of the movement is unknown.</response>
     [HttpPost]
     [Authorize(Policy = Policies.CanWrite)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -31,6 +31,11 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     public async Task<IActionResult> Create(
         CreateBatchRequest request, CancellationToken cancellationToken)
     {
+        if (!CurrentUser.TryRead(User, out var author))
+        {
+            return AuthorUnknown();
+        }
+
         var errors = new FieldErrors();
         errors.RequireCode("batchCode", request.BatchCode, CodeRules.BatchMaxLength);
         errors.RequireCode("farmCode", request.FarmCode, CodeRules.FarmMaxLength);
@@ -47,7 +52,8 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
 
         await db.CreateBatchAsync(
             request.BatchCode, request.FarmCode, request.Variety, request.HarvestDate,
-            request.QuantityKg, request.StationCode, ToUtc(request.OccurredAt), cancellationToken);
+            request.QuantityKg, request.StationCode, ToUtc(request.OccurredAt),
+            author.Id, author.Name, cancellationToken);
 
         // 201 with an empty body: the Location header points to the batch.
         Response.Headers["Location"] = Url.Action(nameof(Get), new { batchCode = request.BatchCode });
@@ -107,7 +113,7 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
         return new PageResponse<BatchResponse>(items, page.TotalCount, pageNumber, pageSize);
     }
 
-    /// <summary>Reads a batch with its movements, in the order they were recorded.</summary>
+    /// <summary>Reads a batch with its movements, in the order they were recorded. Each movement carries the name of its author.</summary>
     /// <param name="batchCode">Code of the batch.</param>
     /// <param name="cancellationToken">Cancels the call if the client disconnects.</param>
     /// <response code="200">The batch and its movements. Times are in UTC and end with Z.</response>
@@ -136,7 +142,8 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
         var details = await db.GetBatchAsync(batchCode, cancellationToken);
         var batch = details.Batch;
         var movements = details.Movements
-            .Select(m => new MovementResponse(m.MovementId, m.MovementType, m.StationCode, m.QuantityKg, m.OccurredAt))
+            .Select(m => new MovementResponse(
+                m.MovementId, m.MovementType, m.StationCode, m.QuantityKg, m.OccurredAt, m.AuthorName))
             .ToList();
         return new BatchDetailsResponse(
             batch.BatchCode, batch.FarmCode, batch.Variety, batch.HarvestDate,
@@ -157,7 +164,7 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     /// <response code="404">Unknown batch (errorCode 50100) or unknown station (errorCode 50102).</response>
     /// <response code="422">The batch is already SHIPPED (errorCode 50300); or the movement is not the next step (errorCode 50301); or the quantity is higher than the current one (errorCode 50302); or the station does not have the function (errorCode 50303).</response>
     /// <response code="401">No valid token.</response>
-    /// <response code="403">The token does not have the role writer.</response>
+    /// <response code="403">The token does not have the role writer; or it does not give the claims sub and preferred_username, so the author of the movement is unknown.</response>
     [HttpPost("{batchCode}/movements")]
     [Authorize(Policy = Policies.CanWrite)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -169,6 +176,11 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     public async Task<IActionResult> AddMovement(
         string batchCode, AddMovementRequest request, CancellationToken cancellationToken)
     {
+        if (!CurrentUser.TryRead(User, out var author))
+        {
+            return AuthorUnknown();
+        }
+
         var errors = new FieldErrors();
         errors.RequireCode("batchCode", batchCode, CodeRules.BatchMaxLength);
         errors.RequireCode("stationCode", request.StationCode, CodeRules.StationMaxLength);
@@ -183,12 +195,19 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
 
         await db.AddMovementAsync(
             batchCode, request.StationCode, request.MovementType,
-            request.QuantityKg, ToUtc(request.OccurredAt), cancellationToken);
+            request.QuantityKg, ToUtc(request.OccurredAt), author.Id, author.Name, cancellationToken);
 
         // 201 with an empty body: the Location header points to the batch.
         Response.Headers["Location"] = Url.Action(nameof(Get), new { batchCode });
         return StatusCode(StatusCodes.Status201Created);
     }
+
+    // Decision D5 of lot 11: a valid token that does not give sub or preferred_username cannot write
+    // a movement, because there would be no author to record. 403, not 401: the token is valid.
+    private ObjectResult AuthorUnknown() =>
+        Problem(
+            detail: "The token does not give the identity of the user (claims sub and preferred_username).",
+            statusCode: StatusCodes.Status403Forbidden);
 
     private static BatchResponse ToResponse(BatchRow batch) =>
         new(batch.BatchCode, batch.FarmCode, batch.Variety, batch.HarvestDate, batch.QuantityKg, batch.Status);

@@ -13,6 +13,7 @@ Les règles métier sont dans [fonctionnel.md](fonctionnel.md), le modèle dans 
 - **Transactions** : chaque procédure d'écriture annule tout en cas d'erreur (`SET XACT_ABORT ON`). `AddMovement` pose un verrou sur la ligne du lot (voir [ADR 0003](adr/0003-verrou-sur-le-lot.md)).
 - **Dernier filet** : les procédures contrôlent les cas courants et lèvent leur propre erreur numérotée. Les contraintes du lot 1 (clés, `UNIQUE`, `CHECK`) restent derrière elles.
 - **Valeur `NULL`** : un code `NULL` compte comme un code vide (50400), une quantité `NULL` comme une quantité invalide (50401). Les autres paramètres obligatoires à `NULL` ne sont pas contrôlés par les procédures : ils sont refusés par les contraintes `NOT NULL` du lot 1, avec l'erreur SQL Server habituelle.
+- **Auteur du mouvement** (lot 11) : `CreateBatch` et `AddMovement` reçoivent `@AuthorId` et `@AuthorName`, lus par l'API dans le jeton validé. Ils sont contrôlés en premier : vides, `NULL` ou espaces seulement, 50405 ; trop longs (plus de 64 caractères pour l'identifiant, plus de 100 pour le nom), 50406. Les paramètres sont plus larges que les colonnes (200 caractères) pour qu'une valeur trop longue arrive jusqu'au contrôle au lieu d'être coupée en silence. Un appel qui ne donne pas ces deux paramètres échoue avec l'erreur SQL Server 201 (paramètre attendu) : l'échec est voulu et bruyant.
 - **Appels par nom de paramètre** (`@BatchCode = ...`).
 
 ## 2. Les 10 procédures
@@ -70,16 +71,18 @@ Résultat : aucun.
 
 Crée le lot (statut `RECEIVED`) et son premier mouvement `RECEPTION`, dans une seule transaction.
 
-Paramètres : `@BatchCode NVARCHAR(30)`, `@FarmCode NVARCHAR(20)`, `@Variety NVARCHAR(50)`, `@HarvestDate DATE`, `@QuantityKg DECIMAL(10,2)`, `@StationCode NVARCHAR(20)`, `@OccurredAt DATETIME2`.
+Paramètres : `@BatchCode NVARCHAR(30)`, `@FarmCode NVARCHAR(20)`, `@Variety NVARCHAR(50)`, `@HarvestDate DATE`, `@QuantityKg DECIMAL(10,2)`, `@StationCode NVARCHAR(20)`, `@OccurredAt DATETIME2`, `@AuthorId NVARCHAR(200)`, `@AuthorName NVARCHAR(200)`. L'auteur est enregistré avec le premier mouvement.
 
 Contrôles, dans cet ordre :
 
-1. code du lot non vide : sinon 50400 ;
-2. quantité supérieure à 0 : sinon 50401 ;
-3. ferme existante : sinon 50101 ;
-4. station existante : sinon 50102 ;
-5. code du lot pas déjà pris : sinon 50202 ;
-6. la station a la fonction `RECEPTION` : sinon 50303.
+1. auteur donné (identifiant et nom non vides) : sinon 50405 ;
+2. auteur assez court pour les colonnes : sinon 50406 ;
+3. code du lot non vide : sinon 50400 ;
+4. quantité supérieure à 0 : sinon 50401 ;
+5. ferme existante : sinon 50101 ;
+6. station existante : sinon 50102 ;
+7. code du lot pas déjà pris : sinon 50202 ;
+8. la station a la fonction `RECEPTION` : sinon 50303.
 
 Résultat : aucun. Si un contrôle échoue, aucun lot et aucun mouvement ne sont créés.
 
@@ -87,7 +90,7 @@ Résultat : aucun. Si un contrôle échoue, aucun lot et aucun mouvement ne sont
 
 Ajoute le mouvement suivant d'un lot et met à jour le lot (statut et quantité) dans la même transaction, sous le verrou de l'[ADR 0003](adr/0003-verrou-sur-le-lot.md).
 
-Paramètres : `@BatchCode NVARCHAR(30)`, `@StationCode NVARCHAR(20)`, `@MovementType NVARCHAR(20)`, `@QuantityKg DECIMAL(10,2)`, `@OccurredAt DATETIME2`.
+Paramètres : `@BatchCode NVARCHAR(30)`, `@StationCode NVARCHAR(20)`, `@MovementType NVARCHAR(20)`, `@QuantityKg DECIMAL(10,2)`, `@OccurredAt DATETIME2`, `@AuthorId NVARCHAR(200)`, `@AuthorName NVARCHAR(200)`.
 
 L'étape suivante dépend du statut du lot :
 
@@ -100,14 +103,16 @@ L'étape suivante dépend du statut du lot :
 
 Contrôles, dans cet ordre (le premier qui échoue donne l'erreur) :
 
-1. quantité supérieure à 0 : sinon 50401 ;
-2. type de mouvement connu : sinon 50402 ;
-3. lot existant (il est lu et verrouillé ici) : sinon 50100 ;
-4. station existante : sinon 50102 ;
-5. lot pas déjà `SHIPPED` : sinon 50300 ;
-6. le type est bien l'étape suivante : sinon 50301 ;
-7. la station a la fonction : sinon 50303 ;
-8. la quantité ne dépasse pas la quantité actuelle du lot : sinon 50302. Une quantité égale est acceptée (comme dans l'exemple de [fonctionnel.md](fonctionnel.md)).
+1. auteur donné (identifiant et nom non vides) : sinon 50405 ;
+2. auteur assez court pour les colonnes : sinon 50406 ;
+3. quantité supérieure à 0 : sinon 50401 ;
+4. type de mouvement connu : sinon 50402 ;
+5. lot existant (il est lu et verrouillé ici) : sinon 50100 ;
+6. station existante : sinon 50102 ;
+7. lot pas déjà `SHIPPED` : sinon 50300 ;
+8. le type est bien l'étape suivante : sinon 50301 ;
+9. la station a la fonction : sinon 50303 ;
+10. la quantité ne dépasse pas la quantité actuelle du lot : sinon 50302. Une quantité égale est acceptée (comme dans l'exemple de [fonctionnel.md](fonctionnel.md)).
 
 Résultat : aucun. Si un contrôle échoue, ni le journal ni le lot ne changent.
 
@@ -120,7 +125,7 @@ Erreur : lot inexistant, 50100.
 Résultat, en deux tableaux :
 
 1. le lot : `BatchCode`, `FarmCode`, `Variety`, `HarvestDate`, `QuantityKg`, `Status` ;
-2. son parcours dans l'ordre d'enregistrement (par `MovementId`) : `MovementId`, `MovementType`, `StationCode`, `QuantityKg`, `OccurredAt`.
+2. son parcours dans l'ordre d'enregistrement (par `MovementId`) : `MovementId`, `MovementType`, `StationCode`, `QuantityKg`, `OccurredAt`, `AuthorName`. Le nom de l'auteur est renvoyé ; son identifiant ne l'est jamais.
 
 ### 2.7 `trace.ListBatches`
 
@@ -213,6 +218,8 @@ Les numéros de 50000 à 50099 sont réservés aux gardes des scripts. Les scrip
 | 50402 | Valeur invalide | Type de mouvement inconnu | `Unknown movement type 'LOST'.` | `AddStationCapability`, `AddMovement` |
 | 50403 | Valeur invalide | Statut inconnu | `Unknown status 'LOST'.` | `ListBatches` |
 | 50404 | Valeur invalide | Page ou taille de page invalide | `Invalid page number or page size.` | `ListBatches`, `ListFarms`, `ListStations` |
+| 50405 | Valeur invalide | Auteur vide | `The author must not be empty.` | `CreateBatch`, `AddMovement` |
+| 50406 | Valeur invalide | Identifiant ou nom de l'auteur trop long | `The author identifier or name is too long.` | `CreateBatch`, `AddMovement` |
 
 Les familles permettront à l'API de répondre sans connaître chaque règle : 501xx introuvable, 502xx existe déjà, 503xx règle métier violée, 504xx valeur invalide.
 
@@ -225,6 +232,7 @@ Les familles permettront à l'API de répondre sans connaître chaque règle : 5
 - **Pas de délai d'attente** sur le verrou : un appel attend aussi longtemps que l'autre n'a pas terminé.
 - **`GetBatch` lit le lot puis son parcours en deux requêtes**, sans verrou : si un mouvement est ajouté entre les deux, le parcours peut contenir un mouvement que le lot ne reflète pas encore.
 - **`AddMovement` appelée dans une transaction de l'appelant** : son `COMMIT` ne valide rien, le verrou et la modification restent jusqu'au `COMMIT` de l'appelant (observé pendant la preuve de l'ADR 0003). En cas d'erreur, la procédure exécute `ROLLBACK` : d'après le code, cela annule aussi le travail de l'appelant (non testé).
+- **L'auteur est pris tel quel.** Les procédures contrôlent qu'il est donné et qu'il tient dans les colonnes (50405, 50406), pas qu'il correspond à un compte réel : un appel direct à une procédure peut enregistrer n'importe quel auteur. C'est l'API qui le lit dans le jeton validé.
 - **Pas de modification ni de suppression** de fermes et de stations.
 - **`ListFarms`, `ListStations`, `ListBatches` et `GetStation` lisent en deux requêtes, sans verrou** (la page puis le total, la station puis ses fonctions) : si une ligne est ajoutée entre les deux lectures, les deux tableaux peuvent ne pas correspondre. Même principe que `GetBatch`.
 - **`ListFarms` et `ListStations` ne sont pas mesurées** sur un grand volume : `TraceabilityDev` ne compte que 200 fermes et 30 stations. Le coût de leur tri et de leur total n'est pas connu.

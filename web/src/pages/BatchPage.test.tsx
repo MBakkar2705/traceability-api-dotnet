@@ -17,8 +17,8 @@ const batch = {
   quantityKg: 500.5,
   status: 'SHIPPED',
   movements: [
-    { movementId: 1, movementType: 'RECEPTION', stationCode: 'SITE-01', quantityKg: 500.5, occurredAt: '2026-10-14T08:30:00Z' },
-    { movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-14T10:05:30.1234567Z' },
+    { movementId: 1, movementType: 'RECEPTION', stationCode: 'SITE-01', quantityKg: 500.5, occurredAt: '2026-10-14T08:30:00Z', authorName: 'Initial_User' },
+    { movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-14T10:05:30.1234567Z', authorName: 'writer-test' },
   ],
 }
 
@@ -52,6 +52,19 @@ describe('BatchPage', () => {
 
     expect((await screen.findByRole('link', { name: 'SITE-02' })).getAttribute('href')).toBe('/stations/SITE-02')
     expect(screen.getByRole('link', { name: /Retour aux lots/ }).getAttribute('href')).toBe('/batches')
+  })
+
+  it('shows who recorded each movement, and writes the author of the first data as "Données initiales"', async () => {
+    stubApi({ '/batches/LOT-0000001': () => ok(batch) })
+
+    renderApp('/batches/LOT-0000001')
+    await screen.findByText('Roma')
+
+    const rows = screen.getAllByRole('row')
+    expect(rows[0].textContent).toContain('Auteur')
+    expect(rows[1].textContent).toContain('Données initiales')
+    expect(rows[1].textContent).not.toContain('Initial_User')
+    expect(rows[2].textContent).toContain('writer-test')
   })
 
   it('says when the batch has no movement', async () => {
@@ -154,7 +167,7 @@ describe('BatchPage, adding a movement', () => {
           quantityKg: 480,
           movements: [
             ...received.movements,
-            { movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-22T09:00:00Z' },
+            { movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-22T09:00:00Z', authorName: 'writer-test' },
           ],
         }
         return created()
@@ -271,7 +284,7 @@ describe('BatchPage, adding a movement', () => {
           quantityKg: 480,
           movements: [
             ...received.movements,
-            { movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-22T09:00:00Z' },
+            { movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-22T09:00:00Z', authorName: 'writer-test' },
           ],
         }
         return created()

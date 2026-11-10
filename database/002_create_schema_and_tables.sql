@@ -2,6 +2,8 @@
   002_create_schema_and_tables.sql
   Creates the schema "trace" and the 5 tables of lot 1 in the database named in DbName.
   Model: docs/modele-de-donnees.md
+  Lot 11: trace.Movement also has the author columns (AuthorId, AuthorName). A database
+  that already exists is brought to the same state by 018_add_movement_author.sql.
 
   - NOT replayable on purpose: it fails if the schema or a table already exists.
   - All or nothing: everything runs in one transaction. On any error,
@@ -82,6 +84,9 @@ CREATE TABLE trace.Batch
 );
 
 -- 5. Movement: the journal (the "film"). Rows are added, never changed or deleted.
+-- Lot 11: each row records its author, read from the validated token by the API:
+-- AuthorId = stable identifier of the account (claim "sub"), AuthorName = user name at the
+-- time of the entry (claim "preferred_username"). No default value: the procedures must give both.
 -- (StationId, MovementType) is a two-column foreign key to StationCapability:
 -- the database only accepts a movement if the station has that function.
 CREATE TABLE trace.Movement
@@ -92,13 +97,17 @@ CREATE TABLE trace.Movement
     MovementType NVARCHAR(20)  NOT NULL,
     QuantityKg   DECIMAL(10,2) NOT NULL,
     OccurredAt   DATETIME2     NOT NULL,   -- UTC
+    AuthorId     NVARCHAR(64)  NOT NULL,
+    AuthorName   NVARCHAR(100) NOT NULL,
 
     CONSTRAINT FK_Movement_Batch FOREIGN KEY (BatchId) REFERENCES trace.Batch (BatchId),
     CONSTRAINT FK_Movement_StationCapability FOREIGN KEY (StationId, MovementType)
         REFERENCES trace.StationCapability (StationId, MovementType),
     CONSTRAINT CK_Movement_MovementType
         CHECK (MovementType IN (N'RECEPTION', N'SORTING', N'PACKING', N'SHIPMENT')),
-    CONSTRAINT CK_Movement_QuantityKg_Positive CHECK (QuantityKg > 0)
+    CONSTRAINT CK_Movement_QuantityKg_Positive CHECK (QuantityKg > 0),
+    CONSTRAINT CK_Movement_AuthorId_NotEmpty CHECK (LEN(TRIM(AuthorId)) > 0),
+    CONSTRAINT CK_Movement_AuthorName_NotEmpty CHECK (LEN(TRIM(AuthorName)) > 0)
 );
 
 COMMIT TRANSACTION;

@@ -34,7 +34,7 @@ Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
   chaînes de connexion avec identifiants.
 - Connexion locale en authentification Windows (pas de mot de passe). La CI utilise l'authentification SQL (voir ci-dessous).
 - La CI (`.github/workflows/ci.yml`) se connecte à SQL Server avec le secret de dépôt `MSSQL_SA_PASSWORD`. Claude ne lit, ne crée, ne modifie ni n'affiche jamais ce secret ni sa valeur : Mohamed le gère dans les réglages de GitHub.
-- Keycloak : Claude ne lit, ne crée, ne modifie ni n'affiche jamais le mot de passe de l'administrateur ni ceux des comptes d'essai (`reader-test`, `writer-test`, `norole-test`), et ne demande jamais à Mohamed de les écrire dans le chat ou dans un fichier : ils sont saisis masqués par Mohamed. Un jeton brut (`access_token`) ne s'affiche pas non plus : seul son contenu décodé (rôles, `iss`, `aud`, `exp`) est relevé. Le fichier `identity/traceability-realm.json` ne contient aucun utilisateur ni mot de passe.
+- Keycloak : Claude ne lit, ne crée, ne modifie ni n'affiche jamais le mot de passe de l'administrateur ni ceux des comptes d'essai (`reader-test`, `writer-test`, `norole-test`), et ne demande jamais à Mohamed de les écrire dans le chat ou dans un fichier : ils sont saisis masqués par Mohamed. Un jeton brut (`access_token`) ne s'affiche pas non plus : seul son contenu décodé (rôles, `iss`, `aud`, `exp`, et depuis le lot 11 `sub` et `preferred_username`, l'identifiant et le nom d'un compte d'essai) est relevé. Le fichier `identity/traceability-realm.json` ne contient aucun utilisateur ni mot de passe.
 
 ## Vérité
 - Ne jamais dire que ça marche sans l'avoir exécuté et observé.

@@ -95,6 +95,11 @@ builder.Services
         // configuration of the issuer must be read over HTTPS.
         options.RequireHttpsMetadata = !environment.IsDevelopment();
 
+        // Lot 11: keep the names of the fields as they are in the token. By default the handler
+        // renames some of them (sub becomes ClaimTypes.NameIdentifier), and CurrentUser reads sub
+        // and preferred_username by the names they have in the token.
+        options.MapInboundClaims = false;
+
         options.Events = new JwtBearerEvents
         {
             // The roles are in the token under realm_access.roles (observed in lot 10a).

@@ -8,6 +8,9 @@
   - Runs ONLY on TraceabilityDev. The name is written in the script, so SQLCMD
     mode is not needed. On any other database the script refuses to run.
   - Run 001, 002, 004 and 005 first.
+  - Lot 11: every generated movement gets the author 'Initial_User' (AuthorId all zeros),
+    the same value that 018 gives to the movements that existed before the author columns.
+    On a database made before lot 11, run 018 first.
   - Contains no DROP, TRUNCATE or DELETE.
   - @TargetLots = number of batches wanted. As written: 10000 (a sample, to measure
     the size on disk). For the full set, change it to 1000000 and run the script
@@ -305,8 +308,9 @@ BEGIN
         ORDER BY l.LotNo;
 
         -- 3. The movements: for each batch, the steps 1..Steps, in order.
-        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt)
-        SELECT b.BatchId, m.StationId, m.MovementType, m.QuantityKg, m.OccurredAt
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+        SELECT b.BatchId, m.StationId, m.MovementType, m.QuantityKg, m.OccurredAt,
+               N'00000000-0000-0000-0000-000000000000', N'Initial_User'
         FROM @Lot AS l
         JOIN trace.Batch AS b ON b.BatchCode = l.BatchCode
         CROSS APPLY (VALUES (1, l.SiteId, N'RECEPTION', l.Q1, l.T1),

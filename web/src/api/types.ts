@@ -50,6 +50,9 @@ export interface Movement {
   stationCode: string
   quantityKg: number
   occurredAt: string
+  // The user name of the author at the time of the entry (lot 11). The API never sends the
+  // identifier of the author. The first data of the database have the author "Initial_User".
+  authorName: string
 }
 
 export interface BatchDetails extends Batch {

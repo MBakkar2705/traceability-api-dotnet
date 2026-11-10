@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Options;
 
 namespace Traceability.IntegrationTests;
 
@@ -37,9 +39,11 @@ public class BatchesTests(ApiFixture api)
         return code;
     }
 
+    // With no client given, the default client (a writer) is used.
     private Task<HttpResponseMessage> PostBatchAsync(
-        string batchCode, string farmCode, string stationCode, decimal quantityKg = 500m) =>
-        Client.PostAsJsonAsync("/batches", new
+        string batchCode, string farmCode, string stationCode, decimal quantityKg = 500m,
+        HttpClient? client = null) =>
+        (client ?? Client).PostAsJsonAsync("/batches", new
         {
             batchCode,
             farmCode,
@@ -59,8 +63,9 @@ public class BatchesTests(ApiFixture api)
     }
 
     private Task<HttpResponseMessage> PostMovementAsync(
-        string batchCode, string stationCode, string movementType, decimal quantityKg) =>
-        Client.PostAsJsonAsync($"/batches/{batchCode}/movements", new
+        string batchCode, string stationCode, string movementType, decimal quantityKg,
+        HttpClient? client = null) =>
+        (client ?? Client).PostAsJsonAsync($"/batches/{batchCode}/movements", new
         {
             stationCode,
             movementType,
@@ -507,5 +512,131 @@ public class BatchesTests(ApiFixture api)
         var response = await PostMovementAsync(batchCode, station, "TELEPORT", 480m);
 
         await TestData.AssertProcedureErrorAsync(response, HttpStatusCode.BadRequest, 50402);
+    }
+
+    // ---- Lot 11: the author of each movement ----
+
+    // A writer with the given identity (claims sub and preferred_username of the test token).
+    private HttpClient WriterOf(string userId, string userName) => api.CreateClient("writer", userId, userName);
+
+    // Each movement keeps the author who recorded it, created by one and added by another. The
+    // name is returned; the identifier of the author is not.
+    [Fact]
+    public async Task Each_movement_keeps_its_own_author_and_the_identifier_is_not_returned()
+    {
+        var farm = await CreateFarmAsync();
+        var station = await CreateStationAsync(AllFunctions);
+        var aliceId = "id-" + TestData.NewCode();
+        var bobId = "id-" + TestData.NewCode();
+        using var alice = WriterOf(aliceId, "alice");
+        using var bob = WriterOf(bobId, "bob");
+        var batchCode = TestData.NewCode();
+
+        var created = await PostBatchAsync(batchCode, farm, station, 500m, alice);
+        var sorted = await PostMovementAsync(batchCode, station, "SORTING", 480m, bob);
+        var packed = await PostMovementAsync(batchCode, station, "PACKING", 470m, alice);
+
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, sorted.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, packed.StatusCode);
+
+        var batch = await GetBatchJsonAsync(batchCode);
+        var movements = batch.GetProperty("movements").EnumerateArray().ToList();
+        Assert.Equal(
+            new List<string?> { "alice", "bob", "alice" },
+            movements.Select(m => m.GetProperty("authorName").GetString()).ToList());
+        Assert.All(movements, m => Assert.False(m.TryGetProperty("authorId", out _)));
+        Assert.DoesNotContain(aliceId, batch.GetRawText());
+        Assert.DoesNotContain(bobId, batch.GetRawText());
+    }
+
+    // Decision D5: a valid token without sub or preferred_username cannot record a movement
+    // (403, not 401) and nothing is recorded. Reading is not touched.
+    [Fact]
+    public async Task A_token_without_identity_cannot_record_a_movement_but_can_read()
+    {
+        var farm = await CreateFarmAsync();
+        var station = await CreateStationAsync(AllFunctions);
+        var existing = await CreateBatchAsync(farm, station);
+        using var anonymous = api.CreateClient("writer", withoutIdentity: true);
+        var newCode = TestData.NewCode();
+
+        var creation = await PostBatchAsync(newCode, farm, station, 500m, anonymous);
+        var addition = await PostMovementAsync(existing, station, "SORTING", 480m, anonymous);
+
+        Assert.Equal(HttpStatusCode.Forbidden, creation.StatusCode);
+        Assert.Equal("application/problem+json", creation.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(HttpStatusCode.Forbidden, addition.StatusCode);
+        Assert.Equal("application/problem+json", addition.Content.Headers.ContentType?.MediaType);
+
+        var notCreated = await Client.GetAsync($"/batches/{newCode}");
+        Assert.Equal(HttpStatusCode.NotFound, notCreated.StatusCode);
+        var unchanged = await GetBatchJsonAsync(existing);
+        Assert.Equal(1, unchanged.GetProperty("movements").GetArrayLength());
+
+        var read = await anonymous.GetAsync($"/batches/{existing}");
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+    }
+
+    // The author values are checked by the procedures: an identifier of more than 64 characters
+    // (creation) and a name of more than 100 characters (adding a movement) give 400 with errorCode 50406.
+    [Fact]
+    public async Task An_author_identifier_longer_than_64_characters_gives_400()
+    {
+        var farm = await CreateFarmAsync();
+        var station = await CreateStationAsync("RECEPTION");
+        using var writer = WriterOf(new string('a', 65), "writer-long-id");
+
+        var response = await PostBatchAsync(TestData.NewCode(), farm, station, 500m, writer);
+
+        await TestData.AssertProcedureErrorAsync(response, HttpStatusCode.BadRequest, 50406);
+    }
+
+    [Fact]
+    public async Task An_author_name_longer_than_100_characters_gives_400()
+    {
+        var farm = await CreateFarmAsync();
+        var station = await CreateStationAsync("RECEPTION", "SORTING");
+        var batchCode = await CreateBatchAsync(farm, station);
+        using var writer = WriterOf("id-" + TestData.NewCode(), new string('b', 101));
+
+        var response = await PostMovementAsync(batchCode, station, "SORTING", 480m, writer);
+
+        await TestData.AssertProcedureErrorAsync(response, HttpStatusCode.BadRequest, 50406);
+    }
+
+    // The limits themselves are accepted: 64 characters for the identifier, 100 for the name.
+    [Fact]
+    public async Task The_longest_author_values_are_accepted_and_the_name_is_returned_whole()
+    {
+        var farm = await CreateFarmAsync();
+        var station = await CreateStationAsync("RECEPTION");
+        var longName = new string('n', 100);
+        using var writer = WriterOf(new string('i', 64), longName);
+        var batchCode = TestData.NewCode();
+
+        var response = await PostBatchAsync(batchCode, farm, station, 500m, writer);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var batch = await GetBatchJsonAsync(batchCode);
+        var first = batch.GetProperty("movements").EnumerateArray().Single();
+        Assert.Equal(longName, first.GetProperty("authorName").GetString());
+    }
+
+    // The API reads sub and preferred_username by the names they have in the token. That holds
+    // only if the handler does not rename the claims: Program.cs sets MapInboundClaims to false.
+    // The settings given here are only values; no Keycloak is called.
+    [Fact]
+    public void The_token_handler_keeps_the_names_of_the_fields_of_the_token()
+    {
+        using var factory = api.Factory.WithWebHostBuilder(builder => builder
+            .UseSetting("Authentication:Authority", "https://keycloak.example/realms/test")
+            .UseSetting("Authentication:Audience", "traceability-api"));
+
+        var options = factory.Services
+            .GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
+            .Get(JwtBearerDefaults.AuthenticationScheme);
+
+        Assert.False(options.MapInboundClaims);
     }
 }

@@ -30,6 +30,7 @@ Ce projet est réalisé avec l'assistance de Claude (Anthropic), sous ma supervi
 | 10a | Pseudo annuaire Keycloak 26.6.2 (OAuth 2.0 et OpenID Connect) : realm, rôles `reader` et `writer` et client d'essai importés depuis `identity/traceability-realm.json`, jetons obtenus par deux comptes d'essai, dans Docker et sous Windows (JDK 21). L'API n'est pas modifiée | Terminé |
 | 10b | L'API vérifie les jetons de Keycloak (signature, émetteur, expiration, public visé `traceability-api`) et applique les rôles : `reader` ou `writer` pour les 5 routes `GET`, `writer` pour les 5 routes `POST` ; 55 tests ajoutés (faux schéma d'authentification), essais à la main avec de vrais jetons dans Docker puis sous Windows. L'interface reçoit 401 jusqu'au lot 10c | Terminé |
 | 10c | La connexion dans l'interface web : écran « Connexion », flux code d'autorisation avec PKCE (bibliothèque `oidc-client-ts`), client Keycloak `traceability-web`, jeton gardé en mémoire, renouvelé automatiquement et envoyé à l'API ; boutons et formulaires d'écriture cachés sans le rôle `writer` ; 70 tests de l'interface et 1 test CORS ajoutés (connexion simulée), essais à la main avec Keycloak dans Docker puis sous Windows | Terminé |
+| 11 | L'auteur de chaque mouvement : colonnes `AuthorId` et `AuthorName` dans `Movement` (migration `018`), lues dans le jeton par l'API (`sub` et `preferred_username`), colonne « Auteur » dans l'interface, valeur de remplacement « Données initiales » pour les anciens mouvements ; 10 tests unitaires, 6 tests d'intégration, 9 tests de procédures (`006`) et 2 tests d'interface ajoutés, essais à la main avec un vrai jeton de Keycloak et trois casses volontaires | Terminé |
 
 ## Technologies
 
@@ -56,6 +57,8 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 - [ADR 0011](docs/adr/0011-api-dans-une-image-docker.md) : l'API dans une image Docker, construite par un `Dockerfile` à la racine ; environnement et secrets donnés au lancement. La CI construit l'image depuis le lot 9 (voir ses notes).
 - [ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md) : Keycloak comme serveur d'identification (OAuth 2.0 et OpenID Connect), réglages gardés dans `identity/traceability-realm.json`, essayé dans Docker et sous Windows.
 - [ADR 0013](docs/adr/0013-jetons-keycloak-et-roles-dans-l-api.md) : l'API vérifie les jetons de Keycloak (signature, émetteur, expiration, public visé) et applique les rôles `reader` et `writer`.
+- [ADR 0014](docs/adr/0014-connexion-dans-l-interface-web-pkce-et-jeton-en-memoire.md) : l'interface web se connecte avec le flux code d'autorisation et PKCE, garde le jeton en mémoire et le renouvelle automatiquement.
+- [ADR 0015](docs/adr/0015-auteur-des-mouvements.md) : chaque mouvement enregistre son auteur (identifiant du compte et nom d'utilisateur), lu dans le jeton ; l'API ne renvoie que le nom.
 
 ## Ce que ce projet ne prouve pas
 
@@ -68,6 +71,7 @@ ASP.NET Core (.NET 10), ADO.NET (`Microsoft.Data.SqlClient`), Swagger UI, SQL Se
 - Le lot 10a prouve que Keycloak 26.6.2 démarre dans Docker et sous Windows (JDK 21 à côté du Java 24), qu'il recrée depuis `identity/traceability-realm.json` le realm, les rôles `reader` et `writer` et le client d'essai, et que deux comptes créés à la main obtiennent un jeton contenant leur rôle. Il ne prouve ni que l'API vérifie un jeton ou applique un rôle (lot 10b), ni la connexion dans l'interface web (lot 10c), ni le mode de production, le HTTPS, une base externe, ni la conservation des comptes, ni un mot de passe d'administrateur permanent (voir [docs/verification.md](docs/verification.md), sections 18.3 et 18.4, et l'[ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md)).
 - Le lot 10b prouve que l'API refuse un appel sans jeton valide (401) et applique les rôles (403 pour un `reader` qui écrit), avec de vrais jetons de Keycloak dans Docker et, pour les contrôles principaux, sous Windows, et par des tests automatiques qui n'utilisent aucun vrai jeton. Il ne prouve ni l'API dans un conteneur avec Keycloak, ni le mode de production et le HTTPS, ni la révocation d'un jeton, ni la cause du délai d'environ 5 minutes avant le refus d'un jeton expiré, ni la connexion dans l'interface web (lot 10c) : en attendant, l'interface reçoit 401 (voir [docs/verification.md](docs/verification.md), sections 19.3 et 19.4, et l'[ADR 0013](docs/adr/0013-jetons-keycloak-et-roles-dans-l-api.md)).
 - Le lot 10c prouve que l'interface web se connecte à Keycloak par le flux code d'autorisation avec PKCE (dans Chrome, avec Keycloak dans Docker puis, pour les contrôles principaux, sous Windows), envoie le jeton à l'API, ne le stocke pas dans le navigateur, le renouvelle automatiquement (deux renouvellements observés à 4 minutes d'intervalle) et cache l'écriture sans le rôle `writer` ; un compte sans rôle voit le message du 403 de l'API. Il ne prouve ni le moyen exact du renouvellement (déduit, non lu), ni un renouvellement qui échoue, ni la déconnexion quand Keycloak est injoignable, ni plusieurs onglets, un autre navigateur, le mode de production et le HTTPS, ni l'enregistrement de l'auteur de chaque mouvement (voir [docs/verification.md](docs/verification.md), sections 20.3 et 20.4, et l'[ADR 0014](docs/adr/0014-connexion-dans-l-interface-web-pkce-et-jeton-en-memoire.md)).
+- Le lot 11 prouve que chaque mouvement enregistre l'auteur lu dans un vrai jeton de Keycloak (identifiant du compte et nom d'utilisateur, comparés à la console de Keycloak), que l'interface affiche son nom et « Données initiales » pour les anciens mouvements, qu'un jeton valide sans nom d'utilisateur ne peut pas écrire (403) et que trois casses volontaires sont vues par les tests (dans Edge, avec Keycloak dans Docker, l'API sur `TraceabilityTest`, puis `TraceabilityDev` en lecture). Il ne prouve ni une règle de visibilité du nom (tous les rôles qui lisent le voient), ni un jeton sans `sub`, ni que `007` et `016`, modifiés, tournent (jamais rejoués), ni la durée de l'exécution réelle de `018`, ni la cause d'un échec isolé d'un test de l'interface (voir [docs/verification.md](docs/verification.md), sections 21.3 et 21.4, et l'[ADR 0015](docs/adr/0015-auteur-des-mouvements.md)).
 - Le CORS n'est configuré que pour le serveur de développement de l'interface (`http://localhost:5173`, `GET` et `POST`). L'interface a été vue dans Edge (lots 4 à 8) et dans Chrome (lot 10c). Le bouton « Fin » de la liste des lots a été accéléré au lot 5, mais la correction de ses échecs n'est pas prouvée (voir [docs/verification.md](docs/verification.md), section 13.3). Une observation hors protocole du 2026-10-23 montre, avec un budget de mémoire de 5 Mo, l'ancienne requête de la dernière page en attente de sa mémoire pendant que la nouvelle répondait en moins d'une seconde ([docs/mesures.md](docs/mesures.md), section 9.7) : elle ne démontre pas la cause des échecs d'origine. Swagger UI décrit les 10 routes et leurs erreurs, mais son exemple d'erreur n'affiche pas les champs ajoutés par l'API (`errorCode`, `errors`).
 - Les mesures des lots 2b et 5 portent sur un million de lots inventés et une seule machine : elles ne disent rien d'un autre volume ni d'une autre machine ; le coût en écriture n'est mesuré que pour `IX_Batch_FarmId` (voir [docs/mesures.md](docs/mesures.md), sections 5 et 9.4).
 - Il donne une base de travail, pas une expérience de production.
@@ -87,7 +91,7 @@ Ce sont des choses qui se font en entreprise, mais elles sont hors périmètre d
 
 Ces points ne sont pas planifiés dans un lot : ce sont des intentions, pas des promesses.
 
-- la gestion des utilisateurs et des droits : le serveur d'identification (10a), la vérification des jetons par l'API avec les rôles (10b) et la connexion dans l'interface web (10c) sont essayés ; l'enregistrement de l'auteur de chaque mouvement reste à faire ;
+- la gestion des utilisateurs et des droits : le serveur d'identification (10a), la vérification des jetons par l'API avec les rôles (10b) et la connexion dans l'interface web (10c) sont essayés ; l'auteur de chaque mouvement est enregistré depuis le lot 11, mais qui peut voir son nom n'est pas réglé (voir l'[ADR 0015](docs/adr/0015-auteur-des-mouvements.md)) ;
 - la correction des mouvements : aujourd'hui, une faute de saisie ne peut pas être corrigée (voir [docs/fonctionnel.md](docs/fonctionnel.md), section 9) ;
 - les retours de marchandise ;
 - l'archivage ou la purge des anciennes données ;
@@ -102,7 +106,7 @@ Ces points ne sont pas planifiés dans un lot : ce sont des intentions, pas des 
 
 ## Démarrage
 
-### Base de données (lots 1, 2a, 2b, 3a et 5)
+### Base de données (lots 1, 2a, 2b, 3a, 5 et 11)
 
 Prérequis : SQL Server 2025 et SQL Server Management Studio (SSMS).
 
@@ -115,7 +119,7 @@ Prérequis : SQL Server 2025 et SQL Server Management Studio (SSMS).
    - `003_check_schema.sql` : inspecte la structure et lance des tests de refus, annulés à la fin (rejouable sur une base vide).
    - `004_create_reference_procedures.sql` : crée `CreateFarm`, `CreateStation` et `AddStationCapability` (écrit avec `CREATE OR ALTER`, donc conçu pour être rejoué).
    - `005_create_batch_procedures.sql` : crée `CreateBatch`, `AddMovement`, `GetBatch` et `ListBatches` (même principe ; `ListBatches` renvoie aussi le total depuis le lot 3a).
-   - `006_check_procedures.sql` : 38 tests des procédures (34 automatiques et 4 dont le contenu se vérifie à l'œil), uniquement sur `TraceabilityTest` (le mode SQLCMD n'est pas nécessaire). Rejouable, mais il laisse ses lignes dans la base : ne pas relancer `003` ensuite sans reconstruire.
+   - `006_check_procedures.sql` : 47 tests des procédures (42 automatiques et 5 dont le contenu se vérifie à l'œil), uniquement sur `TraceabilityTest` (le mode SQLCMD n'est pas nécessaire). Rejouable, mais il laisse ses lignes dans la base : ne pas relancer `003` ensuite sans reconstruire.
    - `007_generate_volume_data.sql` : génère les lots et leurs mouvements inventés dans `TraceabilityDev` (réglage `@TargetLots` en haut du script : 10 000 pour un échantillon, 1 000 000 pour le jeu complet, sans enregistrer le changement). Reprenable. Le mode SQLCMD n'est pas nécessaire.
    - `008_check_volume_data.sql` : 28 contrôles des données générées, en lecture seule (sans SQLCMD).
    - `009_measure_searches.sql` : mesure les recherches de l'API, en lecture seule (sans SQLCMD). Il exige le million de lots et les procédures de `004` et `005` ; activer le plan d'exécution réel (Ctrl+M).
@@ -127,6 +131,7 @@ Prérequis : SQL Server 2025 et SQL Server Management Studio (SSMS).
    - `015_measure_lot5_t2.sql` : mesures de l'essai d'index pour le total, en lecture seule (sans SQLCMD).
    - `016_measure_lot5_costs.sql` : coûts de l'index et du plan refait à chaque appel. **Son bloc W1 écrit dans la base** (appels de `CreateBatch`, chaque série annulée) ; les autres blocs sont en lecture seule. Sans SQLCMD.
    - `017_optimize_list_batches.sql` : crée `IX_Batch_FarmId` s'il n'existe pas et remplace `ListBatches` (lot 5, [ADR 0008](docs/adr/0008-listbatches-page-avant-jointure-total-recompile.md)). Même principe que `011` (`CREATE OR ALTER`, mode SQLCMD) : à lancer sur `TraceabilityDev` et sur `TraceabilityTest`, API arrêtée.
+   - `018_add_movement_author.sql` : ajoute `AuthorId` et `AuthorName` à `trace.Movement` d'une base qui existe déjà (lot 11, [ADR 0015](docs/adr/0015-auteur-des-mouvements.md)). Mode SQLCMD, une seule transaction, **essai à blanc par défaut** (`@keep = N'NO'` : tout est annulé à la fin ; ne pas enregistrer le passage à `YES`). Rejouable : si les colonnes existent, il ne fait rien. À lancer sur `TraceabilityDev` et sur `TraceabilityTest`, API arrêtée, puis rejouer `005` et `017`. Une base neuve reçoit les colonnes par `002` ; la CI ne rejoue pas `018`.
 5. Pour repartir de zéro : `900_reset_dev_database.sql` supprime la base indiquée par `:setvar DbName`. Il est verrouillé : il ne fait rien tant que `@confirm` n'est pas changé en `YES` (ne pas enregistrer ce changement). Puis rejouer `001` à `005`, `011` et `017` (et `006` et `012` pour la base de test).
 
 Si SSMS souligne en rouge des procédures « introuvables » alors qu'elles existent, actualiser le cache de l'IntelliSense (Ctrl+Maj+R) : c'est arrivé aux lots 2a et 3a, et le compteur d'erreurs est retombé à 0.
@@ -178,7 +183,7 @@ Prérequis : Node.js (v22.23.4 et npm 10.9.9 observés), l'API et ses deux bases
 
 1. Dans un terminal, lancer l'API (étape 3 de la section précédente).
 2. Dans un autre terminal, depuis le dossier `web/` : `npm install` (une seule fois), puis `npm run dev`. Vite écoute sur `http://localhost:5173/`. Le port est fixé (`strictPort`) : s'il est pris, le serveur s'arrête avec une erreur au lieu de changer de port, ce qui ferait échouer le CORS (voir l'[ADR 0007](docs/adr/0007-cors-dans-l-api.md)). L'API n'accepte l'interface qu'en développement (environnement `Development`, ce que donne le profil `https`).
-3. Autres commandes, dans `web/` : `npm run lint`, `npm run build` (vérifie les types et écrit dans `dist/`, ignoré par git) et `npm test` (248 tests, sans API, sans Keycloak ni base).
+3. Autres commandes, dans `web/` : `npm run lint`, `npm run build` (vérifie les types et écrit dans `dist/`, ignoré par git) et `npm test` (250 tests, sans API, sans Keycloak ni base).
 
 L'interface appelle l'API sur `https://localhost:7080` ; la variable d'environnement `VITE_API_URL` remplace cette adresse. Depuis le lot 10c, `VITE_AUTH_AUTHORITY` (par défaut `http://localhost:8180/realms/traceability`) et `VITE_AUTH_CLIENT_ID` (par défaut `traceability-web`) règlent la connexion. Aucun fichier `.env` n'est fourni, et aucune de ces valeurs n'est un secret.
 
@@ -246,4 +251,4 @@ Prérequis : Docker Desktop pour le mode Docker ; pour le mode Windows, un JDK 2
 - **Rejouer** : les commandes complètes, dans Docker et sous Windows, sont dans [docs/verification.md](docs/verification.md), section 18.5 (Keycloak), section 19.5 (jetons et API) et section 20.5 (interface).
 - **Ce que ce montage n'est pas** : un mode de développement (base H2 intégrée, comptes perdus avec le conteneur), en HTTP, avec un administrateur temporaire.
 
-Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), sections 18, 19 et 20, [ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md), [ADR 0013](docs/adr/0013-jetons-keycloak-et-roles-dans-l-api.md) et [ADR 0014](docs/adr/0014-connexion-dans-l-interface-web-pkce-et-jeton-en-memoire.md).
+Constat, limites et hypothèses : [docs/verification.md](docs/verification.md), sections 18 à 21, [ADR 0012](docs/adr/0012-keycloak-serveur-d-identification.md), [ADR 0013](docs/adr/0013-jetons-keycloak-et-roles-dans-l-api.md), [ADR 0014](docs/adr/0014-connexion-dans-l-interface-web-pkce-et-jeton-en-memoire.md) et [ADR 0015](docs/adr/0015-auteur-des-mouvements.md).

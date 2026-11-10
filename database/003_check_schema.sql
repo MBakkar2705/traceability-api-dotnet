@@ -123,8 +123,8 @@ BEGIN TRY
 
     -- 1. Control: a fully valid movement must be ACCEPTED.
     BEGIN TRY
-        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt)
-        VALUES (@BatchId, @StationId, N'RECEPTION', 500.00, '2026-10-14T06:30:00');
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+        VALUES (@BatchId, @StationId, N'RECEPTION', 500.00, '2026-10-14T06:30:00', N'test-author-id', N'Test Author');
         INSERT @results (test_name, expected_rule, outcome)
         VALUES (N'Control: valid movement', N'(accepted)', N'Accepted as expected');
     END TRY
@@ -310,8 +310,8 @@ BEGIN TRY
 
     -- 15. Movement: unknown batch.
     BEGIN TRY
-        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt)
-        VALUES (-1, @StationId, N'RECEPTION', 100.00, '2026-10-14T07:00:00');
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+        VALUES (-1, @StationId, N'RECEPTION', 100.00, '2026-10-14T07:00:00', N'test-author-id', N'Test Author');
         INSERT @results (test_name, expected_rule, outcome)
         VALUES (N'Movement: unknown batch', N'FK_Movement_Batch', N'ATTENTION: accepted');
     END TRY
@@ -324,8 +324,8 @@ BEGIN TRY
 
     -- 16. Movement: quantity 0.
     BEGIN TRY
-        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt)
-        VALUES (@BatchId, @StationId, N'RECEPTION', 0, '2026-10-14T07:00:00');
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+        VALUES (@BatchId, @StationId, N'RECEPTION', 0, '2026-10-14T07:00:00', N'test-author-id', N'Test Author');
         INSERT @results (test_name, expected_rule, outcome)
         VALUES (N'Movement: quantity 0', N'CK_Movement_QuantityKg_Positive', N'ATTENTION: accepted');
     END TRY
@@ -339,8 +339,8 @@ BEGIN TRY
     -- 17. Movement: the station does NOT have this function (the key rule).
     --     ZZ-S01 can only do RECEPTION; here we ask for PACKING.
     BEGIN TRY
-        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt)
-        VALUES (@BatchId, @StationId, N'PACKING', 100.00, '2026-10-14T07:00:00');
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+        VALUES (@BatchId, @StationId, N'PACKING', 100.00, '2026-10-14T07:00:00', N'test-author-id', N'Test Author');
         INSERT @results (test_name, expected_rule, outcome)
         VALUES (N'Movement: station without the function', N'FK_Movement_StationCapability', N'ATTENTION: accepted');
     END TRY
@@ -348,6 +348,62 @@ BEGIN TRY
         INSERT @results (test_name, expected_rule, outcome)
         VALUES (N'Movement: station without the function', N'FK_Movement_StationCapability',
                 CASE WHEN ERROR_MESSAGE() LIKE N'%FK_Movement_StationCapability%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 18. Movement: no author id (NULL). Lot 11: the columns are NOT NULL, with no default.
+    BEGIN TRY
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorName)
+        VALUES (@BatchId, @StationId, N'RECEPTION', 100.00, '2026-10-14T07:00:00', N'Test Author');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Movement: no author id', N'AuthorId NOT NULL', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Movement: no author id', N'AuthorId NOT NULL',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%AuthorId%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 19. Movement: no author name (NULL).
+    BEGIN TRY
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId)
+        VALUES (@BatchId, @StationId, N'RECEPTION', 100.00, '2026-10-14T07:00:00', N'test-author-id');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Movement: no author name', N'AuthorName NOT NULL', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Movement: no author name', N'AuthorName NOT NULL',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%AuthorName%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 20. Movement: blank author id.
+    BEGIN TRY
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+        VALUES (@BatchId, @StationId, N'RECEPTION', 100.00, '2026-10-14T07:00:00', N'   ', N'Test Author');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Movement: blank author id', N'CK_Movement_AuthorId_NotEmpty', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Movement: blank author id', N'CK_Movement_AuthorId_NotEmpty',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_Movement_AuthorId_NotEmpty%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 21. Movement: blank author name.
+    BEGIN TRY
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+        VALUES (@BatchId, @StationId, N'RECEPTION', 100.00, '2026-10-14T07:00:00', N'test-author-id', N'   ');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Movement: blank author name', N'CK_Movement_AuthorName_NotEmpty', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Movement: blank author name', N'CK_Movement_AuthorName_NotEmpty',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_Movement_AuthorName_NotEmpty%' THEN N'Refused as expected'
                      ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
     END CATCH;
 
