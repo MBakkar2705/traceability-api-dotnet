@@ -4,6 +4,9 @@
     trace.CreateBatch, trace.AddMovement, trace.GetBatch, trace.ListBatches.
   Contract: docs/procedures.md. Locking choice: docs/adr/0003-verrou-sur-le-lot.md.
   Errors use THROW with the numbers listed in docs/procedures.md.
+  Lot 11: CreateBatch and AddMovement also take the author of the movement (@AuthorId and
+  @AuthorName, read from the validated token by the API). GetBatch returns the author name
+  of each movement. Errors 50405 (empty author) and 50406 (author too long) are new.
 
   - Replayable: CREATE OR ALTER replaces a procedure that already exists.
   - Run 001 and 002 first, with the same DbName.
@@ -30,6 +33,7 @@ GO
 /* trace.CreateBatch                                                  */
 /* Creates the batch (status RECEIVED) and its first movement         */
 /* (RECEPTION) in one transaction.                                    */
+/* The author is recorded on that movement (lot 11).                  */
 /* ------------------------------------------------------------------ */
 CREATE OR ALTER PROCEDURE trace.CreateBatch
     @BatchCode   NVARCHAR(30),
@@ -38,7 +42,9 @@ CREATE OR ALTER PROCEDURE trace.CreateBatch
     @HarvestDate DATE,
     @QuantityKg  DECIMAL(10,2),
     @StationCode NVARCHAR(20),
-    @OccurredAt  DATETIME2
+    @OccurredAt  DATETIME2,
+    @AuthorId    NVARCHAR(200),
+    @AuthorName  NVARCHAR(200)
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -49,19 +55,34 @@ BEGIN
     DECLARE @BatchId INT;
     DECLARE @msg NVARCHAR(2048);
 
-    -- 1. The batch code must not be empty (NULL counts as empty).
+    -- 1. The author must be given (NULL or blank counts as empty). The API reads it from the
+    --    validated token; the database does not trust that it did, and checks it too.
+    IF @AuthorId IS NULL OR LEN(TRIM(@AuthorId)) = 0
+       OR @AuthorName IS NULL OR LEN(TRIM(@AuthorName)) = 0
+    BEGIN
+        THROW 50405, N'The author must not be empty.', 1;
+    END;
+
+    -- 2. The author must fit in the columns (64 and 100 characters): never cut silently.
+    --    The parameters are wider than the columns so that a long value reaches this check.
+    IF LEN(@AuthorId) > 64 OR LEN(@AuthorName) > 100
+    BEGIN
+        THROW 50406, N'The author identifier or name is too long.', 1;
+    END;
+
+    -- 3. The batch code must not be empty (NULL counts as empty).
     IF @BatchCode IS NULL OR LEN(TRIM(@BatchCode)) = 0
     BEGIN
         THROW 50400, N'The code must not be empty.', 1;
     END;
 
-    -- 2. The quantity must be greater than 0 (NULL counts as invalid).
+    -- 4. The quantity must be greater than 0 (NULL counts as invalid).
     IF @QuantityKg IS NULL OR @QuantityKg <= 0
     BEGIN
         THROW 50401, N'The quantity must be greater than 0.', 1;
     END;
 
-    -- 3. The farm must exist.
+    -- 5. The farm must exist.
     SELECT @FarmId = FarmId
     FROM trace.Farm
     WHERE Code = @FarmCode;
@@ -72,7 +93,7 @@ BEGIN
         THROW 50101, @msg, 1;
     END;
 
-    -- 4. The station must exist.
+    -- 6. The station must exist.
     SELECT @StationId = StationId
     FROM trace.Station
     WHERE Code = @StationCode;
@@ -83,14 +104,14 @@ BEGIN
         THROW 50102, @msg, 1;
     END;
 
-    -- 5. The batch code must not be taken yet.
+    -- 7. The batch code must not be taken yet.
     IF EXISTS (SELECT 1 FROM trace.Batch WHERE BatchCode = @BatchCode)
     BEGIN
         SET @msg = CONCAT(N'Batch code ''', @BatchCode, N''' already exists.');
         THROW 50202, @msg, 1;
     END;
 
-    -- 6. The station must have the RECEPTION function.
+    -- 8. The station must have the RECEPTION function.
     IF NOT EXISTS (SELECT 1 FROM trace.StationCapability
                    WHERE StationId = @StationId AND MovementType = N'RECEPTION')
     BEGIN
@@ -107,8 +128,8 @@ BEGIN
 
         SET @BatchId = SCOPE_IDENTITY();
 
-        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt)
-        VALUES (@BatchId, @StationId, N'RECEPTION', @QuantityKg, @OccurredAt);
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+        VALUES (@BatchId, @StationId, N'RECEPTION', @QuantityKg, @OccurredAt, @AuthorId, @AuthorName);
 
         COMMIT TRANSACTION;
     END TRY
@@ -124,13 +145,16 @@ GO
 /* Adds the next movement of a batch and updates the batch, in one    */
 /* transaction. The batch row is locked first (ADR 0003): a second    */
 /* call on the same batch waits, then reads the updated batch.        */
+/* The author of the movement is given by the caller (lot 11).        */
 /* ------------------------------------------------------------------ */
 CREATE OR ALTER PROCEDURE trace.AddMovement
     @BatchCode    NVARCHAR(30),
     @StationCode  NVARCHAR(20),
     @MovementType NVARCHAR(20),
     @QuantityKg   DECIMAL(10,2),
-    @OccurredAt   DATETIME2
+    @OccurredAt   DATETIME2,
+    @AuthorId     NVARCHAR(200),
+    @AuthorName   NVARCHAR(200)
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -144,13 +168,28 @@ BEGIN
     DECLARE @NewStatus NVARCHAR(20);
     DECLARE @msg NVARCHAR(2048);
 
-    -- 1. The quantity must be greater than 0 (NULL counts as invalid).
+    -- 1. The author must be given (NULL or blank counts as empty). The API reads it from the
+    --    validated token; the database does not trust that it did, and checks it too.
+    IF @AuthorId IS NULL OR LEN(TRIM(@AuthorId)) = 0
+       OR @AuthorName IS NULL OR LEN(TRIM(@AuthorName)) = 0
+    BEGIN
+        THROW 50405, N'The author must not be empty.', 1;
+    END;
+
+    -- 2. The author must fit in the columns (64 and 100 characters): never cut silently.
+    --    The parameters are wider than the columns so that a long value reaches this check.
+    IF LEN(@AuthorId) > 64 OR LEN(@AuthorName) > 100
+    BEGIN
+        THROW 50406, N'The author identifier or name is too long.', 1;
+    END;
+
+    -- 3. The quantity must be greater than 0 (NULL counts as invalid).
     IF @QuantityKg IS NULL OR @QuantityKg <= 0
     BEGIN
         THROW 50401, N'The quantity must be greater than 0.', 1;
     END;
 
-    -- 2. The movement type must be known (NULL counts as unknown).
+    -- 4. The movement type must be known (NULL counts as unknown).
     IF @MovementType IS NULL
        OR @MovementType NOT IN (N'RECEPTION', N'SORTING', N'PACKING', N'SHIPMENT')
     BEGIN
@@ -164,7 +203,7 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- 3. The batch must exist. It is read AND locked (UPDLOCK) until the end
+        -- 5. The batch must exist. It is read AND locked (UPDLOCK) until the end
         --    of the transaction, so nobody else can change it meanwhile.
         SELECT @BatchId = BatchId,
                @CurrentStatus = Status,
@@ -178,7 +217,7 @@ BEGIN
             THROW 50100, @msg, 1;
         END;
 
-        -- 4. The station must exist.
+        -- 6. The station must exist.
         SELECT @StationId = StationId
         FROM trace.Station
         WHERE Code = @StationCode;
@@ -189,14 +228,14 @@ BEGIN
             THROW 50102, @msg, 1;
         END;
 
-        -- 5. A SHIPPED batch accepts no new movement.
+        -- 7. A SHIPPED batch accepts no new movement.
         IF @CurrentStatus = N'SHIPPED'
         BEGIN
             SET @msg = CONCAT(N'Batch ''', @BatchCode, N''' is already SHIPPED: no new movement.');
             THROW 50300, @msg, 1;
         END;
 
-        -- 6. The movement must be the next step (no step skipped, none repeated).
+        -- 8. The movement must be the next step (no step skipped, none repeated).
         SET @ExpectedType = CASE @CurrentStatus
                                 WHEN N'RECEIVED' THEN N'SORTING'
                                 WHEN N'SORTED'   THEN N'PACKING'
@@ -211,7 +250,7 @@ BEGIN
             THROW 50301, @msg, 1;
         END;
 
-        -- 7. The station must have the function.
+        -- 9. The station must have the function.
         IF NOT EXISTS (SELECT 1 FROM trace.StationCapability
                        WHERE StationId = @StationId AND MovementType = @MovementType)
         BEGIN
@@ -219,7 +258,7 @@ BEGIN
             THROW 50303, @msg, 1;
         END;
 
-        -- 8. The quantity must not go up (an equal quantity is accepted).
+        -- 10. The quantity must not go up (an equal quantity is accepted).
         IF @QuantityKg > @CurrentQuantity
         BEGIN
             SET @msg = CONCAT(N'Quantity ', CAST(@QuantityKg AS NVARCHAR(20)),
@@ -234,8 +273,8 @@ BEGIN
                              WHEN N'SHIPMENT' THEN N'SHIPPED'
                          END;
 
-        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt)
-        VALUES (@BatchId, @StationId, @MovementType, @QuantityKg, @OccurredAt);
+        INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+        VALUES (@BatchId, @StationId, @MovementType, @QuantityKg, @OccurredAt, @AuthorId, @AuthorName);
 
         UPDATE trace.Batch
         SET Status = @NewStatus,
@@ -255,6 +294,7 @@ GO
 /* trace.GetBatch                                                     */
 /* Result 1: the batch. Result 2: its movements, in the order they    */
 /* were recorded.                                                     */
+/* Each movement carries the name of its author (lot 11).             */
 /* ------------------------------------------------------------------ */
 CREATE OR ALTER PROCEDURE trace.GetBatch
     @BatchCode NVARCHAR(30)
@@ -280,7 +320,7 @@ BEGIN
     JOIN trace.Farm AS f ON f.FarmId = b.FarmId
     WHERE b.BatchId = @BatchId;
 
-    SELECT m.MovementId, m.MovementType, s.Code AS StationCode, m.QuantityKg, m.OccurredAt
+    SELECT m.MovementId, m.MovementType, s.Code AS StationCode, m.QuantityKg, m.OccurredAt, m.AuthorName
     FROM trace.Movement AS m
     JOIN trace.Station AS s ON s.StationId = m.StationId
     WHERE m.BatchId = @BatchId

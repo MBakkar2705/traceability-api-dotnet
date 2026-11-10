@@ -12,7 +12,9 @@
   - A refusal test is OK if: the error number is the expected one, the data is
     unchanged (dbo.TestFingerprint), and no transaction is left open.
     A control test is OK if the valid case is accepted AND has the expected effect.
-  - Tests 30, 32, 33 and 38 (GetBatch, ListBatches) return two result sets: the script
+  - Lot 11: every call of CreateBatch and AddMovement gives an author. Tests 39 to 47 are about
+    the author (recorded, returned by GetBatch, refused when empty or too long, required).
+  - Tests 30, 32, 33, 38 and 41 (GetBatch, ListBatches) return two result sets: the script
     checks their number and shape (WITH RESULT SETS), their content is checked BY EYE.
     Tests 32, 33 and 38 show what to expect in the grid, before the results (changed
     when ListBatches got its total).
@@ -80,7 +82,7 @@ DELETE FROM trace.Farm
 WHERE Code LIKE N'ZZ-%';
 GO
 
-/* ===================== Setup and the 38 tests (one batch) ===================== */
+/* ===================== Setup and the 47 tests (one batch) ===================== */
 
 SET NOCOUNT ON;
 
@@ -376,7 +378,8 @@ BEGIN TRY
     EXEC trace.CreateBatch
          @BatchCode = N'ZZ-B-NEW', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
          @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
-         @OccurredAt = '2026-10-14T06:30:00';
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'CreateBatch: control (batch RECEIVED and its RECEPTION movement)', N'(accepted)',
             CASE WHEN (SELECT COUNT(*) FROM trace.Batch
@@ -403,7 +406,8 @@ BEGIN TRY
     EXEC trace.CreateBatch
          @BatchCode = N'   ', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
          @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
-         @OccurredAt = '2026-10-14T06:30:00';
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'CreateBatch: empty code', N'50400', N'ATTENTION: accepted', NULL);
 END TRY
@@ -425,7 +429,8 @@ BEGIN TRY
     EXEC trace.CreateBatch
          @BatchCode = N'ZZ-B-X14', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
          @HarvestDate = '2026-10-14', @QuantityKg = 0, @StationCode = N'ZZ-S01',
-         @OccurredAt = '2026-10-14T06:30:00';
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'CreateBatch: quantity 0', N'50401', N'ATTENTION: accepted', NULL);
 END TRY
@@ -447,7 +452,8 @@ BEGIN TRY
     EXEC trace.CreateBatch
          @BatchCode = N'ZZ-B-X15', @FarmCode = N'ZZ-NOPE', @Variety = N'Cherry',
          @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
-         @OccurredAt = '2026-10-14T06:30:00';
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'CreateBatch: unknown farm', N'50101', N'ATTENTION: accepted', NULL);
 END TRY
@@ -469,7 +475,8 @@ BEGIN TRY
     EXEC trace.CreateBatch
          @BatchCode = N'ZZ-B-X16', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
          @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-NOPE',
-         @OccurredAt = '2026-10-14T06:30:00';
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'CreateBatch: unknown station', N'50102', N'ATTENTION: accepted', NULL);
 END TRY
@@ -491,7 +498,8 @@ BEGIN TRY
     EXEC trace.CreateBatch
          @BatchCode = N'ZZ-B-RECV', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
          @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
-         @OccurredAt = '2026-10-14T06:30:00';
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'CreateBatch: duplicate code', N'50202', N'ATTENTION: accepted', NULL);
 END TRY
@@ -513,7 +521,8 @@ BEGIN TRY
     EXEC trace.CreateBatch
          @BatchCode = N'ZZ-B-X18', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
          @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S04',
-         @OccurredAt = '2026-10-14T06:30:00';
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'CreateBatch: station without the RECEPTION function', N'50303', N'ATTENTION: accepted', NULL);
 END TRY
@@ -535,7 +544,8 @@ END CATCH;
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-W1', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
-         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: control (RECEIVED to SORTED)', N'(accepted)',
             CASE WHEN (SELECT COUNT(*) FROM trace.Batch
@@ -560,13 +570,16 @@ END CATCH;
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-NEW', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
-         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-NEW', @StationCode = N'ZZ-S02', @MovementType = N'PACKING',
-         @QuantityKg = 465.00, @OccurredAt = '2026-10-14T13:40:00';
+         @QuantityKg = 465.00, @OccurredAt = '2026-10-14T13:40:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-NEW', @StationCode = N'ZZ-S03', @MovementType = N'SHIPMENT',
-         @QuantityKg = 465.00, @OccurredAt = '2026-10-14T17:05:00';
+         @QuantityKg = 465.00, @OccurredAt = '2026-10-14T17:05:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: control (full path to SHIPPED, equal quantity accepted)', N'(accepted)',
             CASE WHEN (SELECT COUNT(*) FROM trace.Batch
@@ -591,7 +604,8 @@ SET @before = dbo.TestFingerprint();
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-RECV', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
-         @QuantityKg = 0, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 0, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: quantity 0', N'50401', N'ATTENTION: accepted', NULL);
 END TRY
@@ -612,7 +626,8 @@ SET @before = dbo.TestFingerprint();
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-RECV', @StationCode = N'ZZ-S01', @MovementType = N'LOST',
-         @QuantityKg = 100.00, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 100.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: unknown movement type', N'50402', N'ATTENTION: accepted', NULL);
 END TRY
@@ -633,7 +648,8 @@ SET @before = dbo.TestFingerprint();
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-NOPE', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
-         @QuantityKg = 100.00, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 100.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: unknown batch', N'50100', N'ATTENTION: accepted', NULL);
 END TRY
@@ -654,7 +670,8 @@ SET @before = dbo.TestFingerprint();
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-RECV', @StationCode = N'ZZ-NOPE', @MovementType = N'SORTING',
-         @QuantityKg = 100.00, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 100.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: unknown station', N'50102', N'ATTENTION: accepted', NULL);
 END TRY
@@ -675,7 +692,8 @@ SET @before = dbo.TestFingerprint();
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-SHIP', @StationCode = N'ZZ-S03', @MovementType = N'SHIPMENT',
-         @QuantityKg = 100.00, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 100.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: batch already SHIPPED', N'50300', N'ATTENTION: accepted', NULL);
 END TRY
@@ -696,7 +714,8 @@ SET @before = dbo.TestFingerprint();
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-RECV', @StationCode = N'ZZ-S02', @MovementType = N'PACKING',
-         @QuantityKg = 460.00, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 460.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: step skipped (RECEIVED then PACKING)', N'50301', N'ATTENTION: accepted', NULL);
 END TRY
@@ -717,7 +736,8 @@ SET @before = dbo.TestFingerprint();
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-SORT', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
-         @QuantityKg = 460.00, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 460.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: step repeated (SORTED then SORTING)', N'50301', N'ATTENTION: accepted', NULL);
 END TRY
@@ -738,7 +758,8 @@ SET @before = dbo.TestFingerprint();
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-RECV', @StationCode = N'ZZ-S02', @MovementType = N'SORTING',
-         @QuantityKg = 460.00, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 460.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: station without the function', N'50303', N'ATTENTION: accepted', NULL);
 END TRY
@@ -759,7 +780,8 @@ SET @before = dbo.TestFingerprint();
 BEGIN TRY
     EXEC trace.AddMovement
          @BatchCode = N'ZZ-B-RECV', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
-         @QuantityKg = 520.00, @OccurredAt = '2026-10-14T09:15:00';
+         @QuantityKg = 520.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'AddMovement: quantity goes up', N'50302', N'ATTENTION: accepted', NULL);
 END TRY
@@ -781,6 +803,7 @@ END CATCH;
 PRINT N'Test 30: GetBatch ZZ-B-NEW. Check by eye the two result sets displayed just below:';
 PRINT N'  1) one row: ZZ-B-NEW, ZZ-F01, Cherry, 2026-10-14, 465.00, SHIPPED';
 PRINT N'  2) four rows, in this order: RECEPTION ZZ-S01 500.00 / SORTING ZZ-S01 470.00 / PACKING ZZ-S02 465.00 / SHIPMENT ZZ-S03 465.00';
+PRINT N'     and the last column, AuthorName, is Test Author on the four rows';
 BEGIN TRY
     EXEC trace.GetBatch @BatchCode = N'ZZ-B-NEW'
     WITH RESULT SETS
@@ -788,7 +811,7 @@ BEGIN TRY
         (BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50),
          HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20)),
         (MovementId BIGINT, MovementType NVARCHAR(20), StationCode NVARCHAR(20),
-         QuantityKg DECIMAL(10,2), OccurredAt DATETIME2)
+         QuantityKg DECIMAL(10,2), OccurredAt DATETIME2, AuthorName NVARCHAR(100))
     );
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'GetBatch: control (content checked by eye)', N'(accepted)',
@@ -1004,6 +1027,223 @@ BEGIN CATCH
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'ListBatches: pages follow each other (content checked by eye)', N'(accepted)',
             CONCAT(N'ATTENTION: refused or wrong shape, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+
+/* ---------- The author (tests 39 to 47, lot 11) ---------- */
+
+-- Values longer than the columns (64 and 100 characters), for tests 44 and 46.
+DECLARE @longAuthorId   NVARCHAR(200) = REPLICATE(N'x', 65);
+DECLARE @longAuthorName NVARCHAR(200) = REPLICATE(N'x', 101);
+
+-- 39. CreateBatch: the author is recorded on the first movement
+BEGIN TRY
+    EXEC trace.CreateBatch
+         @BatchCode = N'ZZ-B-AUT', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
+         @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'author-id-1', @AuthorName = N'Author One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: the author is recorded on the first movement', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                       WHERE b.BatchCode = N'ZZ-B-AUT' AND m.MovementType = N'RECEPTION'
+                         AND m.AuthorId = N'author-id-1' AND m.AuthorName = N'Author One') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The RECEPTION movement of ZZ-B-AUT has AuthorId author-id-1 and AuthorName Author One');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: the author is recorded on the first movement', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 40. AddMovement: each movement keeps its own author (needs test 39)
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-B-AUT', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'author-id-2', @AuthorName = N'Author Two';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: each movement keeps its own author', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                       WHERE b.BatchCode = N'ZZ-B-AUT' AND m.MovementType = N'SORTING'
+                         AND m.AuthorId = N'author-id-2' AND m.AuthorName = N'Author Two') = 1
+                 AND (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                      WHERE b.BatchCode = N'ZZ-B-AUT' AND m.MovementType = N'RECEPTION'
+                        AND m.AuthorId = N'author-id-1' AND m.AuthorName = N'Author One') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'SORTING by Author Two, and RECEPTION still by Author One');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: each movement keeps its own author', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 41. GetBatch: the author name of each movement (shape checked by the script, content BY EYE; needs tests 39 and 40)
+PRINT N'Test 41: GetBatch ZZ-B-AUT. Check by eye the two result sets displayed just below:';
+PRINT N'  1) one row: ZZ-B-AUT, ZZ-F01, Cherry, 2026-10-14, 470.00, SORTED';
+PRINT N'  2) two rows, in this order: RECEPTION ZZ-S01 500.00 ... Author One / SORTING ZZ-S01 470.00 ... Author Two (last column AuthorName)';
+BEGIN TRY
+    EXEC trace.GetBatch @BatchCode = N'ZZ-B-AUT'
+    WITH RESULT SETS
+    (
+        (BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50),
+         HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20)),
+        (MovementId BIGINT, MovementType NVARCHAR(20), StationCode NVARCHAR(20),
+         QuantityKg DECIMAL(10,2), OccurredAt DATETIME2, AuthorName NVARCHAR(100))
+    );
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'GetBatch: the author name of each movement (content checked by eye)', N'(accepted)',
+            N'To check by eye (see the 2 result sets above)',
+            N'The script checked the number and the shape of the result sets, not the values');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'GetBatch: the author name of each movement (content checked by eye)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused or wrong shape, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 42. CreateBatch: blank author id
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CreateBatch
+         @BatchCode = N'ZZ-B-X42', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
+         @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'   ', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: blank author id', N'50405', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: blank author id', N'50405',
+            CASE WHEN ERROR_NUMBER() <> 50405
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 43. CreateBatch: blank author name
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CreateBatch
+         @BatchCode = N'ZZ-B-X43', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
+         @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'   ';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: blank author name', N'50405', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: blank author name', N'50405',
+            CASE WHEN ERROR_NUMBER() <> 50405
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 44. CreateBatch: author id too long
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CreateBatch
+         @BatchCode = N'ZZ-B-X44', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
+         @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = @longAuthorId, @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: author id too long', N'50406', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: author id too long', N'50406',
+            CASE WHEN ERROR_NUMBER() <> 50406
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 45. AddMovement: author id NULL
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-B-RECV', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = NULL, @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: author id NULL', N'50405', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: author id NULL', N'50405',
+            CASE WHEN ERROR_NUMBER() <> 50405
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 46. AddMovement: author name too long
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-B-RECV', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'test-author-id', @AuthorName = @longAuthorName;
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: author name too long', N'50406', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: author name too long', N'50406',
+            CASE WHEN ERROR_NUMBER() <> 50406
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 47. AddMovement: author parameters not given
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-B-RECV', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T09:15:00';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: author parameters not given', N'201', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: author parameters not given', N'201',
+            CASE WHEN ERROR_NUMBER() <> 201
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
             LEFT(ERROR_MESSAGE(), 200));
     IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
 END CATCH;

@@ -24,6 +24,8 @@
     in the script, so SQLCMD mode is not needed.
   - W1 uses farm F001 and the first station that has the RECEPTION function. The batch codes
     start with ZZ-LOT5- and do not exist.
+  - Lot 11: trace.CreateBatch also takes the author of the movement. W1 passes the replacement
+    values of 018 (the same as 007). This change has not been replayed.
   - Hypotheses C1 to C3 and their thresholds: docs/mesures.md, section 9.4 (written BEFORE).
 
   How to use it in SSMS:
@@ -118,7 +120,8 @@ BEGIN TRY
             SET @code = CONCAT(N'ZZ-LOT5-', @run, N'-', RIGHT(CONCAT(N'0000', @i), 4));
             EXEC trace.CreateBatch @BatchCode = @code, @FarmCode = N'F001', @Variety = N'roma',
                  @HarvestDate = @harvest, @QuantityKg = 100.00, @StationCode = @station,
-                 @OccurredAt = @now;
+                 @OccurredAt = @now,
+                 @AuthorId = N'00000000-0000-0000-0000-000000000000', @AuthorName = N'Initial_User';
             SET @i += 1;
         END;
         SET @ms = DATEDIFF(MILLISECOND, @start, SYSDATETIME());

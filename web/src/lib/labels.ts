@@ -15,6 +15,11 @@ const MOVEMENT_LABELS: Record<string, string> = {
   SHIPMENT: 'Expédition',
 }
 
+// The author written by the migration of lot 11 in the movements that existed before it.
+const AUTHOR_LABELS: Record<string, string> = {
+  Initial_User: 'Données initiales',
+}
+
 function label(labels: Record<string, string>, value: string): string {
   return Object.hasOwn(labels, value) ? labels[value] : value
 }
@@ -22,3 +27,5 @@ function label(labels: Record<string, string>, value: string): string {
 export const statusLabel = (value: string): string => label(STATUS_LABELS, value)
 
 export const movementLabel = (value: string): string => label(MOVEMENT_LABELS, value)
+
+export const authorLabel = (value: string): string => label(AUTHOR_LABELS, value)

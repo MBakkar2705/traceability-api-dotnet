@@ -133,11 +133,14 @@ public sealed class TraceabilityDb
 
     /// <summary>
     /// Creates a batch and its first RECEPTION movement. Values are sent as given (null becomes
-    /// SQL NULL, the procedure decides). occurredAtUtc must already be in UTC.
+    /// SQL NULL, the procedure decides). occurredAtUtc must already be in UTC. authorId and
+    /// authorName say who makes the entry (lot 11): the procedure refuses them if they are empty
+    /// or too long.
     /// </summary>
     public async Task CreateBatchAsync(
         string? batchCode, string? farmCode, string? variety, DateOnly? harvestDate,
         decimal? quantityKg, string? stationCode, DateTime? occurredAtUtc,
+        string? authorId, string? authorName,
         CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
@@ -145,16 +148,19 @@ public sealed class TraceabilityDb
             connection, "trace.CreateBatch",
             Text("@BatchCode", batchCode), Text("@FarmCode", farmCode), Text("@Variety", variety),
             Day("@HarvestDate", harvestDate), Kilograms("@QuantityKg", quantityKg),
-            Text("@StationCode", stationCode), Moment("@OccurredAt", occurredAtUtc));
+            Text("@StationCode", stationCode), Moment("@OccurredAt", occurredAtUtc),
+            Text("@AuthorId", authorId), Text("@AuthorName", authorName));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>
-    /// Adds the next movement of a batch. occurredAtUtc must already be in UTC.
+    /// Adds the next movement of a batch. occurredAtUtc must already be in UTC. authorId and
+    /// authorName say who makes the entry (lot 11).
     /// </summary>
     public async Task AddMovementAsync(
         string? batchCode, string? stationCode, string? movementType,
         decimal? quantityKg, DateTime? occurredAtUtc,
+        string? authorId, string? authorName,
         CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
@@ -162,7 +168,8 @@ public sealed class TraceabilityDb
             connection, "trace.AddMovement",
             Text("@BatchCode", batchCode), Text("@StationCode", stationCode),
             Text("@MovementType", movementType), Kilograms("@QuantityKg", quantityKg),
-            Moment("@OccurredAt", occurredAtUtc));
+            Moment("@OccurredAt", occurredAtUtc),
+            Text("@AuthorId", authorId), Text("@AuthorName", authorName));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -294,7 +301,8 @@ public sealed class TraceabilityDb
             GetString(reader, "MovementType"),
             GetString(reader, "StationCode"),
             reader.GetDecimal(reader.GetOrdinal("QuantityKg")),
-            DateTime.SpecifyKind(reader.GetDateTime(reader.GetOrdinal("OccurredAt")), DateTimeKind.Utc));
+            DateTime.SpecifyKind(reader.GetDateTime(reader.GetOrdinal("OccurredAt")), DateTimeKind.Utc),
+            GetString(reader, "AuthorName"));
 
     private static async Task<int> ReadTotalCountAsync(
         SqlDataReader reader, string procedure, CancellationToken cancellationToken)

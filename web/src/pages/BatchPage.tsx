@@ -15,7 +15,7 @@ import StatusBadge from '../components/StatusBadge'
 import SuccessMessage from '../components/SuccessMessage'
 import WriterOnly from '../components/WriterOnly'
 import { formatDate, formatKg, formatUtc } from '../lib/format'
-import { movementLabel } from '../lib/labels'
+import { authorLabel, movementLabel } from '../lib/labels'
 import { useApi } from '../lib/useApi'
 
 const MOVEMENT_COLUMNS: Column<Movement>[] = [
@@ -31,6 +31,7 @@ const MOVEMENT_COLUMNS: Column<Movement>[] = [
   },
   { header: 'Quantité', cell: (movement) => formatKg(movement.quantityKg), right: true },
   { header: 'Date et heure', cell: (movement) => formatUtc(movement.occurredAt) },
+  { header: 'Auteur', cell: (movement) => authorLabel(movement.authorName) },
 ]
 
 export default function BatchPage() {

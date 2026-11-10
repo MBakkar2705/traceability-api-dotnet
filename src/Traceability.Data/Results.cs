@@ -15,6 +15,7 @@ public sealed record BatchRow(
     string BatchCode, string FarmCode, string Variety, DateOnly HarvestDate, decimal QuantityKg, string Status);
 
 public sealed record MovementRow(
-    long MovementId, string MovementType, string StationCode, decimal QuantityKg, DateTime OccurredAt);
+    long MovementId, string MovementType, string StationCode, decimal QuantityKg, DateTime OccurredAt,
+    string AuthorName);
 
 public sealed record BatchDetailsRow(BatchRow Batch, IReadOnlyList<MovementRow> Movements);

@@ -37,7 +37,7 @@ const batch = {
   quantityKg: 125.5,
   status: 'RECEIVED',
   movements: [
-    { movementId: 1, movementType: 'RECEPTION', stationCode: 'ZT-STATION', quantityKg: 125.5, occurredAt: '2026-10-22T08:30:00Z' },
+    { movementId: 1, movementType: 'RECEPTION', stationCode: 'ZT-STATION', quantityKg: 125.5, occurredAt: '2026-10-22T08:30:00Z', authorName: 'writer-test' },
   ],
 }
 

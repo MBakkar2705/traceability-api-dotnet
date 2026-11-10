@@ -44,8 +44,11 @@ public sealed class ApiFixture : IAsyncLifetime
     /// <summary>
     /// A new client of the same API. With roles (several are separated by commas), it sends the
     /// test header of TestAuth. With null, it sends no header at all: a caller without a token.
+    /// Lot 11: userId and userName give the identity of the caller (claims sub and
+    /// preferred_username); withoutIdentity gives a valid caller who has neither.
     /// </summary>
-    public HttpClient CreateClient(string? roles)
+    public HttpClient CreateClient(
+        string? roles, string? userId = null, string? userName = null, bool withoutIdentity = false)
     {
         var client = Factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -56,6 +59,21 @@ public sealed class ApiFixture : IAsyncLifetime
         if (roles is not null)
         {
             client.DefaultRequestHeaders.Add(TestAuth.RolesHeader, roles);
+        }
+
+        if (userId is not null)
+        {
+            client.DefaultRequestHeaders.Add(TestAuth.UserIdHeader, userId);
+        }
+
+        if (userName is not null)
+        {
+            client.DefaultRequestHeaders.Add(TestAuth.UserNameHeader, userName);
+        }
+
+        if (withoutIdentity)
+        {
+            client.DefaultRequestHeaders.Add(TestAuth.NoIdentityHeader, "true");
         }
 
         return client;

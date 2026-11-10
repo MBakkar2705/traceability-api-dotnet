@@ -13,8 +13,11 @@ public sealed record PageResponse<T>(IReadOnlyList<T> Items, int TotalCount, int
 public sealed record BatchResponse(
     string BatchCode, string FarmCode, string Variety, DateOnly HarvestDate, decimal QuantityKg, string Status);
 
+// AuthorName is the user name at the time of the entry (lot 11). The identifier of the author is
+// never returned.
 public sealed record MovementResponse(
-    long MovementId, string MovementType, string StationCode, decimal QuantityKg, DateTime OccurredAt);
+    long MovementId, string MovementType, string StationCode, decimal QuantityKg, DateTime OccurredAt,
+    string AuthorName);
 
 public sealed record BatchDetailsResponse(
     string BatchCode, string FarmCode, string Variety, DateOnly HarvestDate, decimal QuantityKg,

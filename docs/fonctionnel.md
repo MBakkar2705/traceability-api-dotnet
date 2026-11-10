@@ -34,7 +34,7 @@ Ce qui est hors périmètre, et ce qui reste à faire ou à prendre en compte, e
 | Lot | `trace.Batch` | Une quantité de tomates récoltées ensemble. C'est l'objet qu'on suit. |
 | Station | `trace.Station` | Un lieu de traitement, identifié par un code (par exemple `SITE-01`). |
 | Fonction d'une station | `trace.StationCapability` | La liste de ce qu'une station a le droit de faire (réception, tri, emballage, expédition). Une station peut avoir plusieurs fonctions. |
-| Mouvement | `trace.Movement` | Une ligne de journal : « tel lot est passé par telle station, à telle heure, avec telle quantité ». |
+| Mouvement | `trace.Movement` | Une ligne de journal : « tel lot est passé par telle station, à telle heure, avec telle quantité, saisi par tel utilisateur ». |
 
 Le lot garde son état actuel (statut et dernière quantité connue). Le mouvement garde l'historique : on le lit pour reconstituer tout le parcours.
 
@@ -67,6 +67,7 @@ Ces règles seront appliquées dans la base de données (procédures stockées e
 4. **Fin de parcours** : un lot `SHIPPED` n'a plus de nouveau mouvement, mais il reste consultable avec tout son parcours. Aucun lot n'est supprimé, pour pouvoir y revenir en cas de réclamation.
 5. **Unicité** : le code d'un lot, d'une ferme et d'une station est unique.
 6. **Fonction de la station** : un mouvement n'est accepté que si la station a la fonction correspondante. Cette règle est garantie par la base elle-même (clé étrangère).
+7. **Auteur** : chaque mouvement enregistre qui l'a saisi, l'identifiant du compte et son nom d'utilisateur, pris dans le jeton de connexion et jamais dans la demande. Le nom est celui du moment de la saisie. Les mouvements d'avant cette règle n'ont pas d'auteur connu : ils portent un auteur de remplacement, que l'interface affiche « Données initiales ».
 
 ## 6. Exemple de bout en bout
 
@@ -102,7 +103,7 @@ Trois demandes qui seraient refusées :
 - Consulter une station avec ses fonctions.
 - Enregistrer la réception d'un lot (création du lot et de son premier mouvement).
 - Enregistrer le mouvement suivant d'un lot.
-- Consulter un lot avec tout son parcours, dans l'ordre.
+- Consulter un lot avec tout son parcours, dans l'ordre, chaque mouvement avec le nom de son auteur.
 - Lister les lots par statut ou par ferme.
 
 ## 8. Choix retenus

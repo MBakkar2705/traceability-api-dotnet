@@ -75,8 +75,12 @@ Le journal. On ajoute des lignes, on ne modifie ni n'efface jamais une ligne.
 | `MovementType` | `NVARCHAR(20)` | FK → `StationCapability` (avec `StationId`), CK | `RECEPTION`, `SORTING`, `PACKING` ou `SHIPMENT`. |
 | `QuantityKg` | `DECIMAL(10,2)` | CK > 0 | Quantité constatée à cette étape, en kg. |
 | `OccurredAt` | `DATETIME2` | | Date et heure du mouvement, en UTC. |
+| `AuthorId` | `NVARCHAR(64)` | CK non vide | Identifiant stable du compte qui a saisi le mouvement (champ `sub` du jeton). |
+| `AuthorName` | `NVARCHAR(100)` | CK non vide | Nom d'utilisateur au moment de la saisie (champ `preferred_username` du jeton). |
 
 `StationId` et `MovementType` forment ensemble une clé étrangère sur deux colonnes vers la clé primaire de `StationCapability`. La base accepte donc un mouvement seulement si la station a cette fonction.
+
+`AuthorId` et `AuthorName` disent qui a saisi le mouvement (lot 11). Ils sont obligatoires, sans valeur par défaut, et chacun a une contrainte `CHECK` : ni vide, ni espaces seulement (`CK_Movement_AuthorId_NotEmpty` et `CK_Movement_AuthorName_NotEmpty`). L'API les lit dans le jeton déjà validé. `AuthorId` ne change pas si la personne change de nom ; `AuthorName` est le nom au moment de la saisie, il ne suit pas un changement de nom ultérieur. L'API renvoie seulement le nom : l'identifiant ne sort pas de la base. Les mouvements d'avant le lot 11 portent une valeur de remplacement, `AuthorId` = `00000000-0000-0000-0000-000000000000` et `AuthorName` = `Initial_User`, posée par `database/018_add_movement_author.sql`.
 
 Un index non unique, `IX_Movement_BatchId` (sur `BatchId`), sert à retrouver les mouvements d'un lot. Il est créé par `database/010_create_indexes.sql`, pas par `002`. Un second index non unique, `IX_Batch_FarmId` (sur `Batch (FarmId)`), sert à compter les lots d'une ferme, ou tous les lots, sans lire toute la table (total de `ListBatches`) ; il est créé par `database/017_optimize_list_batches.sql`.
 
@@ -122,5 +126,5 @@ Le journal `Movement` n'est jamais modifié : les procédures n'ont pas de `UPDA
 - Le classement est insensible à la casse : `F01` et `f01` ne peuvent pas coexister.
 - Pas de découpe ni de fusion de lots.
 - Pas de gestion des retours de marchandise : les règles réelles du métier ne sont pas connues (voir [fonctionnel.md](fonctionnel.md), section 9).
-- Pas de gestion d'utilisateurs.
+- Pas de table d'utilisateurs : l'auteur d'un mouvement est enregistré (identifiant et nom pris dans le jeton), mais la base ne connaît pas les comptes et ne vérifie pas qu'un auteur existe.
 - Les index sont mesurés sur des données inventées et une seule machine. Le coût en écriture n'est mesuré que pour `IX_Batch_FarmId` (environ 0,12 ms par lot créé, dans SSMS, au lot 5) ; pour `IX_Movement_BatchId`, il ne l'est pas (voir [mesures.md](mesures.md), sections 5 et 9.4).

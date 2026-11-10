@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { movementLabel, statusLabel } from './labels'
+import { authorLabel, movementLabel, statusLabel } from './labels'
 
 describe('labels', () => {
   it('writes the statuses in French', () => {
@@ -22,5 +22,11 @@ describe('labels', () => {
 
   it('does not take the name of an object method for a label', () => {
     expect(statusLabel('constructor')).toBe('constructor')
+  })
+
+  it('writes the author of the first data in French and shows any other user name as it is', () => {
+    expect(authorLabel('Initial_User')).toBe('Données initiales')
+    expect(authorLabel('writer-test')).toBe('writer-test')
+    expect(authorLabel('constructor')).toBe('constructor')
   })
 })
