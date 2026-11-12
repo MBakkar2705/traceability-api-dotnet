@@ -65,3 +65,4 @@ Négatives :
 ## Notes
 
 - 2026-11-12 : décision prise à la fin de l'essai du lot 12a ([verification.md](../verification.md), section 22). Le plan du lot a été approuvé avant l'écriture du code. Les alternatives ci-dessus ont été rédigées en écrivant ce document, aucune n'a été essayée. Le point de la visibilité du nom de l'auteur d'une correction reste ouvert.
+- 2026-11-12 (après la fusion) : la CI a été vue sur ce lot, ce qui complète la conséquence « La CI n'a pas été vue sur ce lot » : elle est verte sur la branche et sur `main` après la fusion de la pull request n° 27, après un premier échec dû au SDK 11 ([verification.md](../verification.md), L30, et [ADR 0009](0009-integration-continue-github-actions.md)). Le point sur la visibilité du nom de l'auteur d'une correction est reporté au plan du lot 12b : la correction de la fiche du lot aura aussi un auteur, et la règle sera décidée pour les deux.
