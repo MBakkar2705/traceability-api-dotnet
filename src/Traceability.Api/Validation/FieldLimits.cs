@@ -18,6 +18,10 @@ public static class FieldLimits
     public const int MovementTypeMaxLength = 20;
     public const int StatusMaxLength = 20;
 
+    // NVARCHAR(20): the reason code of a correction (lot 12a). NVARCHAR(500): its comment.
+    public const int ReasonCodeMaxLength = 20;
+    public const int ReasonCommentMaxLength = 500;
+
     // DECIMAL(10,2): 8 digits before the decimal point, 2 after.
     public const decimal QuantityMax = 99_999_999.99m;
     public const int QuantityDecimals = 2;

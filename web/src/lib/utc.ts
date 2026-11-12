@@ -1,7 +1,7 @@
 // Helpers for the "date and time" fields of the forms. The user types a time in UTC, and the API
 // wants it written with a Z at the end.
 
-const DATE_TIME_FIELD = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/
+const DATE_TIME_FIELD = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$/
 
 // The value of an <input type="datetime-local"> -> the text the API wants:
 // "2026-10-14T06:00" -> "2026-10-14T06:00:00Z". Anything else is returned unchanged: an empty value

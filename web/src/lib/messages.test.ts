@@ -9,6 +9,15 @@ describe('describeError', () => {
     [404, 50102, 'Station introuvable.'],
     [400, 50403, 'Statut inconnu.'],
     [400, 50404, 'Numéro ou taille de page invalide.'],
+    [404, 50103, "Ce mouvement n'appartient pas à ce lot."],
+    [422, 50304, "La quantité ne peut pas dépasser celle de l'étape précédente, ni être inférieure à celle de l'étape suivante."],
+    [422, 50305, 'Ce mouvement est annulé : il ne peut plus être corrigé.'],
+    [422, 50306, "Seul le dernier mouvement valable d'un lot peut être annulé."],
+    [422, 50307, "La réception d'un lot ne peut pas être annulée."],
+    [422, 50308, 'Les nouvelles valeurs sont identiques aux valeurs actuelles : rien à corriger.'],
+    [400, 50407, 'Motif inconnu.'],
+    [400, 50408, 'Le motif « Autre » demande un commentaire.'],
+    [400, 50409, 'Le commentaire est trop long (500 caractères au plus).'],
   ])('says the error %i / %i in French', (status, errorCode, expected) => {
     expect(describeError(new ApiError({ status, errorCode })).message).toBe(expected)
   })

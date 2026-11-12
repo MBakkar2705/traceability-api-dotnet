@@ -4,6 +4,9 @@
 
 export const WRITER = 'writer'
 
+// The role that corrects movements (lot 12a). A supervisor reads and corrects, and does not write.
+export const SUPERVISOR = 'supervisor'
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -36,4 +39,9 @@ export function readRoles(accessToken: string): string[] {
 
 export function canWrite(roles: string[]): boolean {
   return roles.includes(WRITER)
+}
+
+// Lot 12a: replacing or cancelling a movement is for the supervisor only (not for the writer).
+export function canCorrect(roles: string[]): boolean {
+  return roles.includes(SUPERVISOR)
 }

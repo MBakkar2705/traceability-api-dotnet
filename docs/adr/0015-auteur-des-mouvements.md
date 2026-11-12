@@ -56,4 +56,4 @@ Négatives :
 
 ## Notes
 
-- 2026-11-10 : décision prise après l'essai du lot 11 ([verification.md](../verification.md), section 21). Les choix (les deux colonnes, les colonnes obligatoires avec une valeur de remplacement, les deux paramètres des procédures, le nom seul renvoyé par l'API, la valeur de remplacement affichée « Données initiales », les longueurs, le 403 sans identité) ont été faits un à un par Mohamed avant l'écriture du code.
+- 2026-11-10 : décision prise après l'essai du lot 11 ([verification.md](../verification.md), section 21). Les choix (les deux colonnes, les colonnes obligatoires avec une valeur de remplacement, les deux paramètres des procédures, le nom seul renvoyé par l'API, la valeur de remplacement affichée « Données initiales », les longueurs, le 403 sans identité) ont été faits un à un avant l'écriture du code.

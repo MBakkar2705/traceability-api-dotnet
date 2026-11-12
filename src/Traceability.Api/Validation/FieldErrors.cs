@@ -80,6 +80,16 @@ public sealed class FieldErrors
         }
     }
 
+    // An optional text for a column of limited size: null is accepted (the procedure reads it as
+    // an empty text), a longer text is refused so that it is never cut in silence.
+    public void OptionalText(string field, string? value, int maxLength)
+    {
+        if (value is not null && value.Length > maxLength)
+        {
+            Add(field, $"At most {maxLength} characters are allowed.");
+        }
+    }
+
     // A quantity for a DECIMAL(10,2) column: at most 8 digits before the decimal point and 2 after.
     // A more precise value would be rounded in silence and a bigger one would make SqlClient fail
     // (both observed in lot 3c). Zero and negative values are left to the stored procedure (50401).

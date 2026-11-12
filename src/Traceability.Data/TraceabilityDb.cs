@@ -173,6 +173,48 @@ public sealed class TraceabilityDb
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Replaces the valid values of a movement (lot 12a): a correction row of kind REPLACE is added,
+    /// the movement itself is never changed. occurredAtUtc must already be in UTC. authorId and
+    /// authorName say who corrects. The procedure refuses wrong values and applies the rules.
+    /// </summary>
+    public async Task ReplaceMovementAsync(
+        string? batchCode, long movementId, string? stationCode,
+        decimal? quantityKg, DateTime? occurredAtUtc,
+        string? reasonCode, string? reasonComment,
+        string? authorId, string? authorName,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = CreateCommand(
+            connection, "trace.ReplaceMovement",
+            Text("@BatchCode", batchCode), BigInt("@MovementId", movementId),
+            Text("@StationCode", stationCode), Kilograms("@QuantityKg", quantityKg),
+            Moment("@OccurredAt", occurredAtUtc),
+            Text("@ReasonCode", reasonCode), Text("@ReasonComment", reasonComment),
+            Text("@AuthorId", authorId), Text("@AuthorName", authorName));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Says that a movement did not happen (lot 12a): a correction row of kind CANCEL is added. Only
+    /// the last valid movement of a batch can be cancelled, never the RECEPTION.
+    /// </summary>
+    public async Task CancelMovementAsync(
+        string? batchCode, long movementId,
+        string? reasonCode, string? reasonComment,
+        string? authorId, string? authorName,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = CreateCommand(
+            connection, "trace.CancelMovement",
+            Text("@BatchCode", batchCode), BigInt("@MovementId", movementId),
+            Text("@ReasonCode", reasonCode), Text("@ReasonComment", reasonComment),
+            Text("@AuthorId", authorId), Text("@AuthorName", authorName));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<BatchDetailsRow> GetBatchAsync(
         string? batchCode, CancellationToken cancellationToken = default)
     {
@@ -199,7 +241,17 @@ public sealed class TraceabilityDb
             }
         }
 
-        return new BatchDetailsRow(batch, movements);
+        // Third table (lot 12a): the corrections of these movements, in CorrectionId order (empty if none).
+        var corrections = new List<CorrectionRow>();
+        if (await reader.NextResultAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                corrections.Add(ReadCorrection(reader));
+            }
+        }
+
+        return new BatchDetailsRow(batch, movements, corrections);
     }
 
     public async Task<PageRow<BatchRow>> ListBatchesAsync(
@@ -255,6 +307,9 @@ public sealed class TraceabilityDb
     private static SqlParameter Int(string name, int value) =>
         new(name, SqlDbType.Int) { Value = value };
 
+    private static SqlParameter BigInt(string name, long value) =>
+        new(name, SqlDbType.BigInt) { Value = value };
+
     // DATE column: sent as a DateTime at midnight with the Date type, so SqlClient sends only the day.
     private static SqlParameter Day(string name, DateOnly? value) =>
         new(name, SqlDbType.Date)
@@ -296,13 +351,34 @@ public sealed class TraceabilityDb
             GetString(reader, "Status"));
 
     // The database stores UTC without saying so: the value is marked as UTC here (decision A of lot 3c).
+    private static DateTime GetUtc(SqlDataReader reader, string column) =>
+        DateTime.SpecifyKind(reader.GetDateTime(reader.GetOrdinal(column)), DateTimeKind.Utc);
+
     private static MovementRow ReadMovement(SqlDataReader reader) =>
         new(reader.GetInt64(reader.GetOrdinal("MovementId")),
             GetString(reader, "MovementType"),
             GetString(reader, "StationCode"),
             reader.GetDecimal(reader.GetOrdinal("QuantityKg")),
-            DateTime.SpecifyKind(reader.GetDateTime(reader.GetOrdinal("OccurredAt")), DateTimeKind.Utc),
-            GetString(reader, "AuthorName"));
+            GetUtc(reader, "OccurredAt"),
+            GetString(reader, "AuthorName"),
+            reader.GetBoolean(reader.GetOrdinal("IsCancelled")),
+            reader.GetInt32(reader.GetOrdinal("CorrectionCount")),
+            GetString(reader, "OriginalStationCode"),
+            reader.GetDecimal(reader.GetOrdinal("OriginalQuantityKg")),
+            GetUtc(reader, "OriginalOccurredAt"));
+
+    private static CorrectionRow ReadCorrection(SqlDataReader reader) =>
+        new(reader.GetInt64(reader.GetOrdinal("CorrectionId")),
+            reader.GetInt64(reader.GetOrdinal("MovementId")),
+            GetString(reader, "Kind"),
+            GetString(reader, "MovementType"),
+            GetString(reader, "StationCode"),
+            reader.GetDecimal(reader.GetOrdinal("QuantityKg")),
+            GetUtc(reader, "OccurredAt"),
+            GetString(reader, "ReasonCode"),
+            GetString(reader, "ReasonComment"),
+            GetString(reader, "AuthorName"),
+            GetUtc(reader, "CorrectedAt"));
 
     private static async Task<int> ReadTotalCountAsync(
         SqlDataReader reader, string procedure, CancellationToken cancellationToken)

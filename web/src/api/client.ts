@@ -1,5 +1,5 @@
 // The only module that calls the API: one function per route (the 5 GET routes of the lot 4a,
-// the 5 POST routes of the lot 4b).
+// the 5 POST routes of the lot 4b, the 2 correction routes of the lot 12a).
 // A read can be cancelled with an AbortSignal. A write never is: cancelling a call does not
 // cancel what the server does, so the screen could not know if the data was saved.
 
@@ -11,8 +11,10 @@ import type {
   BatchDetails,
   Farm,
   NewBatch,
+  NewCancellation,
   NewFarm,
   NewMovement,
+  NewReplacement,
   NewStation,
   Page,
   Station,
@@ -172,4 +174,22 @@ export async function createBatch(batch: NewBatch): Promise<void> {
 
 export async function addMovement(batchCode: string, movement: NewMovement): Promise<void> {
   await postJson(`/batches/${segment(batchCode)}/movements`, movement)
+}
+
+// Lot 12a (role supervisor): replaces the values of a movement, the original is kept.
+export async function replaceMovement(
+  batchCode: string,
+  movementId: number,
+  replacement: NewReplacement,
+): Promise<void> {
+  await postJson(`/batches/${segment(batchCode)}/movements/${movementId}/replace`, replacement)
+}
+
+// Lot 12a (role supervisor): says that a movement did not happen.
+export async function cancelMovement(
+  batchCode: string,
+  movementId: number,
+  cancellation: NewCancellation,
+): Promise<void> {
+  await postJson(`/batches/${segment(batchCode)}/movements/${movementId}/cancel`, cancellation)
 }

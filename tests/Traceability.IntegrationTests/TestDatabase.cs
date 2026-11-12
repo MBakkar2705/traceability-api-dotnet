@@ -12,7 +12,8 @@ public static class TestDatabase
 
     // In the order of the foreign keys: children first.
     public static readonly string[] Tables =
-        ["trace.Movement", "trace.Batch", "trace.StationCapability", "trace.Station", "trace.Farm"];
+        ["trace.MovementCorrection", "trace.Movement", "trace.Batch", "trace.StationCapability",
+         "trace.Station", "trace.Farm"];
 
     // The guard is also inside the SQL batch itself (50099 is in the range reserved for
     // script guards). With XACT_ABORT ON, the error ends the batch before any DELETE.
@@ -23,6 +24,7 @@ public static class TestDatabase
             THROW 50099, N'Refusing to clean a database that is not TraceabilityTest.', 1;
         END;
         BEGIN TRANSACTION;
+        DELETE FROM trace.MovementCorrection;
         DELETE FROM trace.Movement;
         DELETE FROM trace.Batch;
         DELETE FROM trace.StationCapability;

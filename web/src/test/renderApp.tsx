@@ -7,6 +7,7 @@ import type { AuthState } from '../auth/AuthContext'
 
 // Who is signed in, for the tests (lot 10c). The real sign-in with Keycloak is not played here.
 export const WRITER: AuthState = { status: 'signedIn', userName: 'writer-test', roles: ['writer'] }
+export const SUPERVISOR: AuthState = { status: 'signedIn', userName: 'supervisor-test', roles: ['supervisor'] }
 export const READER: AuthState = { status: 'signedIn', userName: 'reader-test', roles: ['reader'] }
 
 // The whole application, as if the browser were at this address. By default a writer is signed

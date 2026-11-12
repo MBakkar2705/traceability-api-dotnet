@@ -29,6 +29,25 @@ const sent = {
 }
 
 // The batch as the API shows it once it is created.
+// A movement as the API sends it since lot 12a: no correction, so the original values are the values.
+function mv(movement: {
+  movementId: number
+  movementType: string
+  stationCode: string
+  quantityKg: number
+  occurredAt: string
+  authorName: string
+}) {
+  return {
+    ...movement,
+    isCancelled: false,
+    correctionCount: 0,
+    originalStationCode: movement.stationCode,
+    originalQuantityKg: movement.quantityKg,
+    originalOccurredAt: movement.occurredAt,
+  }
+}
+
 const batch = {
   batchCode: 'ZT-LOT',
   farmCode: 'ZT-FARM',
@@ -36,8 +55,9 @@ const batch = {
   harvestDate: '2026-10-20',
   quantityKg: 125.5,
   status: 'RECEIVED',
+  corrections: [],
   movements: [
-    { movementId: 1, movementType: 'RECEPTION', stationCode: 'ZT-STATION', quantityKg: 125.5, occurredAt: '2026-10-22T08:30:00Z', authorName: 'writer-test' },
+    mv({ movementId: 1, movementType: 'RECEPTION', stationCode: 'ZT-STATION', quantityKg: 125.5, occurredAt: '2026-10-22T08:30:00Z', authorName: 'writer-test' }),
   ],
 }
 

@@ -37,3 +37,17 @@ public sealed record CreateBatchRequest(
 /// <param name="OccurredAt">Time of the movement, always in UTC: it must end with Z (for example 2026-10-14T08:00:00Z) or carry an offset. A time with no indication is refused.</param>
 public sealed record AddMovementRequest(
     string? StationCode, string? MovementType, decimal? QuantityKg, DateTime? OccurredAt);
+
+/// <summary>The body of POST /batches/{batchCode}/movements/{movementId}/replace.</summary>
+/// <param name="StationCode">Code of the station of the corrected movement. It must have the function of the movement (the movement type never changes).</param>
+/// <param name="QuantityKg">Corrected quantity in kilograms: more than 0, at most 2 decimals, never more than the previous valid step and never less than the next valid step (an equal quantity is accepted).</param>
+/// <param name="OccurredAt">Corrected time, always in UTC: it must end with Z (for example 2026-10-14T08:00:00Z) or carry an offset. A time with no indication is refused.</param>
+/// <param name="ReasonCode">DATA_ENTRY_ERROR, MEASUREMENT_ERROR or OTHER (upper or lower case).</param>
+/// <param name="ReasonComment">Free comment, at most 500 characters. Required when the reason is OTHER, optional otherwise.</param>
+public sealed record ReplaceMovementRequest(
+    string? StationCode, decimal? QuantityKg, DateTime? OccurredAt, string? ReasonCode, string? ReasonComment);
+
+/// <summary>The body of POST /batches/{batchCode}/movements/{movementId}/cancel.</summary>
+/// <param name="ReasonCode">DATA_ENTRY_ERROR, MEASUREMENT_ERROR or OTHER (upper or lower case).</param>
+/// <param name="ReasonComment">Free comment, at most 500 characters. Required when the reason is OTHER, optional otherwise.</param>
+public sealed record CancelMovementRequest(string? ReasonCode, string? ReasonComment);

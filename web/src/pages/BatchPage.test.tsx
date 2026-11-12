@@ -9,6 +9,25 @@ afterEach(cleanup)
 
 const BASE = 'https://localhost:7080'
 
+// A movement as the API sends it since lot 12a: no correction, so the original values are the values.
+function mv(movement: {
+  movementId: number
+  movementType: string
+  stationCode: string
+  quantityKg: number
+  occurredAt: string
+  authorName: string
+}) {
+  return {
+    ...movement,
+    isCancelled: false,
+    correctionCount: 0,
+    originalStationCode: movement.stationCode,
+    originalQuantityKg: movement.quantityKg,
+    originalOccurredAt: movement.occurredAt,
+  }
+}
+
 const batch = {
   batchCode: 'LOT-0000001',
   farmCode: 'F001',
@@ -16,9 +35,10 @@ const batch = {
   harvestDate: '2026-10-14',
   quantityKg: 500.5,
   status: 'SHIPPED',
+  corrections: [],
   movements: [
-    { movementId: 1, movementType: 'RECEPTION', stationCode: 'SITE-01', quantityKg: 500.5, occurredAt: '2026-10-14T08:30:00Z', authorName: 'Initial_User' },
-    { movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-14T10:05:30.1234567Z', authorName: 'writer-test' },
+    mv({ movementId: 1, movementType: 'RECEPTION', stationCode: 'SITE-01', quantityKg: 500.5, occurredAt: '2026-10-14T08:30:00Z', authorName: 'Initial_User' }),
+    mv({ movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-14T10:05:30.1234567Z', authorName: 'writer-test' }),
   ],
 }
 
@@ -167,7 +187,7 @@ describe('BatchPage, adding a movement', () => {
           quantityKg: 480,
           movements: [
             ...received.movements,
-            { movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-22T09:00:00Z', authorName: 'writer-test' },
+            mv({ movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-22T09:00:00Z', authorName: 'writer-test' }),
           ],
         }
         return created()
@@ -284,7 +304,7 @@ describe('BatchPage, adding a movement', () => {
           quantityKg: 480,
           movements: [
             ...received.movements,
-            { movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-22T09:00:00Z', authorName: 'writer-test' },
+            mv({ movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-22T09:00:00Z', authorName: 'writer-test' }),
           ],
         }
         return created()

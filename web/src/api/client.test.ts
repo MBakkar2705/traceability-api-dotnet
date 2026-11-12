@@ -5,6 +5,7 @@ import {
   addCapability,
   addMovement,
   buildUrl,
+  cancelMovement,
   createBatch,
   createFarm,
   createStation,
@@ -12,6 +13,7 @@ import {
   getStation,
   listBatches,
   listFarms,
+  replaceMovement,
 } from './client'
 import { ApiError, NetworkError, isAbortError } from './errors'
 
@@ -143,6 +145,14 @@ const movement = {
   quantityKg: 110,
   occurredAt: '2026-10-14T08:00:00Z',
 }
+const replacement = {
+  stationCode: 'ZT-STATION',
+  quantityKg: 105,
+  occurredAt: '2026-10-14T08:00:00Z',
+  reasonCode: 'MEASUREMENT_ERROR',
+  reasonComment: 'Balance mal tarée',
+}
+const cancellation = { reasonCode: 'OTHER', reasonComment: 'Mouvement saisi sur le mauvais lot' }
 
 describe('the writes', () => {
   const postInit = (body: unknown) => ({
@@ -175,6 +185,18 @@ describe('the writes', () => {
       path: '/batches/ZT-BATCH/movements',
       body: movement,
     },
+    {
+      name: 'replaceMovement (lot 12a)',
+      call: () => replaceMovement('ZT-BATCH', 12, replacement),
+      path: '/batches/ZT-BATCH/movements/12/replace',
+      body: replacement,
+    },
+    {
+      name: 'cancelMovement (lot 12a)',
+      call: () => cancelMovement('ZT-BATCH', 12, cancellation),
+      path: '/batches/ZT-BATCH/movements/12/cancel',
+      body: cancellation,
+    },
   ])('$name sends its body with POST and accepts an answer 201 with no body', async ({ call, path, body }) => {
     const fetchMock = stubFetch(() => Promise.resolve(created()))
 
@@ -188,9 +210,13 @@ describe('the writes', () => {
 
     await addCapability('A B/1', 'PACKING')
     await addMovement('A B/1', movement)
+    await replaceMovement('A B/1', 3, replacement)
+    await cancelMovement('A B/1', 3, cancellation)
 
     expect(fetchMock.mock.calls[0][0]).toBe(`${BASE}/stations/A%20B%2F1/capabilities`)
     expect(fetchMock.mock.calls[1][0]).toBe(`${BASE}/batches/A%20B%2F1/movements`)
+    expect(fetchMock.mock.calls[2][0]).toBe(`${BASE}/batches/A%20B%2F1/movements/3/replace`)
+    expect(fetchMock.mock.calls[3][0]).toBe(`${BASE}/batches/A%20B%2F1/movements/3/cancel`)
   })
 
   it('sends no signal: a write is never cancelled half way', async () => {
