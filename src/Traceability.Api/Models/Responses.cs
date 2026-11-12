@@ -14,11 +14,21 @@ public sealed record BatchResponse(
     string BatchCode, string FarmCode, string Variety, DateOnly HarvestDate, decimal QuantityKg, string Status);
 
 // AuthorName is the user name at the time of the entry (lot 11). The identifier of the author is
-// never returned.
+// never returned. Lot 12a: StationCode, QuantityKg and OccurredAt are the VALID values (the latest
+// correction applied); the Original fields are the values first entered. IsCancelled says that the
+// movement did not happen; a cancelled movement stays in the list.
 public sealed record MovementResponse(
     long MovementId, string MovementType, string StationCode, decimal QuantityKg, DateTime OccurredAt,
-    string AuthorName);
+    string AuthorName, bool IsCancelled, int CorrectionCount,
+    string OriginalStationCode, decimal OriginalQuantityKg, DateTime OriginalOccurredAt);
+
+// One correction of a movement (lot 12a). Kind is REPLACE or CANCEL; a CANCEL repeats the values of
+// the version it cancels. AuthorName is the name of the supervisor at the time of the correction.
+public sealed record CorrectionResponse(
+    long CorrectionId, long MovementId, string Kind, string MovementType, string StationCode,
+    decimal QuantityKg, DateTime OccurredAt, string ReasonCode, string ReasonComment,
+    string AuthorName, DateTime CorrectedAt);
 
 public sealed record BatchDetailsResponse(
     string BatchCode, string FarmCode, string Variety, DateOnly HarvestDate, decimal QuantityKg,
-    string Status, IReadOnlyList<MovementResponse> Movements);
+    string Status, IReadOnlyList<MovementResponse> Movements, IReadOnlyList<CorrectionResponse> Corrections);

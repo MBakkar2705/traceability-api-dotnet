@@ -7,11 +7,12 @@ namespace Traceability.UnitTests;
 // are observed by the integration tests.
 public class SqlErrorTranslatorTests
 {
-    // U1: the 16 numbers raised by the procedures, grouped by family.
+    // U1: the numbers raised by the procedures, grouped by family (lot 12a added the corrections).
     [Theory]
     [InlineData(50100, 404)]
     [InlineData(50101, 404)]
     [InlineData(50102, 404)]
+    [InlineData(50103, 404)]
     [InlineData(50200, 409)]
     [InlineData(50201, 409)]
     [InlineData(50202, 409)]
@@ -20,11 +21,21 @@ public class SqlErrorTranslatorTests
     [InlineData(50301, 422)]
     [InlineData(50302, 422)]
     [InlineData(50303, 422)]
+    [InlineData(50304, 422)]
+    [InlineData(50305, 422)]
+    [InlineData(50306, 422)]
+    [InlineData(50307, 422)]
+    [InlineData(50308, 422)]
     [InlineData(50400, 400)]
     [InlineData(50401, 400)]
     [InlineData(50402, 400)]
     [InlineData(50403, 400)]
     [InlineData(50404, 400)]
+    [InlineData(50405, 400)]
+    [InlineData(50406, 400)]
+    [InlineData(50407, 400)]
+    [InlineData(50408, 400)]
+    [InlineData(50409, 400)]
     public void Procedure_errors_map_to_the_status_of_their_family(int number, int expectedStatus)
     {
         var error = SqlErrorTranslator.Translate(number, "message from the procedure");

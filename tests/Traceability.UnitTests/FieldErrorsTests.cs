@@ -322,4 +322,32 @@ public class FieldErrorsTests
             "The time must end with 'Z' (UTC) or carry an offset, for example 2026-10-14T06:00:00Z.",
             Assert.Single(errors.Errors["time"]));
     }
+
+    // Lot 12a: an optional text (the comment of a correction).
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Scale was not zeroed")]
+    public void An_optional_text_may_be_missing_or_short(string? value)
+    {
+        var errors = new FieldErrors();
+
+        errors.OptionalText("reasonComment", value, FieldLimits.ReasonCommentMaxLength);
+
+        Assert.False(errors.HasErrors);
+    }
+
+    [Fact]
+    public void An_optional_text_of_exactly_the_limit_is_accepted_and_one_more_is_refused()
+    {
+        var accepted = new FieldErrors();
+        var refused = new FieldErrors();
+
+        accepted.OptionalText("reasonComment", new string('c', FieldLimits.ReasonCommentMaxLength), FieldLimits.ReasonCommentMaxLength);
+        refused.OptionalText("reasonComment", new string('c', FieldLimits.ReasonCommentMaxLength + 1), FieldLimits.ReasonCommentMaxLength);
+
+        Assert.False(accepted.HasErrors);
+        Assert.True(refused.HasErrors);
+        Assert.Contains("reasonComment", refused.Errors.Keys);
+    }
 }

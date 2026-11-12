@@ -16,6 +16,7 @@ const MESSAGE_BY_CODE: Record<number, string> = {
   50100: 'Lot introuvable.',
   50101: 'Ferme introuvable.',
   50102: 'Station introuvable.',
+  50103: "Ce mouvement n'appartient pas à ce lot.",
   // Already exists (writes).
   50200: 'Une ferme porte déjà ce code.',
   50201: 'Une station porte déjà ce code.',
@@ -26,12 +27,23 @@ const MESSAGE_BY_CODE: Record<number, string> = {
   50301: "Ce mouvement n'est pas l'étape suivante du lot.",
   50302: 'La quantité dépasse la quantité actuelle du lot.',
   50303: "Cette station n'a pas la fonction de ce mouvement.",
+  // Corrections (lot 12a).
+  50304: "La quantité ne peut pas dépasser celle de l'étape précédente, ni être inférieure à celle de l'étape suivante.",
+  50305: 'Ce mouvement est annulé : il ne peut plus être corrigé.',
+  50306: "Seul le dernier mouvement valable d'un lot peut être annulé.",
+  50307: "La réception d'un lot ne peut pas être annulée.",
+  50308: 'Les nouvelles valeurs sont identiques aux valeurs actuelles : rien à corriger.',
   // A value is not valid.
   50400: 'Le code ne peut pas être vide.',
   50401: 'La quantité doit être supérieure à 0.',
   50402: 'Type de mouvement inconnu.',
   50403: 'Statut inconnu.',
   50404: 'Numéro ou taille de page invalide.',
+  50405: "L'auteur de la correction n'est pas connu.",
+  50406: "L'identifiant ou le nom de l'auteur est trop long.",
+  50407: 'Motif inconnu.',
+  50408: 'Le motif « Autre » demande un commentaire.',
+  50409: 'Le commentaire est trop long (500 caractères au plus).',
 }
 
 export function describeError(error: unknown): ErrorMessage {

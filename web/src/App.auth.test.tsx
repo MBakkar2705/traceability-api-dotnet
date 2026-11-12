@@ -18,6 +18,7 @@ const batch = {
   quantityKg: 500.5,
   status: 'SORTED',
   movements: [],
+  corrections: [],
 }
 const handlers = {
   '/batches': emptyPage,

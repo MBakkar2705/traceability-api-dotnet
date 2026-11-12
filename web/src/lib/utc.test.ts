@@ -10,6 +10,10 @@ describe('toUtcText', () => {
     expect(toUtcText('2026-10-14T06:00:30')).toBe('2026-10-14T06:00:30Z')
   })
 
+  it('keeps the seconds and the milliseconds when the field gives them', () => {
+    expect(toUtcText('2026-10-14T06:00:30.000')).toBe('2026-10-14T06:00:30.000Z')
+  })
+
   it('leaves an empty value empty, so that the API says the field is required', () => {
     expect(toUtcText('')).toBe('')
   })

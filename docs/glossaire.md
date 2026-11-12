@@ -6,7 +6,15 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Traçabilité** : pouvoir reconstituer le parcours d'un produit, de son origine à sa destination. Ici : d'où vient un lot, par quelles stations il est passé, dans quel ordre.
 
-**Journal (historique en ajout seul)** : une table où l'on ajoute des lignes mais où l'on ne modifie ni n'efface jamais rien. Ici : `trace.Movement`. Pour corriger, on ajoute une nouvelle ligne.
+**Journal (historique en ajout seul)** : une table où l'on ajoute des lignes mais où l'on ne modifie ni n'efface jamais rien. Ici : `trace.Movement`. Pour corriger, on ajoute une ligne de correction dans une autre table, `trace.MovementCorrection` ; le mouvement d'origine reste tel qu'il a été saisi.
+
+**Correction d'un mouvement** : une ligne ajoutée dans `trace.MovementCorrection` qui remplace les valeurs d'un mouvement (`REPLACE` : station, quantité, heure) ou dit qu'il n'a pas eu lieu (`CANCEL`). Elle garde son motif, son commentaire, son auteur et sa date. Ici : lot 12a, faite par un compte qui a le rôle `supervisor`.
+
+**Version valable (d'un mouvement)** : les valeurs qui comptent pour un mouvement : celles du journal, remplacées par celles de sa dernière correction (la plus grande `CorrectionId`). Ici : `GetBatch` renvoie les valeurs valables, et `Original…` pour celles qui ont été saisies. Une annulation est la dernière version, définitive.
+
+**Motif de correction** : la raison donnée pour une correction : `DATA_ENTRY_ERROR` (erreur de saisie), `MEASUREMENT_ERROR` (erreur de mesure) ou `OTHER` (autre, avec un commentaire obligatoire).
+
+**Message pour le destinataire** : un texte en français, affiché par l'interface après la correction d'un lot qui était expédié, que le `supervisor` copie et transmet lui-même. Ici : l'application n'envoie rien et ne garde aucune trace de la transmission ; un appel direct à l'API ne le donne pas.
 
 ## Base de données
 
@@ -64,7 +72,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Verrou** : une réservation posée sur des lignes pendant qu'une transaction s'en sert. Les autres sessions qui veulent les mêmes lignes attendent. Ici : `AddMovement` réserve la ligne du lot.
 
-**`UPDLOCK`** : un verrou « je lis cette ligne pour la modifier ». Une autre session qui veut faire pareil attend ; une simple lecture n'attend pas (observé). Ici : posé par `AddMovement` (voir ADR 0003).
+**`UPDLOCK`** : un verrou « je lis cette ligne pour la modifier ». Une autre session qui veut faire pareil attend ; une simple lecture n'attend pas (observé). Ici : posé par `AddMovement`, `ReplaceMovement` et `CancelMovement` (voir ADR 0003).
 
 **Blocage mutuel (deadlock)** : deux sessions qui s'attendent l'une l'autre sans fin ; SQL Server en arrête une avec l'erreur 1205. Ici : pas observé, à surveiller (voir ADR 0003).
 
@@ -108,7 +116,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Injection de dépendances** : ASP.NET Core construit lui-même les objets dont une classe a besoin et les lui donne par son constructeur, comme dans NestJS. Ici : `FarmsController(TraceabilityDb db)` reçoit la classe d'accès aux données enregistrée dans `Program.cs`.
 
-**Contrôleur** : une classe qui reçoit les requêtes HTTP d'une ressource, avec des attributs (`[Route]`, `[HttpGet]`, `[HttpPost]`). Ici : `FarmsController` (2 routes), `StationsController` (4 routes) et `BatchesController` (4 routes).
+**Contrôleur** : une classe qui reçoit les requêtes HTTP d'une ressource, avec des attributs (`[Route]`, `[HttpGet]`, `[HttpPost]`). Ici : `FarmsController` (2 routes), `StationsController` (4 routes) et `BatchesController` (6 routes).
 
 **`DateOnly`, `DateTime` et `Kind`** : `DateOnly` est un jour sans heure ; `DateTime` est un jour et une heure, avec une indication (`Kind`) : `Utc`, `Local` (l'heure de la machine) ou `Unspecified` (rien n'est dit). Ici : la date de récolte est un `DateOnly` (`"2026-10-14"`) ; une heure sans `Z` ni décalage est refusée par l'API.
 
@@ -142,7 +150,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **xUnit : `[Fact]`, `[Theory]` et `[InlineData]`** : `[Fact]` est un test ; `[Theory]` avec des lignes `[InlineData]` est le même test répété avec plusieurs valeurs, et chaque ligne compte comme un cas. Ici : au lot 3b, les 8 tests unitaires du plan faisaient 49 cas ; avec le lot 3c, les tests unitaires font 74 cas.
 
-**Fixture de test** : un objet construit une seule fois avant les tests d'un groupe et partagé par eux. Ici : `ApiFixture` vérifie la base, vide les 5 tables de `TraceabilityTest` et lance l'API.
+**Fixture de test** : un objet construit une seule fois avant les tests d'un groupe et partagé par eux. Ici : `ApiFixture` vérifie la base, vide les 6 tables de `TraceabilityTest` et lance l'API.
 
 **CORS** : une règle appliquée par le navigateur : une page web ne peut appeler une API située à une autre adresse que si l'API l'autorise. Ici : configuré en développement seulement, pour l'interface sur `http://localhost:5173`, en `GET` et `POST` seulement, avec l'en-tête `Content-Type` (voir ADR 0007).
 
@@ -242,7 +250,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Jeton de rafraîchissement (refresh token)** : un second jeton, plus durable, qui sert seulement à demander un nouveau jeton d'accès sans redemander le mot de passe. Ici : l'interface renouvelle son jeton d'accès toutes les 4 minutes environ par un appel à `/token` ; que cet appel utilise un jeton de rafraîchissement est déduit, pas lu ([verification.md](verification.md) 20.3).
 
-**Rôle** : un nom qui résume des droits, attribué à des comptes. Ici : `reader` (consulter) et `writer` (saisir). Dans le jeton, ils sont listés dans `realm_access.roles`.
+**Rôle** : un nom qui résume des droits, attribué à des comptes. Ici : `reader` (consulter), `writer` (saisir des mouvements) et `supervisor` (consulter et corriger, sans saisir). Dans le jeton, ils sont listés dans `realm_access.roles`.
 
 **Jeton d'accès (JWT)** : une chaîne que le serveur délivre après la connexion et que l'API reçoit à chaque appel. Elle a trois parties séparées par des points ; celle du milieu est du JSON codé en base64url (et donc lisible : un jeton brut ne se colle jamais dans un message). Ici : durée de 300 secondes (`exp` moins `iat`), `iss` pour l'émetteur, `aud` pour le public visé, `azp` pour le client demandeur. Depuis le lot 10b, l'API en vérifie la signature, `iss`, `exp` et `aud`.
 
@@ -256,7 +264,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **401 et 403** : 401 veut dire « pas identifié » (pas de jeton, jeton invalide, expiré ou pour un autre public visé) ; 403 veut dire « identifié, mais pas le droit ». Ici : un `reader` qui fait un `POST` reçoit 403, un appel sans jeton reçoit 401.
 
-**Règle d'autorisation (policy)** : un nom qui regroupe une condition d'accès, posé sur une route avec `[Authorize(Policy = …)]`. Ici : `CanRead` (rôle `reader` ou `writer`) sur les 5 routes `GET`, `CanWrite` (rôle `writer`) sur les 5 routes `POST`.
+**Règle d'autorisation (policy)** : un nom qui regroupe une condition d'accès, posé sur une route avec `[Authorize(Policy = …)]`. Ici : `CanRead` (rôle `reader`, `writer` ou `supervisor`) sur les 5 routes `GET`, `CanWrite` (rôle `writer`) sur les 5 routes `POST` qui créent ou saisissent, `CanCorrect` (rôle `supervisor`) sur les 2 routes `POST` de correction (`replace` et `cancel`).
 
 **Mode développement (`start-dev`)** : un démarrage de Keycloak pratique pour essayer (HTTP, base intégrée H2, réglages permissifs) mais que Keycloak déconseille en production, ce qu'il écrit lui-même dans son journal. Ici : le seul mode essayé.
 

@@ -115,14 +115,18 @@ builder.Services
         };
     });
 
-// Reading routes: reader or writer. Writing routes: writer.
+// Reading routes: reader, writer or supervisor. Writing routes: writer. Correction routes
+// (lot 12a): supervisor.
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(Policies.CanRead, policy => policy
         .RequireAuthenticatedUser()
-        .RequireRole(Policies.ReaderRole, Policies.WriterRole))
+        .RequireRole(Policies.ReaderRole, Policies.WriterRole, Policies.SupervisorRole))
     .AddPolicy(Policies.CanWrite, policy => policy
         .RequireAuthenticatedUser()
-        .RequireRole(Policies.WriterRole));
+        .RequireRole(Policies.WriterRole))
+    .AddPolicy(Policies.CanCorrect, policy => policy
+        .RequireAuthenticatedUser()
+        .RequireRole(Policies.SupervisorRole));
 
 // The connection string comes from the environment variable ConnectionStrings__Default
 // (ASP.NET Core reads it as the key ConnectionStrings:Default). It is never written in a

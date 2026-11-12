@@ -54,4 +54,4 @@ Négatives :
 
 ## Notes
 
-- 2026-11-09 : décision prise après l'essai du lot 10c ([verification.md](../verification.md), section 20). Les choix (bibliothèque, jeton en mémoire, renouvellement automatique, boutons cachés pour un `reader`, tests simulés) ont été faits un à un par Mohamed avant l'écriture du code. L'enregistrement de l'auteur de chaque mouvement reste pour un lot suivant.
+- 2026-11-09 : décision prise après l'essai du lot 10c ([verification.md](../verification.md), section 20). Les choix (bibliothèque, jeton en mémoire, renouvellement automatique, boutons cachés pour un `reader`, tests simulés) ont été faits un à un avant l'écriture du code. L'enregistrement de l'auteur de chaque mouvement reste pour un lot suivant.

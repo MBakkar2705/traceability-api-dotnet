@@ -12,9 +12,9 @@ namespace Traceability.IntegrationTests;
 [Collection(ApiCollection.Name)]
 public class AuthorizationTests(ApiFixture api)
 {
-    // The 10 routes of the API: 5 readings (GET) and 5 writings (POST). The codes in the paths do
-    // not exist, and the bodies are empty: a route that lets the caller in answers 400 or 404,
-    // which is neither 401 nor 403, and nothing is written.
+    // The 12 routes of the API: 5 readings (GET), 5 writings (POST) and, since lot 12a, 2 corrections
+    // (POST). The codes in the paths do not exist, and the bodies are empty: a route that lets the
+    // caller in answers 400 or 404, which is neither 401 nor 403, and nothing is written.
     public static TheoryData<string, string> Routes => new()
     {
         { "GET", "/farms" },
@@ -27,7 +27,12 @@ public class AuthorizationTests(ApiFixture api)
         { "POST", "/stations/ZZ-NONE/capabilities" },
         { "POST", "/batches" },
         { "POST", "/batches/ZZ-NONE/movements" },
+        { "POST", "/batches/ZZ-NONE/movements/1/replace" },
+        { "POST", "/batches/ZZ-NONE/movements/1/cancel" },
     };
+
+    // The correction routes (lot 12a): the role supervisor only.
+    private static bool IsCorrection(string url) => url.EndsWith("/replace") || url.EndsWith("/cancel");
 
     private static async Task<HttpStatusCode> SendAsync(HttpClient client, string method, string url)
     {
@@ -58,7 +63,7 @@ public class AuthorizationTests(ApiFixture api)
 
     [Theory]
     [MemberData(nameof(Routes))]
-    public async Task A_reader_may_read_and_may_not_write(string method, string url)
+    public async Task A_reader_may_read_and_may_not_write_nor_correct(string method, string url)
     {
         using var client = api.CreateClient("reader");
 
@@ -76,11 +81,40 @@ public class AuthorizationTests(ApiFixture api)
 
     [Theory]
     [MemberData(nameof(Routes))]
-    public async Task A_writer_may_read_and_write(string method, string url)
+    public async Task A_writer_may_read_and_write_and_may_not_correct(string method, string url)
     {
         using var client = api.CreateClient("writer");
 
-        AssertLetIn(await SendAsync(client, method, url));
+        var status = await SendAsync(client, method, url);
+
+        if (IsCorrection(url))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, status);
+        }
+        else
+        {
+            AssertLetIn(status);
+        }
+    }
+
+    // Lot 12a: the supervisor reads and corrects, and does not enter data (farms, stations, batches,
+    // movements).
+    [Theory]
+    [MemberData(nameof(Routes))]
+    public async Task A_supervisor_may_read_and_correct_and_may_not_enter_data(string method, string url)
+    {
+        using var client = api.CreateClient("supervisor");
+
+        var status = await SendAsync(client, method, url);
+
+        if (method == "GET" || IsCorrection(url))
+        {
+            AssertLetIn(status);
+        }
+        else
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, status);
+        }
     }
 
     [Theory]
@@ -102,7 +136,7 @@ public class AuthorizationTests(ApiFixture api)
             .Where(endpoint => endpoint.Metadata.GetMetadata<ControllerActionDescriptor>() is not null)
             .ToList();
 
-        Assert.Equal(10, routes.Count);
+        Assert.Equal(12, routes.Count);
 
         var withoutPolicy = routes
             .Where(endpoint => !endpoint.Metadata

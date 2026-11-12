@@ -34,9 +34,9 @@ public class DatabaseSafetyTests(ApiFixture api)
         Assert.Contains("master", exception.Message);
     }
 
-    // I3: the cleaning empties the five tables, including rows put there on purpose.
+    // I3: the cleaning empties the six tables (lot 12a: MovementCorrection too), including rows put there on purpose.
     [Fact]
-    public async Task The_cleaning_empties_the_five_tables()
+    public async Task The_cleaning_empties_the_six_tables()
     {
         var connectionString = api.Factory.TestConnectionString;
         await TestDatabase.ExecuteAsync(connectionString,

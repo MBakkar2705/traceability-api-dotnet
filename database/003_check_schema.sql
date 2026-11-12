@@ -3,7 +3,7 @@
   Checks the schema created by 002 in the database named in DbName.
 
   Part A: read-only inspection (columns and constraints).
-  Part B: refusal tests. Each test tries ONE forbidden insert and checks that the
+  Part B: refusal tests (lot 12a: tests 22 to 31 are about trace.MovementCorrection). Each test tries ONE forbidden insert and checks that the
           database refuses it with the expected constraint. Everything runs in one
           transaction that is ROLLED BACK at the end: no row is kept.
           IDENTITY numbers used by the tests are not given back (normal).
@@ -22,7 +22,7 @@ GO
 
 /* ===================== Part A: inspection (read only) ===================== */
 
--- A1. Columns of the 5 tables (nvarchar_length is in characters).
+-- A1. Columns of the 6 tables (nvarchar_length is in characters).
 SELECT t.name AS table_name,
        c.column_id AS pos,
        c.name AS column_name,
@@ -92,7 +92,7 @@ DECLARE @results TABLE
     outcome       NVARCHAR(250)
 );
 
-DECLARE @FarmId INT, @StationId INT, @BatchId INT;
+DECLARE @FarmId INT, @StationId INT, @BatchId INT, @MovementId BIGINT;
 
 -- Number of rows of each table BEFORE the tests (a table variable survives ROLLBACK).
 DECLARE @before TABLE (table_name NVARCHAR(30), row_count BIGINT);
@@ -101,7 +101,8 @@ SELECT N'Farm', COUNT(*) FROM trace.Farm
 UNION ALL SELECT N'Station', COUNT(*) FROM trace.Station
 UNION ALL SELECT N'StationCapability', COUNT(*) FROM trace.StationCapability
 UNION ALL SELECT N'Batch', COUNT(*) FROM trace.Batch
-UNION ALL SELECT N'Movement', COUNT(*) FROM trace.Movement;
+UNION ALL SELECT N'Movement', COUNT(*) FROM trace.Movement
+UNION ALL SELECT N'MovementCorrection', COUNT(*) FROM trace.MovementCorrection;
 
 BEGIN TRANSACTION;
 
@@ -407,6 +408,153 @@ BEGIN TRY
                      ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
     END CATCH;
 
+    -- Lot 12a: the table trace.MovementCorrection. The only movement of the test batch is the
+    -- control movement of test 1 (RECEPTION, 500.00 kg); the station has the function RECEPTION only.
+    SELECT @MovementId = MovementId FROM trace.Movement WHERE BatchId = @BatchId;
+
+    -- 22. Control: a fully valid correction must be ACCEPTED (CorrectedAt is filled by the database).
+    BEGIN TRY
+        INSERT trace.MovementCorrection (MovementId, Kind, StationId, MovementType, QuantityKg, OccurredAt, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@MovementId, N'REPLACE', @StationId, N'RECEPTION', 400.00, '2026-10-14T06:30:00', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Control: valid correction', N'(accepted)',
+                CASE WHEN (SELECT COUNT(*) FROM trace.MovementCorrection
+                           WHERE MovementId = @MovementId AND CorrectedAt IS NOT NULL) = 1
+                     THEN N'Accepted as expected'
+                     ELSE N'ATTENTION: accepted, but CorrectedAt is not filled' END);
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Control: valid correction', N'(accepted)',
+                N'ATTENTION: refused: ' + LEFT(ERROR_MESSAGE(), 150));
+    END CATCH;
+
+    -- 23. Correction: unknown movement
+    BEGIN TRY
+        INSERT trace.MovementCorrection (MovementId, Kind, StationId, MovementType, QuantityKg, OccurredAt, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (-1, N'REPLACE', @StationId, N'RECEPTION', 400.00, '2026-10-14T06:30:00', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: unknown movement', N'FK_MovementCorrection_Movement', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: unknown movement', N'FK_MovementCorrection_Movement',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%FK_MovementCorrection_Movement%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 24. Correction: unknown kind
+    BEGIN TRY
+        INSERT trace.MovementCorrection (MovementId, Kind, StationId, MovementType, QuantityKg, OccurredAt, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@MovementId, N'DELETE', @StationId, N'RECEPTION', 400.00, '2026-10-14T06:30:00', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: unknown kind', N'CK_MovementCorrection_Kind', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: unknown kind', N'CK_MovementCorrection_Kind',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_MovementCorrection_Kind%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 25. Correction: the station does not have the function
+    BEGIN TRY
+        INSERT trace.MovementCorrection (MovementId, Kind, StationId, MovementType, QuantityKg, OccurredAt, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@MovementId, N'REPLACE', @StationId, N'SORTING', 400.00, '2026-10-14T06:30:00', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: the station does not have the function', N'FK_MovementCorrection_StationCapability', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: the station does not have the function', N'FK_MovementCorrection_StationCapability',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%FK_MovementCorrection_StationCapability%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 26. Correction: quantity 0
+    BEGIN TRY
+        INSERT trace.MovementCorrection (MovementId, Kind, StationId, MovementType, QuantityKg, OccurredAt, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@MovementId, N'REPLACE', @StationId, N'RECEPTION', 0, '2026-10-14T06:30:00', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: quantity 0', N'CK_MovementCorrection_QuantityKg_Positive', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: quantity 0', N'CK_MovementCorrection_QuantityKg_Positive',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_MovementCorrection_QuantityKg_Positive%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 27. Correction: unknown reason
+    BEGIN TRY
+        INSERT trace.MovementCorrection (MovementId, Kind, StationId, MovementType, QuantityKg, OccurredAt, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@MovementId, N'REPLACE', @StationId, N'RECEPTION', 400.00, '2026-10-14T06:30:00', N'WRONG', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: unknown reason', N'CK_MovementCorrection_ReasonCode', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: unknown reason', N'CK_MovementCorrection_ReasonCode',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_MovementCorrection_ReasonCode%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 28. Correction: reason OTHER without a comment
+    BEGIN TRY
+        INSERT trace.MovementCorrection (MovementId, Kind, StationId, MovementType, QuantityKg, OccurredAt, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@MovementId, N'REPLACE', @StationId, N'RECEPTION', 400.00, '2026-10-14T06:30:00', N'OTHER', N'   ', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: reason OTHER without a comment', N'CK_MovementCorrection_Comment_Required', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: reason OTHER without a comment', N'CK_MovementCorrection_Comment_Required',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_MovementCorrection_Comment_Required%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 29. Correction: no comment (NULL)
+    BEGIN TRY
+        INSERT trace.MovementCorrection (MovementId, Kind, StationId, MovementType, QuantityKg, OccurredAt, ReasonCode, AuthorId, AuthorName)
+        VALUES (@MovementId, N'REPLACE', @StationId, N'RECEPTION', 400.00, '2026-10-14T06:30:00', N'DATA_ENTRY_ERROR', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: no comment (NULL)', N'ReasonComment NOT NULL', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: no comment (NULL)', N'ReasonComment NOT NULL',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%ReasonComment%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 30. Correction: blank author id
+    BEGIN TRY
+        INSERT trace.MovementCorrection (MovementId, Kind, StationId, MovementType, QuantityKg, OccurredAt, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@MovementId, N'REPLACE', @StationId, N'RECEPTION', 400.00, '2026-10-14T06:30:00', N'DATA_ENTRY_ERROR', N'', N'   ', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: blank author id', N'CK_MovementCorrection_AuthorId_NotEmpty', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: blank author id', N'CK_MovementCorrection_AuthorId_NotEmpty',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_MovementCorrection_AuthorId_NotEmpty%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 31. Correction: blank author name
+    BEGIN TRY
+        INSERT trace.MovementCorrection (MovementId, Kind, StationId, MovementType, QuantityKg, OccurredAt, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@MovementId, N'REPLACE', @StationId, N'RECEPTION', 400.00, '2026-10-14T06:30:00', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'   ');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: blank author name', N'CK_MovementCorrection_AuthorName_NotEmpty', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Correction: blank author name', N'CK_MovementCorrection_AuthorName_NotEmpty',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_MovementCorrection_AuthorName_NotEmpty%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
 END TRY
 BEGIN CATCH
     -- The setup itself failed: undo everything and say so.
@@ -442,7 +590,8 @@ JOIN (SELECT N'Farm' AS table_name, COUNT(*) AS row_count FROM trace.Farm
       UNION ALL SELECT N'Station', COUNT(*) FROM trace.Station
       UNION ALL SELECT N'StationCapability', COUNT(*) FROM trace.StationCapability
       UNION ALL SELECT N'Batch', COUNT(*) FROM trace.Batch
-      UNION ALL SELECT N'Movement', COUNT(*) FROM trace.Movement) AS a
+      UNION ALL SELECT N'Movement', COUNT(*) FROM trace.Movement
+      UNION ALL SELECT N'MovementCorrection', COUNT(*) FROM trace.MovementCorrection) AS a
   ON a.table_name = b.table_name
 ORDER BY b.table_name;
 GO

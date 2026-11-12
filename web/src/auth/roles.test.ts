@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fakeToken, tokenWithRoles } from '../test/fakeToken'
-import { canWrite, readRoles } from './roles'
+import { canCorrect, canWrite, readRoles } from './roles'
 
 describe('readRoles', () => {
   it('reads the roles of the realm in the token', () => {
@@ -47,5 +47,23 @@ describe('canWrite', () => {
     expect(canWrite(['reader'])).toBe(false)
     expect(canWrite(['offline_access'])).toBe(false)
     expect(canWrite([])).toBe(false)
+  })
+})
+
+describe('canCorrect', () => {
+  it('is true for the supervisor role, with or without other roles', () => {
+    expect(canCorrect(['supervisor'])).toBe(true)
+    expect(canCorrect(['offline_access', 'supervisor'])).toBe(true)
+  })
+
+  it('is false for a writer, a reader, another role and no role', () => {
+    expect(canCorrect(['writer'])).toBe(false)
+    expect(canCorrect(['reader'])).toBe(false)
+    expect(canCorrect(['offline_access'])).toBe(false)
+    expect(canCorrect([])).toBe(false)
+  })
+
+  it('does not make a supervisor a writer', () => {
+    expect(canWrite(['supervisor'])).toBe(false)
   })
 })

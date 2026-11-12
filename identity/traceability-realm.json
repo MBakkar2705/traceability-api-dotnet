@@ -10,6 +10,10 @@
       {
         "name": "writer",
         "description": "Data entry: can also create farms, batches and movements."
+      },
+      {
+        "name": "supervisor",
+        "description": "Correction (lot 12a): can read, and replace or cancel a movement. Does not enter movements."
       }
     ]
   },
