@@ -15,6 +15,7 @@ Il donne une base, pas de l'expérience. Le README dit ce que le projet ne prouv
 
 ## Commandes
 Depuis la racine du dépôt, dans PowerShell (la solution est `Traceability.slnx`) :
+- SDK .NET : fixé à la version 10 par `global.json` (racine). La CI et le PC utilisent donc le même SDK, même si un SDK 11 est installé.
 - Compiler : `dotnet build Traceability.slnx`
 - Tests unitaires, sans base : `dotnet test tests/Traceability.UnitTests`
 - Tests d'intégration : `dotnet test tests/Traceability.IntegrationTests`. Attention : au début de chaque exécution, ils vident les 6 tables de `TraceabilityTest` (6 `DELETE` sans `WHERE`, précédés d'un contrôle du nom de la base). Ils lisent `ConnectionStrings__Test`.
