@@ -91,9 +91,11 @@ public class BatchesTests(ApiFixture api)
         return (farm, station, batch);
     }
 
-    private async Task<JsonElement> GetBatchJsonAsync(string batchCode)
+    // With no client given, the default client (a writer) reads. A writer gets authorName null: the
+    // names of the authors are given to the auditor and the supervisor only (lot 12b).
+    private async Task<JsonElement> GetBatchJsonAsync(string batchCode, HttpClient? client = null)
     {
-        var response = await Client.GetAsync($"/batches/{batchCode}");
+        var response = await (client ?? Client).GetAsync($"/batches/{batchCode}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return await TestData.ReadJsonAsync(response);
     }
@@ -540,7 +542,9 @@ public class BatchesTests(ApiFixture api)
         Assert.Equal(HttpStatusCode.Created, sorted.StatusCode);
         Assert.Equal(HttpStatusCode.Created, packed.StatusCode);
 
-        var batch = await GetBatchJsonAsync(batchCode);
+        // The names of the authors are given to the auditor and the supervisor only (lot 12b).
+        using var auditor = api.CreateClient("auditor");
+        var batch = await GetBatchJsonAsync(batchCode, auditor);
         var movements = batch.GetProperty("movements").EnumerateArray().ToList();
         Assert.Equal(
             new List<string?> { "alice", "bob", "alice" },
@@ -618,7 +622,8 @@ public class BatchesTests(ApiFixture api)
         var response = await PostBatchAsync(batchCode, farm, station, 500m, writer);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var batch = await GetBatchJsonAsync(batchCode);
+        using var auditor = api.CreateClient("auditor");
+        var batch = await GetBatchJsonAsync(batchCode, auditor);
         var first = batch.GetProperty("movements").EnumerateArray().Single();
         Assert.Equal(longName, first.GetProperty("authorName").GetString());
     }

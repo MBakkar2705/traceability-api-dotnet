@@ -12,9 +12,10 @@ namespace Traceability.IntegrationTests;
 [Collection(ApiCollection.Name)]
 public class AuthorizationTests(ApiFixture api)
 {
-    // The 12 routes of the API: 5 readings (GET), 5 writings (POST) and, since lot 12a, 2 corrections
-    // (POST). The codes in the paths do not exist, and the bodies are empty: a route that lets the
-    // caller in answers 400 or 404, which is neither 401 nor 403, and nothing is written.
+    // The 13 routes of the API: 5 readings (GET), 5 writings (POST) and 3 corrections (POST: 2 since
+    // lot 12a, 1 since lot 12b). The codes in the paths do not exist, and the bodies are empty: a
+    // route that lets the caller in answers 400 or 404, which is neither 401 nor 403, and nothing is
+    // written.
     public static TheoryData<string, string> Routes => new()
     {
         { "GET", "/farms" },
@@ -29,10 +30,12 @@ public class AuthorizationTests(ApiFixture api)
         { "POST", "/batches/ZZ-NONE/movements" },
         { "POST", "/batches/ZZ-NONE/movements/1/replace" },
         { "POST", "/batches/ZZ-NONE/movements/1/cancel" },
+        { "POST", "/batches/ZZ-NONE/correct" },
     };
 
-    // The correction routes (lot 12a): the role supervisor only.
-    private static bool IsCorrection(string url) => url.EndsWith("/replace") || url.EndsWith("/cancel");
+    // The correction routes (lot 12a, and lot 12b for the sheet of a batch): the role supervisor only.
+    private static bool IsCorrection(string url) =>
+        url.EndsWith("/replace") || url.EndsWith("/cancel") || url.EndsWith("/correct");
 
     private static async Task<HttpStatusCode> SendAsync(HttpClient client, string method, string url)
     {
@@ -117,6 +120,26 @@ public class AuthorizationTests(ApiFixture api)
         }
     }
 
+    // Lot 12b: the auditor reads everything, including the names of the authors, and changes
+    // nothing: no entry, no correction.
+    [Theory]
+    [MemberData(nameof(Routes))]
+    public async Task An_auditor_may_read_and_may_not_write_nor_correct(string method, string url)
+    {
+        using var client = api.CreateClient("auditor");
+
+        var status = await SendAsync(client, method, url);
+
+        if (method == "POST")
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, status);
+        }
+        else
+        {
+            AssertLetIn(status);
+        }
+    }
+
     [Theory]
     [MemberData(nameof(Routes))]
     public async Task A_caller_with_another_role_gets_403_everywhere(string method, string url)
@@ -136,7 +159,7 @@ public class AuthorizationTests(ApiFixture api)
             .Where(endpoint => endpoint.Metadata.GetMetadata<ControllerActionDescriptor>() is not null)
             .ToList();
 
-        Assert.Equal(12, routes.Count);
+        Assert.Equal(13, routes.Count);
 
         var withoutPolicy = routes
             .Where(endpoint => !endpoint.Metadata

@@ -13,22 +13,35 @@ public sealed record PageResponse<T>(IReadOnlyList<T> Items, int TotalCount, int
 public sealed record BatchResponse(
     string BatchCode, string FarmCode, string Variety, DateOnly HarvestDate, decimal QuantityKg, string Status);
 
-// AuthorName is the user name at the time of the entry (lot 11). The identifier of the author is
-// never returned. Lot 12a: StationCode, QuantityKg and OccurredAt are the VALID values (the latest
-// correction applied); the Original fields are the values first entered. IsCancelled says that the
-// movement did not happen; a cancelled movement stays in the list.
+// AuthorName is the user name at the time of the entry (lot 11); it is null when the caller may not
+// see the names of the authors (lot 12b). The identifier of the author is never returned.
+// Lot 12a: StationCode, QuantityKg and OccurredAt are the VALID values (the latest correction
+// applied); the Original fields are the values first entered. IsCancelled says that the movement
+// did not happen; a cancelled movement stays in the list.
 public sealed record MovementResponse(
     long MovementId, string MovementType, string StationCode, decimal QuantityKg, DateTime OccurredAt,
-    string AuthorName, bool IsCancelled, int CorrectionCount,
+    string? AuthorName, bool IsCancelled, int CorrectionCount,
     string OriginalStationCode, decimal OriginalQuantityKg, DateTime OriginalOccurredAt);
 
 // One correction of a movement (lot 12a). Kind is REPLACE or CANCEL; a CANCEL repeats the values of
-// the version it cancels. AuthorName is the name of the supervisor at the time of the correction.
+// the version it cancels. AuthorName is the name of the supervisor at the time of the correction;
+// it is null when the caller may not see the names of the authors (lot 12b).
 public sealed record CorrectionResponse(
     long CorrectionId, long MovementId, string Kind, string MovementType, string StationCode,
     decimal QuantityKg, DateTime OccurredAt, string ReasonCode, string ReasonComment,
-    string AuthorName, DateTime CorrectedAt);
+    string? AuthorName, DateTime CorrectedAt);
 
+// One correction of the sheet of a batch (lot 12b). The Old values are the ones before the
+// correction, the New values the ones after. AuthorName is null when the caller may not see the
+// names of the authors. The identifier of the author is never returned.
+public sealed record SheetCorrectionResponse(
+    long CorrectionId, string OldBatchCode, string NewBatchCode, string OldFarmCode, string NewFarmCode,
+    string OldVariety, string NewVariety, DateOnly OldHarvestDate, DateOnly NewHarvestDate,
+    string ReasonCode, string ReasonComment, string? AuthorName, DateTime CorrectedAt);
+
+// Corrections is the list of the corrections of the movements (lot 12a); SheetCorrections is the
+// list of the corrections of the sheet of the batch (lot 12b).
 public sealed record BatchDetailsResponse(
     string BatchCode, string FarmCode, string Variety, DateOnly HarvestDate, decimal QuantityKg,
-    string Status, IReadOnlyList<MovementResponse> Movements, IReadOnlyList<CorrectionResponse> Corrections);
+    string Status, IReadOnlyList<MovementResponse> Movements, IReadOnlyList<CorrectionResponse> Corrections,
+    IReadOnlyList<SheetCorrectionResponse> SheetCorrections);
