@@ -3,13 +3,18 @@
   Checks the schema created by 002 in the database named in DbName.
 
   Part A: read-only inspection (columns and constraints).
-  Part B: refusal tests (lot 12a: tests 22 to 31 are about trace.MovementCorrection). Each test tries ONE forbidden insert and checks that the
+  Part B: refusal tests (lot 12a: tests 22 to 31 are about trace.MovementCorrection; lot 12b: tests 32 to 43 are about
+          trace.BatchCorrection). Each test tries ONE forbidden insert and checks that the
           database refuses it with the expected constraint. Everything runs in one
           transaction that is ROLLED BACK at the end: no row is kept.
           IDENTITY numbers used by the tests are not given back (normal).
 
-  - Replayable at any time, on an empty database AND on a filled one (lot 2b): the
-    last query compares the number of rows of each table before and after the tests.
+  - Replayable on an empty database AND on a filled one (lot 2b): the last query compares the
+    number of rows of each table before and after the tests. EXCEPT after 006: 006 leaves its
+    rows (codes that start with ZZ-) in the database, and the setup below needs the codes ZZ-F01
+    and ZZ-S01 to be free. If one of them exists, the script stops before writing anything, with
+    a message (lot 12b). Remove the ZZ- rows (DELETE ... WHERE, as the top of 006 does) or rebuild
+    the database, then run it again.
   - Contains no DROP, TRUNCATE or DELETE.
   - Run after 002_create_schema_and_tables.sql, with the same DbName.
   - Run in SSMS in SQLCMD mode (menu Query > SQLCMD Mode).
@@ -22,7 +27,7 @@ GO
 
 /* ===================== Part A: inspection (read only) ===================== */
 
--- A1. Columns of the 6 tables (nvarchar_length is in characters).
+-- A1. Columns of the 7 tables (nvarchar_length is in characters).
 SELECT t.name AS table_name,
        c.column_id AS pos,
        c.name AS column_name,
@@ -83,6 +88,15 @@ BEGIN
     RETURN;
 END;
 
+-- The setup creates the farm ZZ-F01 and the station ZZ-S01. 006 leaves its ZZ- rows in the database:
+-- refuse here, before anything is written, with a message that says what to do.
+IF EXISTS (SELECT 1 FROM trace.Farm WHERE Code = N'ZZ-F01')
+   OR EXISTS (SELECT 1 FROM trace.Station WHERE Code = N'ZZ-S01')
+BEGIN
+    RAISERROR(N'The farm ZZ-F01 or the station ZZ-S01 already exists (006 leaves its ZZ- rows in the database). Tests not run. Remove the ZZ- rows (see the header of this script) or rebuild the database, then run it again.', 16, 1);
+    RETURN;
+END;
+
 -- A table variable is NOT undone by ROLLBACK: the results survive.
 DECLARE @results TABLE
 (
@@ -102,7 +116,8 @@ UNION ALL SELECT N'Station', COUNT(*) FROM trace.Station
 UNION ALL SELECT N'StationCapability', COUNT(*) FROM trace.StationCapability
 UNION ALL SELECT N'Batch', COUNT(*) FROM trace.Batch
 UNION ALL SELECT N'Movement', COUNT(*) FROM trace.Movement
-UNION ALL SELECT N'MovementCorrection', COUNT(*) FROM trace.MovementCorrection;
+UNION ALL SELECT N'MovementCorrection', COUNT(*) FROM trace.MovementCorrection
+UNION ALL SELECT N'BatchCorrection', COUNT(*) FROM trace.BatchCorrection;
 
 BEGIN TRANSACTION;
 
@@ -555,6 +570,180 @@ BEGIN TRY
                      ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
     END CATCH;
 
+    -- Lot 12b: the table trace.BatchCorrection. The test batch is ZZ-B01 (farm ZZ-F01, variety
+    -- 'Test variety', harvest date 2026-10-14). The base row below changes the code only.
+
+    -- 32. Control: valid batch correction
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'ZZ-B01-FIXED', @FarmId, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Control: valid batch correction', N'(accepted)',
+                CASE WHEN (SELECT COUNT(*) FROM trace.BatchCorrection
+                           WHERE BatchId = @BatchId AND CorrectedAt IS NOT NULL) = 1
+                     THEN N'Accepted as expected'
+                     ELSE N'ATTENTION: accepted, but CorrectedAt is not filled' END);
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'Control: valid batch correction', N'(accepted)',
+                N'ATTENTION: refused: ' + LEFT(ERROR_MESSAGE(), 150));
+    END CATCH;
+
+    -- 33. BatchCorrection: unknown batch
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (-1, N'ZZ-B01', N'ZZ-B01-FIXED', @FarmId, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: unknown batch', N'FK_BatchCorrection_Batch', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: unknown batch', N'FK_BatchCorrection_Batch',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%FK_BatchCorrection_Batch%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 34. BatchCorrection: unknown old farm
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'ZZ-B01-FIXED', -1, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: unknown old farm', N'FK_BatchCorrection_OldFarm', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: unknown old farm', N'FK_BatchCorrection_OldFarm',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%FK_BatchCorrection_OldFarm%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 35. BatchCorrection: unknown new farm
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'ZZ-B01-FIXED', @FarmId, -1, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: unknown new farm', N'FK_BatchCorrection_NewFarm', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: unknown new farm', N'FK_BatchCorrection_NewFarm',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%FK_BatchCorrection_NewFarm%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 36. BatchCorrection: nothing changes
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'ZZ-B01', @FarmId, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: nothing changes', N'CK_BatchCorrection_Something_Changed', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: nothing changes', N'CK_BatchCorrection_Something_Changed',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_BatchCorrection_Something_Changed%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 37. BatchCorrection: change of case only (binary comparison)
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'zz-b01', @FarmId, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: change of case only (binary comparison)', N'(accepted)',
+                N'Accepted as expected');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: change of case only (binary comparison)', N'(accepted)',
+                N'ATTENTION: refused: ' + LEFT(ERROR_MESSAGE(), 150));
+    END CATCH;
+
+    -- 38. BatchCorrection: blank new code
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'   ', @FarmId, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: blank new code', N'CK_BatchCorrection_NewBatchCode_NotEmpty', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: blank new code', N'CK_BatchCorrection_NewBatchCode_NotEmpty',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_BatchCorrection_NewBatchCode_NotEmpty%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 39. BatchCorrection: reason not accepted for a batch
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'ZZ-B01-FIXED', @FarmId, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'MEASUREMENT_ERROR', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: reason not accepted for a batch', N'CK_BatchCorrection_ReasonCode', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: reason not accepted for a batch', N'CK_BatchCorrection_ReasonCode',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_BatchCorrection_ReasonCode%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 40. BatchCorrection: reason OTHER without comment
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'ZZ-B01-FIXED', @FarmId, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'OTHER', N'', N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: reason OTHER without comment', N'CK_BatchCorrection_Comment_Required', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: reason OTHER without comment', N'CK_BatchCorrection_Comment_Required',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_BatchCorrection_Comment_Required%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 41. BatchCorrection: no comment (NULL)
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'ZZ-B01-FIXED', @FarmId, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'DATA_ENTRY_ERROR', NULL, N'test-sup-id', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: no comment (NULL)', N'ReasonComment NOT NULL', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: no comment (NULL)', N'ReasonComment NOT NULL',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%ReasonComment%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 42. BatchCorrection: blank author id
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'ZZ-B01-FIXED', @FarmId, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'DATA_ENTRY_ERROR', N'', N'   ', N'Test Supervisor');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: blank author id', N'CK_BatchCorrection_AuthorId_NotEmpty', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: blank author id', N'CK_BatchCorrection_AuthorId_NotEmpty',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_BatchCorrection_AuthorId_NotEmpty%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
+    -- 43. BatchCorrection: blank author name
+    BEGIN TRY
+        INSERT trace.BatchCorrection (BatchId, OldBatchCode, NewBatchCode, OldFarmId, NewFarmId, OldVariety, NewVariety, OldHarvestDate, NewHarvestDate, ReasonCode, ReasonComment, AuthorId, AuthorName)
+        VALUES (@BatchId, N'ZZ-B01', N'ZZ-B01-FIXED', @FarmId, @FarmId, N'Test variety', N'Test variety', '2026-10-14', '2026-10-14', N'DATA_ENTRY_ERROR', N'', N'test-sup-id', N'   ');
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: blank author name', N'CK_BatchCorrection_AuthorName_NotEmpty', N'ATTENTION: accepted');
+    END TRY
+    BEGIN CATCH
+        INSERT @results (test_name, expected_rule, outcome)
+        VALUES (N'BatchCorrection: blank author name', N'CK_BatchCorrection_AuthorName_NotEmpty',
+                CASE WHEN ERROR_MESSAGE() LIKE N'%CK_BatchCorrection_AuthorName_NotEmpty%' THEN N'Refused as expected'
+                     ELSE N'ATTENTION: other error: ' + LEFT(ERROR_MESSAGE(), 150) END);
+    END CATCH;
+
 END TRY
 BEGIN CATCH
     -- The setup itself failed: undo everything and say so.
@@ -591,7 +780,8 @@ JOIN (SELECT N'Farm' AS table_name, COUNT(*) AS row_count FROM trace.Farm
       UNION ALL SELECT N'StationCapability', COUNT(*) FROM trace.StationCapability
       UNION ALL SELECT N'Batch', COUNT(*) FROM trace.Batch
       UNION ALL SELECT N'Movement', COUNT(*) FROM trace.Movement
-      UNION ALL SELECT N'MovementCorrection', COUNT(*) FROM trace.MovementCorrection) AS a
+      UNION ALL SELECT N'MovementCorrection', COUNT(*) FROM trace.MovementCorrection
+      UNION ALL SELECT N'BatchCorrection', COUNT(*) FROM trace.BatchCorrection) AS a
   ON a.table_name = b.table_name
 ORDER BY b.table_name;
 GO
