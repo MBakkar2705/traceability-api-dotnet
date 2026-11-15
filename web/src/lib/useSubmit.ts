@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { describeWriteError } from './messages'
-import type { WriteErrorMessage } from './messages'
+import type { CodeMessages, WriteErrorMessage } from './messages'
 
 export type SubmitState =
   | { status: 'idle' }
@@ -11,7 +11,8 @@ export type SubmitState =
 // While a call is running, another `submit` does nothing and says false, so a double click sends
 // only one request. The guard is a ref and not the state: two clicks very close together can come
 // before the screen has been drawn again with the disabled button.
-export function useSubmit() {
+// `own` gives the texts this form wants for some error codes, instead of the general ones (lot 12b).
+export function useSubmit(own: CodeMessages = {}) {
   const [state, setState] = useState<SubmitState>({ status: 'idle' })
   const sending = useRef(false)
 
@@ -26,7 +27,7 @@ export function useSubmit() {
       setState({ status: 'idle' })
       return true
     } catch (error) {
-      setState({ status: 'error', error: describeWriteError(error) })
+      setState({ status: 'error', error: describeWriteError(error, own) })
       return false
     } finally {
       sending.current = false

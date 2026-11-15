@@ -27,7 +27,9 @@ const CORRECTION_KIND_LABELS: Record<string, string> = {
   CANCEL: 'Mouvement annulé',
 }
 
-// The author written by the migration of lot 11 in the movements that existed before it.
+// The author written by the migration of lot 11 in the movements that existed before it. A null
+// name (lot 12b) means that the API does not show the names to the signed-in role: the pages leave
+// the column out, so the dash is only a safety net.
 const AUTHOR_LABELS: Record<string, string> = {
   Initial_User: 'Données initiales',
 }
@@ -40,7 +42,7 @@ export const statusLabel = (value: string): string => label(STATUS_LABELS, value
 
 export const movementLabel = (value: string): string => label(MOVEMENT_LABELS, value)
 
-export const authorLabel = (value: string): string => label(AUTHOR_LABELS, value)
+export const authorLabel = (value: string | null): string => (value === null ? '—' : label(AUTHOR_LABELS, value))
 
 export const reasonLabel = (value: string): string => label(REASON_LABELS, value)
 

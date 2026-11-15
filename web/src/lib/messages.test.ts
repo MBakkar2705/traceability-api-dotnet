@@ -72,14 +72,16 @@ describe('describeWriteError', () => {
     [404, 50100, 'Lot introuvable.'],
     [404, 50101, 'Ferme introuvable.'],
     [404, 50102, 'Station introuvable.'],
+    [404, 50104, 'Ce code est un ancien code de lot : utilisez le code actuel.'],
     [409, 50200, 'Une ferme porte déjà ce code.'],
     [409, 50201, 'Une station porte déjà ce code.'],
     [409, 50202, 'Un lot porte déjà ce code.'],
-    [409, 50203, 'Cette station a déjà cette fonction.'],
+    [409, 50203, 'Ce code ou cette fonction existe déjà.'],
     [422, 50300, "Ce lot est déjà expédié : aucun mouvement n'est plus possible."],
     [422, 50301, "Ce mouvement n'est pas l'étape suivante du lot."],
     [422, 50302, 'La quantité dépasse la quantité actuelle du lot.'],
     [422, 50303, "Cette station n'a pas la fonction de ce mouvement."],
+    [422, 50309, 'La date de récolte ne peut pas être après le jour de la réception.'],
     [400, 50400, 'Le code ne peut pas être vide.'],
     [400, 50401, 'La quantité doit être supérieure à 0.'],
     [400, 50402, 'Type de mouvement inconnu.'],
@@ -149,6 +151,21 @@ describe('describeWriteError', () => {
 
   it('falls back on the status when the error code is unknown', () => {
     expect(describeWriteError(new ApiError({ status: 409, errorCode: 59999 })).message).toBe('Erreur 409.')
+  })
+
+  it('gives the text of the form for a code, and the general text for the other codes (lot 12b)', () => {
+    const own = { 50203: "Ce code est l'ancien code d'un autre lot." }
+
+    expect(describeWriteError(new ApiError({ status: 409, errorCode: 50203 }), own).message).toBe(
+      "Ce code est l'ancien code d'un autre lot.",
+    )
+    expect(describeWriteError(new ApiError({ status: 409, errorCode: 50202 }), own).message).toBe(
+      'Un lot porte déjà ce code.',
+    )
+    // A form that gives no text keeps the general one.
+    expect(describeWriteError(new ApiError({ status: 409, errorCode: 50203 })).message).toBe(
+      'Ce code ou cette fonction existe déjà.',
+    )
   })
 
   it('has a message for anything else', () => {

@@ -19,6 +19,7 @@ const batch = {
   status: 'SORTED',
   movements: [],
   corrections: [],
+  sheetCorrections: [],
 }
 const handlers = {
   '/batches': emptyPage,

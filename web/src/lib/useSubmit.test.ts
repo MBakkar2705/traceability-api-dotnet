@@ -53,6 +53,19 @@ describe('useSubmit', () => {
     })
   })
 
+  it('gives the text of the form for an error code when the form has one (lot 12b)', async () => {
+    const { result } = renderHook(() => useSubmit({ 50203: "Ce code est l'ancien code d'un autre lot." }))
+
+    await act(async () => {
+      await result.current.submit(() => Promise.reject(new ApiError({ status: 409, errorCode: 50203 })))
+    })
+
+    expect(result.current.state).toMatchObject({
+      status: 'error',
+      error: { message: "Ce code est l'ancien code d'un autre lot." },
+    })
+  })
+
   it('ignores a second send while the first one is running', async () => {
     const first = deferred<void>()
     const second = vi.fn(() => Promise.resolve())

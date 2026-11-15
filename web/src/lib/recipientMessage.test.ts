@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { recipientMessage } from './recipientMessage'
+import { recipientMessage, sheetRecipientMessage } from './recipientMessage'
 import type { CorrectionSummary } from './recipientMessage'
 
 const before = { stationCode: 'SITE-03', quantityKg: 470, occurredAt: '2026-10-14T17:05:00Z' }
@@ -77,6 +77,70 @@ describe('recipientMessage', () => {
       batchCode: 'LOT-1',
       movementType: 'SHIPMENT',
       before,
+      reasonCode: 'DATA_ENTRY_ERROR',
+      reasonComment: '  ',
+    }).split('\n')
+
+    expect(lines[0]).toBe('Bonjour,')
+    expect(lines.at(-1)).toBe('Cordialement')
+  })
+})
+
+const sheetBefore = { batchCode: 'LOT-1', farmCode: 'F001', variety: 'Roma', harvestDate: '2026-10-14' }
+
+describe('sheetRecipientMessage (lot 12b)', () => {
+  it('lists the corrected values and the reason with its comment', () => {
+    const text = sheetRecipientMessage({
+      before: sheetBefore,
+      after: { ...sheetBefore, variety: 'Cherry', harvestDate: '2026-10-13' },
+      reasonCode: 'OTHER',
+      reasonComment: 'Fiche recopiée du mauvais bon de livraison',
+    })
+
+    expect(text).toContain('la fiche du lot LOT-1.')
+    expect(text).toContain('Valeurs corrigées :')
+    expect(text).toContain('- Variété : Roma → Cherry')
+    expect(text).toContain('- Récolte : 14/10/2026 → 13/10/2026')
+    expect(text).not.toContain('Ferme')
+    expect(text).toContain('Motif : Autre (Fiche recopiée du mauvais bon de livraison).')
+  })
+
+  it('gives the new code only when the code changes', () => {
+    const changed = sheetRecipientMessage({
+      before: sheetBefore,
+      after: { ...sheetBefore, batchCode: 'LOT-2' },
+      reasonCode: 'DATA_ENTRY_ERROR',
+      reasonComment: '',
+    })
+    const same = sheetRecipientMessage({
+      before: sheetBefore,
+      after: { ...sheetBefore, variety: 'Cherry' },
+      reasonCode: 'DATA_ENTRY_ERROR',
+      reasonComment: '',
+    })
+
+    expect(changed).toContain('- Code : LOT-1 → LOT-2')
+    expect(changed).toContain('Le lot doit maintenant être désigné par le code LOT-2.')
+    expect(same).not.toContain('désigné')
+    expect(same).not.toContain('Code :')
+  })
+
+  it('does not list any value when nothing changed', () => {
+    const text = sheetRecipientMessage({
+      before: sheetBefore,
+      after: { ...sheetBefore },
+      reasonCode: 'DATA_ENTRY_ERROR',
+      reasonComment: '',
+    })
+
+    expect(text).not.toContain('Valeurs corrigées')
+    expect(text).toContain('Motif : Erreur de saisie.')
+  })
+
+  it('starts with a greeting and ends with a closing line', () => {
+    const lines = sheetRecipientMessage({
+      before: sheetBefore,
+      after: { ...sheetBefore, farmCode: 'F002' },
       reasonCode: 'DATA_ENTRY_ERROR',
       reasonComment: '  ',
     }).split('\n')
