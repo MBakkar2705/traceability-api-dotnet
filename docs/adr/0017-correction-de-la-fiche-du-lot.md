@@ -54,3 +54,4 @@ Négatives :
 ## Notes
 
 - 2026-11-16 : décision prise à la fin de l'essai du lot 12b ([verification.md](../verification.md), section 23). Le plan du lot a été approuvé avant l'écriture du code. Les alternatives ci-dessus ont été rédigées en écrivant ce document, aucune n'a été essayée. La visibilité du nom des auteurs, laissée ouverte par l'[ADR 0016](0016-correction-des-mouvements.md), est tranchée ici pour les mouvements et pour les corrections.
+- 2026-11-16, après la fusion : la CI est verte sur la branche, la pull request et `main` ; `006` a tourné sur la base neuve de la CI (122 tests). Elle ne rejoue toujours pas `020` ([verification.md](../verification.md), section 23, M20).
