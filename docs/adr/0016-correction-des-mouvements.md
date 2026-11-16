@@ -4,7 +4,7 @@ Statut : **Accepté** (2026-11-12)
 
 ## Contexte
 
-Un mouvement saisi peut être faux : une erreur de frappe, une balance mal tarée, un mouvement noté sur le mauvais lot. Jusqu'au lot 11, on ne pouvait rien y faire : `Movement` est un journal où l'on n'ajoute que des lignes ([ADR 0015](0015-auteur-des-mouvements.md)), et seuls `CreateBatch` et `AddMovement` y écrivent. Le lot 12a ajoute la correction des mouvements. La correction de la fiche du lot (variété, date de récolte, ferme) et de son code est le lot 12b : elle n'est pas commencée. L'essai et ses résultats sont dans [verification.md](../verification.md), section 22.
+Un mouvement saisi peut être faux : une erreur de frappe, une balance mal tarée, un mouvement noté sur le mauvais lot. Jusqu'au lot 11, on ne pouvait rien y faire : `Movement` est un journal où l'on n'ajoute que des lignes ([ADR 0015](0015-auteur-des-mouvements.md)), et seuls `CreateBatch` et `AddMovement` y écrivent. Le lot 12a ajoute la correction des mouvements. La correction de la fiche du lot (variété, date de récolte, ferme) et de son code est le lot 12b ([ADR 0017](0017-correction-de-la-fiche-du-lot.md)). L'essai et ses résultats sont dans [verification.md](../verification.md), section 22.
 
 ## Décision
 
@@ -26,7 +26,7 @@ Un mouvement saisi peut être faux : une erreur de frappe, une balance mal taré
 - **`GetBatch` renvoie trois tableaux** : le lot, ses mouvements (valeurs valables, valeurs d'origine, état annulé, nombre de corrections) et l'historique des corrections.
 - **L'interface** montre les valeurs valables avec « saisie : … » pour la valeur d'origine, les mouvements annulés barrés, l'historique des corrections avec leur auteur, et, pour le rôle `supervisor` seulement, la section « Corriger un mouvement ». Un refus de l'API qui a un code d'erreur s'affiche en français dans une alerte en haut du formulaire ; ce qui a été tapé est conservé. Seules les erreurs de forme (`fieldErrors`) s'affichent sous le champ.
 - **Le destinataire d'un lot expédié** : quand une correction est faite sur un lot qui était expédié, l'interface affiche un message en français, prêt à être copié, que le `supervisor` transmet lui-même. L'application n'envoie rien (pas de courriel), n'enregistre pas qu'un message a été transmis, et la base ne connaît pas le destinataire.
-- **Visibilité** : tous les rôles qui lisent (`reader`, `writer`, `supervisor`) voient l'historique des corrections et le nom de leur auteur, comme pour les mouvements. Aucune règle ne le cache. Ce choix sera rediscuté à la fin du lot.
+- **Visibilité** : tous les rôles qui lisent (`reader`, `writer`, `supervisor`) voient l'historique des corrections et le nom de leur auteur, comme pour les mouvements. Aucune règle ne le cache. Ce choix sera rediscuté à la fin du lot. **Remplacé au lot 12b** : seuls `auditor` et `supervisor` voient les noms (voir l'[ADR 0017](0017-correction-de-la-fiche-du-lot.md)).
 - **Migration** : `002` crée la table pour une base neuve ; `database/019_add_movement_correction.sql` met à niveau une base existante (rejouable). `005` (`ReplaceMovement`, `CancelMovement`, `GetBatch`) et `017` sont à rejouer. `019` n'a été exécuté que sur `TraceabilityTest`. La CI n'est pas modifiée.
 - **Tests** : `003` (31 tests) et `006` (88 tests) testent la table et les procédures ; 301 tests en C# et 297 tests pour l'interface. L'essai à la main avec Keycloak est en [verification.md](../verification.md), section 22 ; `database/901_trial_data_lot12a.sql` recrée les données de l'essai.
 
@@ -54,7 +54,7 @@ Négatives :
 
 - **Seule l'interface web prévient du destinataire.** Un client qui appelle l'API directement, ou un autre programme, ne reçoit aucun avertissement quand il corrige un lot expédié. C'est une conséquence de ne pas avoir de notion de destinataire dans l'API ni dans la base.
 - **Rien n'enregistre l'état du lot au moment de la correction.** Le message est calculé par l'interface d'après le statut du lot qu'elle affichait. Plus tard, rien dans la base ne dit si un lot était expédié quand il a été corrigé, et rien ne dit si le message a été transmis.
-- **Le nom de l'auteur d'une correction est visible de tous les rôles qui lisent**, y compris `reader`. Ce choix est à rediscuter à la fin du lot.
+- **Le nom de l'auteur d'une correction est visible de tous les rôles qui lisent**, y compris `reader`. Ce choix est à rediscuter à la fin du lot. **Remplacé au lot 12b** : seuls `auditor` et `supervisor` voient les noms (voir l'[ADR 0017](0017-correction-de-la-fiche-du-lot.md)).
 - **Le message est transmis à la main**, sans trace : le `supervisor` peut oublier de le faire.
 - **Le verrou n'est essayé qu'avec deux sessions SQL**, une transaction tenue ouverte à la main (L12), pas avec deux appels HTTP lancés en même temps. Le comportement sans `UPDLOCK` n'est pas essayé.
 - **`019`, et la nouvelle version de `005` et `017`, ne sont pas rejoués sur `TraceabilityDev`** : la décision d'y toucher n'est pas prise. `007` n'est jamais rejoué et `018` reste en essai à blanc (`@keep = N'NO'`).
@@ -66,3 +66,4 @@ Négatives :
 
 - 2026-11-12 : décision prise à la fin de l'essai du lot 12a ([verification.md](../verification.md), section 22). Le plan du lot a été approuvé avant l'écriture du code. Les alternatives ci-dessus ont été rédigées en écrivant ce document, aucune n'a été essayée. Le point de la visibilité du nom de l'auteur d'une correction reste ouvert.
 - 2026-11-12 (après la fusion) : la CI a été vue sur ce lot, ce qui complète la conséquence « La CI n'a pas été vue sur ce lot » : elle est verte sur la branche et sur `main` après la fusion de la pull request n° 27, après un premier échec dû au SDK 11 ([verification.md](../verification.md), L30, et [ADR 0009](0009-integration-continue-github-actions.md)). Le point sur la visibilité du nom de l'auteur d'une correction est reporté au plan du lot 12b : la correction de la fiche du lot aura aussi un auteur, et la règle sera décidée pour les deux.
+- 2026-11-16 (lot 12b) : le point sur la visibilité du nom de l'auteur est tranché par l'[ADR 0017](0017-correction-de-la-fiche-du-lot.md) : seuls `auditor` et `supervisor` voient les noms, pour les mouvements comme pour les corrections ; `reader` et `writer` reçoivent `null`.

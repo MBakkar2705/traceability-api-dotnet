@@ -10,11 +10,17 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Correction d'un mouvement** : une ligne ajoutée dans `trace.MovementCorrection` qui remplace les valeurs d'un mouvement (`REPLACE` : station, quantité, heure) ou dit qu'il n'a pas eu lieu (`CANCEL`). Elle garde son motif, son commentaire, son auteur et sa date. Ici : lot 12a, faite par un compte qui a le rôle `supervisor`.
 
+**Fiche d'un lot** : les quatre informations saisies à la création d'un lot : son code, sa ferme, sa variété et son jour de récolte. Le statut et la quantité n'en font pas partie. Ici : des colonnes de `trace.Batch`.
+
+**Correction de la fiche** : une ligne ajoutée dans `trace.BatchCorrection`, qui garde l'ancienne et la nouvelle valeur des quatre champs, le motif, le commentaire, l'auteur et la date. Le lot reçoit les nouvelles valeurs dans la même transaction. Ici : lot 12b, procédure `CorrectBatch`, rôle `supervisor` ([ADR 0017](adr/0017-correction-de-la-fiche-du-lot.md)).
+
+**Ancien code (code réservé)** : le code qu'un lot avait avant une correction. Il reste réservé à ce lot : aucun autre lot ne peut le prendre (erreur 50203), le lot lui-même peut le reprendre. Lire un lot par son ancien code le trouve ; écrire avec est refusé (50104). Ici : pour qu'une étiquette imprimée avec l'ancien code mène toujours au bon lot. Ce sont les procédures qui le garantissent, pas une contrainte de la base.
+
 **Version valable (d'un mouvement)** : les valeurs qui comptent pour un mouvement : celles du journal, remplacées par celles de sa dernière correction (la plus grande `CorrectionId`). Ici : `GetBatch` renvoie les valeurs valables, et `Original…` pour celles qui ont été saisies. Une annulation est la dernière version, définitive.
 
-**Motif de correction** : la raison donnée pour une correction : `DATA_ENTRY_ERROR` (erreur de saisie), `MEASUREMENT_ERROR` (erreur de mesure) ou `OTHER` (autre, avec un commentaire obligatoire).
+**Motif de correction** : la raison donnée pour une correction : `DATA_ENTRY_ERROR` (erreur de saisie), `MEASUREMENT_ERROR` (erreur de mesure) ou `OTHER` (autre, avec un commentaire obligatoire). Pour une fiche, `MEASUREMENT_ERROR` est refusé : une mesure ne parle pas d'un code, d'une ferme, d'une variété ou d'une date.
 
-**Message pour le destinataire** : un texte en français, affiché par l'interface après la correction d'un lot qui était expédié, que le `supervisor` copie et transmet lui-même. Ici : l'application n'envoie rien et ne garde aucune trace de la transmission ; un appel direct à l'API ne le donne pas.
+**Message pour le destinataire** : un texte en français, affiché par l'interface après la correction (d'un mouvement ou de la fiche) d'un lot qui était expédié, que le `supervisor` copie et transmet lui-même. Ici : l'application n'envoie rien et ne garde aucune trace de la transmission ; un appel direct à l'API ne le donne pas.
 
 ## Base de données
 
@@ -72,7 +78,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Verrou** : une réservation posée sur des lignes pendant qu'une transaction s'en sert. Les autres sessions qui veulent les mêmes lignes attendent. Ici : `AddMovement` réserve la ligne du lot.
 
-**`UPDLOCK`** : un verrou « je lis cette ligne pour la modifier ». Une autre session qui veut faire pareil attend ; une simple lecture n'attend pas (observé). Ici : posé par `AddMovement`, `ReplaceMovement` et `CancelMovement` (voir ADR 0003).
+**`UPDLOCK`** : un verrou « je lis cette ligne pour la modifier ». Une autre session qui veut faire pareil attend ; une simple lecture n'attend pas (observé). Ici : posé par `AddMovement`, `ReplaceMovement`, `CancelMovement` et `CorrectBatch` (voir ADR 0003).
 
 **Blocage mutuel (deadlock)** : deux sessions qui s'attendent l'une l'autre sans fin ; SQL Server en arrête une avec l'erreur 1205. Ici : pas observé, à surveiller (voir ADR 0003).
 
@@ -116,13 +122,13 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Injection de dépendances** : ASP.NET Core construit lui-même les objets dont une classe a besoin et les lui donne par son constructeur, comme dans NestJS. Ici : `FarmsController(TraceabilityDb db)` reçoit la classe d'accès aux données enregistrée dans `Program.cs`.
 
-**Contrôleur** : une classe qui reçoit les requêtes HTTP d'une ressource, avec des attributs (`[Route]`, `[HttpGet]`, `[HttpPost]`). Ici : `FarmsController` (2 routes), `StationsController` (4 routes) et `BatchesController` (6 routes).
+**Contrôleur** : une classe qui reçoit les requêtes HTTP d'une ressource, avec des attributs (`[Route]`, `[HttpGet]`, `[HttpPost]`). Ici : `FarmsController` (2 routes), `StationsController` (4 routes) et `BatchesController` (7 routes).
 
 **`DateOnly`, `DateTime` et `Kind`** : `DateOnly` est un jour sans heure ; `DateTime` est un jour et une heure, avec une indication (`Kind`) : `Utc`, `Local` (l'heure de la machine) ou `Unspecified` (rien n'est dit). Ici : la date de récolte est un `DateOnly` (`"2026-10-14"`) ; une heure sans `Z` ni décalage est refusée par l'API.
 
 **Avertissement du compilateur** : un message qui n'empêche pas de compiler, mais signale quelque chose d'anormal. Ici : `CS1573` (un paramètre sans balise `<param>` alors que les autres en ont) a été corrigé par les balises ; `CS1591` (membre public sans commentaire) est silencié (`NoWarn`) dans `Traceability.Api.csproj`, car on documente les routes et non chaque classe.
 
-**Commentaire XML (`///`) et `[ProducesResponseType]`** : les commentaires `///` au-dessus d'une action décrivent la route (`<summary>`, `<param>`, `<response>`) ; `[ProducesResponseType]` déclare chaque code de réponse possible. Le générateur OpenAPI a besoin des deux : `<response>` ne fait que décrire un code déjà déclaré. Ici : les 10 routes de Swagger UI.
+**Commentaire XML (`///`) et `[ProducesResponseType]`** : les commentaires `///` au-dessus d'une action décrivent la route (`<summary>`, `<param>`, `<response>`) ; `[ProducesResponseType]` déclare chaque code de réponse possible. Le générateur OpenAPI a besoin des deux : `<response>` ne fait que décrire un code déjà déclaré. Ici : les 13 routes de Swagger UI.
 
 ## API et tests
 
@@ -150,11 +156,11 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **xUnit : `[Fact]`, `[Theory]` et `[InlineData]`** : `[Fact]` est un test ; `[Theory]` avec des lignes `[InlineData]` est le même test répété avec plusieurs valeurs, et chaque ligne compte comme un cas. Ici : au lot 3b, les 8 tests unitaires du plan faisaient 49 cas ; avec le lot 3c, les tests unitaires font 74 cas.
 
-**Fixture de test** : un objet construit une seule fois avant les tests d'un groupe et partagé par eux. Ici : `ApiFixture` vérifie la base, vide les 6 tables de `TraceabilityTest` et lance l'API.
+**Fixture de test** : un objet construit une seule fois avant les tests d'un groupe et partagé par eux. Ici : `ApiFixture` vérifie la base, vide les 7 tables de `TraceabilityTest` et lance l'API.
 
 **CORS** : une règle appliquée par le navigateur : une page web ne peut appeler une API située à une autre adresse que si l'API l'autorise. Ici : configuré en développement seulement, pour l'interface sur `http://localhost:5173`, en `GET` et `POST` seulement, avec l'en-tête `Content-Type` (voir ADR 0007).
 
-**Casse volontaire d'un test** : on change une ligne du code pour vérifier que les tests la voient, puis on la rétablit. Ici : au lot 3b, la famille 502xx de 409 à 400 donnait 4 échecs unitaires et 3 d'intégration (4 et 5 le 2026-10-26, avec les tests ajoutés depuis : voir verification.md, section 14.12) ; le fichier rétabli a la même empreinte que l'original. Au lot 3c : 5 défauts, 4 vus par les tests, 1 non détecté (la conversion d'une heure avec décalage, sur une machine en UTC).
+**Casse volontaire d'un test** : on change une ligne du code pour vérifier que les tests la voient, puis on la rétablit. Ici : au lot 3b, la famille 502xx de 409 à 400 donnait 4 échecs unitaires et 3 d'intégration (4 et 5 le 2026-10-26, avec les tests ajoutés depuis : voir verification.md, section 14.12) ; le fichier rétabli a la même empreinte que l'original. Au lot 3c : 5 défauts, 4 vus par les tests, 1 non détecté (la conversion d'une heure avec décalage, sur une machine en UTC). Au lot 12b : trois casses (le nom de l'auteur toujours montré, la route `correct` ouverte au mauvais rôle, les colonnes d'auteur toujours affichées), vues par 2, 31 et 1 échec (voir [verification.md](verification.md), section 23, M19).
 
 **Validation de forme** : l'API vérifie qu'une requête est bien formée avant d'appeler la base (champ présent, longueur, caractères, heure en UTC) et répond 400 sans `errorCode`. Les règles métier restent dans les procédures et répondent avec un `errorCode`. Ici : `FieldErrors`, `FieldLimits` et `CodeRules`.
 
@@ -168,7 +174,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Délai d'attente (timeout) d'une commande SQL** : le temps maximal qu'un programme accepte d'attendre la réponse de SQL Server ; passé ce délai, la commande est abandonnée et une erreur est levée (numéro -2 dans la `SqlException`). Ici : notre code n'en fixe aucun, c'est donc la valeur par défaut du pilote (30 secondes d'après la documentation de Microsoft sur `SqlCommand.CommandTimeout`) ; observé 3 fois sur 7 essais sur la dernière page de `GET /batches` (30,15 s mesuré pour l'un d'eux) (voir verification.md, section 11.3).
 
-**Programme compilé périmé** : `dotnet` ne recompile un projet que si un fichier source est plus récent que le programme déjà compilé. Ici : après avoir remis un fichier par copie, qui avait gardé son ancienne date, les tests ont tourné sur l'ancien programme et 4 d'entre eux ont échoué à tort ; mettre la date à jour a suffi (voir verification.md, section 11.2).
+**Programme compilé périmé** : `dotnet` ne recompile un projet que si un fichier source est plus récent que le programme déjà compilé. Ici : après avoir remis un fichier par copie, qui avait gardé son ancienne date, les tests ont tourné sur l'ancien programme et 4 d'entre eux ont échoué à tort ; mettre la date à jour a suffi (voir verification.md, section 11.2). Revu au lot 12b : après une remise à l'identique faite avec `cp -p`, qui garde l'ancienne date, 2 tests échouaient encore ; `touch`, puis une copie simple, ont réglé le cas (voir [verification.md](verification.md), section 23, M19).
 
 ## Interface web
 
@@ -250,7 +256,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Jeton de rafraîchissement (refresh token)** : un second jeton, plus durable, qui sert seulement à demander un nouveau jeton d'accès sans redemander le mot de passe. Ici : l'interface renouvelle son jeton d'accès toutes les 4 minutes environ par un appel à `/token` ; que cet appel utilise un jeton de rafraîchissement est déduit, pas lu ([verification.md](verification.md) 20.3).
 
-**Rôle** : un nom qui résume des droits, attribué à des comptes. Ici : `reader` (consulter), `writer` (saisir des mouvements) et `supervisor` (consulter et corriger, sans saisir). Dans le jeton, ils sont listés dans `realm_access.roles`.
+**Rôle** : un nom qui résume des droits, attribué à des comptes. Ici : `reader` (consulter), `writer` (saisir des mouvements), `supervisor` (consulter et corriger, sans saisir) et `auditor` (consulter seulement, avec les noms des auteurs). Dans le jeton, ils sont listés dans `realm_access.roles`.
 
 **Jeton d'accès (JWT)** : une chaîne que le serveur délivre après la connexion et que l'API reçoit à chaque appel. Elle a trois parties séparées par des points ; celle du milieu est du JSON codé en base64url (et donc lisible : un jeton brut ne se colle jamais dans un message). Ici : durée de 300 secondes (`exp` moins `iat`), `iss` pour l'émetteur, `aud` pour le public visé, `azp` pour le client demandeur. Depuis le lot 10b, l'API en vérifie la signature, `iss`, `exp` et `aud`.
 
@@ -264,7 +270,9 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **401 et 403** : 401 veut dire « pas identifié » (pas de jeton, jeton invalide, expiré ou pour un autre public visé) ; 403 veut dire « identifié, mais pas le droit ». Ici : un `reader` qui fait un `POST` reçoit 403, un appel sans jeton reçoit 401.
 
-**Règle d'autorisation (policy)** : un nom qui regroupe une condition d'accès, posé sur une route avec `[Authorize(Policy = …)]`. Ici : `CanRead` (rôle `reader`, `writer` ou `supervisor`) sur les 5 routes `GET`, `CanWrite` (rôle `writer`) sur les 5 routes `POST` qui créent ou saisissent, `CanCorrect` (rôle `supervisor`) sur les 2 routes `POST` de correction (`replace` et `cancel`).
+**Règle d'autorisation (policy)** : un nom qui regroupe une condition d'accès, posé sur une route avec `[Authorize(Policy = …)]`. Ici : `CanRead` (rôle `reader`, `writer`, `supervisor` ou `auditor`) sur les 5 routes `GET`, `CanWrite` (rôle `writer`) sur les 5 routes `POST` qui créent ou saisissent, `CanCorrect` (rôle `supervisor`) sur les 3 routes `POST` de correction (`replace`, `cancel` et `correct`). `CanSeeAuthors` (rôle `auditor` ou `supervisor`) n'est la règle d'aucune route : le contrôleur l'évalue pour choisir entre le nom et `null`.
+
+**Masquer un champ selon le rôle** : l'API renvoie un champ à `null` pour certains rôles au lieu de refuser la route. Ici : `authorName` n'est donné qu'à `auditor` et `supervisor` ; `reader` et `writer` reçoivent `null`, et l'interface cache alors les colonnes d'auteur. `authorId` n'est jamais renvoyé.
 
 **Mode développement (`start-dev`)** : un démarrage de Keycloak pratique pour essayer (HTTP, base intégrée H2, réglages permissifs) mais que Keycloak déconseille en production, ce qu'il écrit lui-même dans son journal. Ici : le seul mode essayé.
 
