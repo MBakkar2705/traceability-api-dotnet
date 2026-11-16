@@ -79,9 +79,11 @@ public class CorrectionsTests(ApiFixture api)
         return (station, batch);
     }
 
-    private async Task<JsonElement> GetBatchJsonAsync(string batchCode)
+    // With no client given, the writer reads. A writer gets authorName null: the names of the authors
+    // are given to the auditor and the supervisor only (lot 12b).
+    private async Task<JsonElement> GetBatchJsonAsync(string batchCode, HttpClient? client = null)
     {
-        var response = await Writer.GetAsync($"/batches/{batchCode}");
+        var response = await (client ?? Writer).GetAsync($"/batches/{batchCode}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return await TestData.ReadJsonAsync(response);
     }
@@ -163,7 +165,8 @@ public class CorrectionsTests(ApiFixture api)
         Assert.EndsWith($"/batches/{batchCode}", response.Headers.Location.ToString());
         Assert.Equal("", await response.Content.ReadAsStringAsync());
 
-        var after = await GetBatchJsonAsync(batchCode);
+        // Read by the supervisor, who sees the names of the authors.
+        var after = await GetBatchJsonAsync(batchCode, supervisor);
 
         // The valid values are the corrected ones, the original values are still there.
         var sorting = Movement(after, "SORTING");
@@ -240,7 +243,7 @@ public class CorrectionsTests(ApiFixture api)
         Assert.Equal(HttpStatusCode.Created, (await ReplaceAsync(first, batchCode, sortingId, station, 478m)).StatusCode);
         Assert.Equal(HttpStatusCode.Created, (await ReplaceAsync(second, batchCode, sortingId, station, 475m)).StatusCode);
 
-        var batch = await GetBatchJsonAsync(batchCode);
+        var batch = await GetBatchJsonAsync(batchCode, first);
         var names = batch.GetProperty("corrections").EnumerateArray()
             .Select(c => c.GetProperty("authorName").GetString())
             .ToList();

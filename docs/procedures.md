@@ -1,6 +1,6 @@
 # Procédures stockées
 
-Ce document décrit ce que les 12 procédures du schéma `trace` doivent faire : leurs paramètres, leurs contrôles et leurs erreurs. C'est le contrat sur lequel s'appuient les scripts, les tests et l'API.
+Ce document décrit ce que les 13 procédures du schéma `trace` doivent faire : leurs paramètres, leurs contrôles et leurs erreurs. C'est le contrat sur lequel s'appuient les scripts, les tests et l'API.
 
 Les règles métier sont dans [fonctionnel.md](fonctionnel.md), le modèle dans [modele-de-donnees.md](modele-de-donnees.md). L'avancement est dans le [README](../README.md) ; les preuves observées sont dans [verification.md](verification.md).
 
@@ -17,7 +17,7 @@ Les règles métier sont dans [fonctionnel.md](fonctionnel.md), le modèle dans 
 - **Corrections** (lot 12a) : `ReplaceMovement` et `CancelMovement` n'écrivent jamais dans `trace.Movement` : elles ajoutent une ligne à `trace.MovementCorrection`. Elles reçoivent l'auteur comme `AddMovement` (mêmes contrôles 50405 et 50406) et prennent le même verrou sur le lot. Voir l'[ADR 0016](adr/0016-correction-des-mouvements.md).
 - **Appels par nom de paramètre** (`@BatchCode = ...`).
 
-## 2. Les 12 procédures
+## 2. Les 13 procédures
 
 | Procédure | Rôle |
 |---|---|
@@ -26,13 +26,14 @@ Les règles métier sont dans [fonctionnel.md](fonctionnel.md), le modèle dans 
 | `trace.AddStationCapability` | Déclare une fonction pour une station. |
 | `trace.CreateBatch` | Crée un lot et son premier mouvement `RECEPTION`. |
 | `trace.AddMovement` | Ajoute le mouvement suivant d'un lot et met le lot à jour. |
-| `trace.GetBatch` | Donne un lot avec son parcours et l'historique de ses corrections. |
+| `trace.GetBatch` | Donne un lot avec son parcours, l'historique de ses corrections et celui des corrections de sa fiche ; il est cherché par son code actuel ou par un ancien code (lot 12b). |
 | `trace.ListBatches` | Liste les lots, par statut et/ou par ferme, une page à la fois, avec leur nombre total. |
 | `trace.ListFarms` | Liste les fermes, une page à la fois, avec leur nombre total. |
 | `trace.ListStations` | Liste les stations, une page à la fois, avec leur nombre total. |
 | `trace.GetStation` | Donne une station avec ses fonctions. |
 | `trace.ReplaceMovement` | Corrige un mouvement : lui donne une nouvelle station, une nouvelle quantité et une nouvelle heure (lot 12a). |
 | `trace.CancelMovement` | Dit qu'un mouvement n'a pas eu lieu (lot 12a). |
+| `trace.CorrectBatch` | Corrige la fiche d'un lot : son code, sa ferme, sa variété et son jour de récolte, en gardant les anciennes valeurs (lot 12b). |
 
 Les trois dernières (`ListFarms`, `ListStations`, `GetStation`) ont été ajoutées au lot 3a (script `011`), pour que l'API puisse lister les fermes et les stations et lire une station avec ses fonctions.
 
@@ -85,7 +86,9 @@ Contrôles, dans cet ordre :
 5. ferme existante : sinon 50101 ;
 6. station existante : sinon 50102 ;
 7. code du lot pas déjà pris : sinon 50202 ;
-8. la station a la fonction `RECEPTION` : sinon 50303.
+8. code du lot qui n'est pas l'ancien code d'un autre lot : sinon 50203 ;
+9. la station a la fonction `RECEPTION` : sinon 50303 ;
+10. jour de récolte pas après le jour de la réception (le même jour est accepté) : sinon 50309.
 
 Résultat : aucun. Si un contrôle échoue, aucun lot et aucun mouvement ne sont créés.
 
@@ -110,7 +113,7 @@ Contrôles, dans cet ordre (le premier qui échoue donne l'erreur) :
 2. auteur assez court pour les colonnes : sinon 50406 ;
 3. quantité supérieure à 0 : sinon 50401 ;
 4. type de mouvement connu : sinon 50402 ;
-5. lot existant (il est lu et verrouillé ici) : sinon 50100 ;
+5. lot existant (il est lu et verrouillé ici) : sinon 50100 ; si le code donné est un ancien code d'un lot corrigé : 50104 (le message dit le code actuel) ;
 6. station existante : sinon 50102 ;
 7. lot pas déjà `SHIPPED` : sinon 50300 ;
 8. le type est bien l'étape suivante : sinon 50301 ;
@@ -123,13 +126,16 @@ Résultat : aucun. Si un contrôle échoue, ni le journal ni le lot ne changent.
 
 Paramètre : `@BatchCode NVARCHAR(30)`.
 
-Erreur : lot inexistant, 50100.
+Le lot est cherché par son code actuel, sinon par un ancien code (lot 12b) ; la réponse porte alors le code actuel. Erreur : code inconnu (ni actuel, ni ancien), 50100.
 
-Résultat, en trois tableaux (le troisième depuis le lot 12a) :
+Résultat, en quatre tableaux (le troisième depuis le lot 12a, le quatrième depuis le lot 12b) :
 
 1. le lot : `BatchCode`, `FarmCode`, `Variety`, `HarvestDate`, `QuantityKg`, `Status` ;
 2. son parcours dans l'ordre d'enregistrement (par `MovementId`), mouvements annulés compris : `MovementId`, `MovementType`, `StationCode`, `QuantityKg`, `OccurredAt`, `AuthorName`, puis `IsCancelled`, `CorrectionCount` et les valeurs d'origine (`OriginalStationCode`, `OriginalQuantityKg`, `OriginalOccurredAt`). `StationCode`, `QuantityKg` et `OccurredAt` sont les valeurs **valables** (la dernière correction appliquée) ; les colonnes `Original…` sont les valeurs saisies. Le nom de l'auteur est celui de la saisie ; son identifiant n'est jamais renvoyé ;
-3. les corrections des mouvements du lot, dans l'ordre où elles ont été faites (par `CorrectionId`) : `CorrectionId`, `MovementId`, `Kind`, `MovementType`, `StationCode`, `QuantityKg`, `OccurredAt`, `ReasonCode`, `ReasonComment`, `AuthorName`, `CorrectedAt`. Ce tableau est vide si rien n'a été corrigé.
+3. les corrections des mouvements du lot, dans l'ordre où elles ont été faites (par `CorrectionId`) : `CorrectionId`, `MovementId`, `Kind`, `MovementType`, `StationCode`, `QuantityKg`, `OccurredAt`, `ReasonCode`, `ReasonComment`, `AuthorName`, `CorrectedAt`. Ce tableau est vide si rien n'a été corrigé ;
+4. les corrections de la fiche du lot, dans l'ordre où elles ont été faites (par `CorrectionId`) : `CorrectionId`, `OldBatchCode`, `NewBatchCode`, `OldFarmCode`, `NewFarmCode`, `OldVariety`, `NewVariety`, `OldHarvestDate`, `NewHarvestDate`, `ReasonCode`, `ReasonComment`, `AuthorName`, `CorrectedAt`. Ce tableau est vide si la fiche n'a jamais été corrigée.
+
+La procédure renvoie toujours les noms des auteurs ; c'est l'API qui ne les montre qu'à `auditor` et `supervisor` ([ADR 0017](adr/0017-correction-de-la-fiche-du-lot.md)).
 
 ### 2.7 `trace.ListBatches`
 
@@ -197,12 +203,13 @@ Contrôles, dans cet ordre (le premier qui échoue donne l'erreur) :
 2. quantité supérieure à 0 : sinon 50401 ;
 3. motif connu (`DATA_ENTRY_ERROR`, `MEASUREMENT_ERROR`, `OTHER`) : sinon 50407 ;
 4. commentaire d'au plus 500 caractères : sinon 50409 ; commentaire non vide pour `OTHER` : sinon 50408 ;
-5. lot existant : sinon 50100 ; station existante : sinon 50102 ;
+5. lot existant : sinon 50100 (un ancien code d'un lot corrigé : 50104) ; station existante : sinon 50102 ;
 6. le mouvement appartient à ce lot : sinon 50103 ;
 7. le mouvement n'est pas annulé : sinon 50305 ;
 8. la station a la fonction du mouvement : sinon 50303 ;
 9. la quantité est entre celle de l'étape valable précédente (maximum) et celle de l'étape valable suivante (minimum) : sinon 50304. L'égalité est acceptée. La réception n'a pas d'étape précédente, la dernière étape n'a pas d'étape suivante ;
-10. les valeurs ne sont pas toutes identiques aux valeurs valables actuelles (station, quantité et heure) : sinon 50308.
+10. si le mouvement est la réception, le jour de sa nouvelle heure n'est pas avant le jour de récolte du lot (le même jour est accepté) : sinon 50309 ;
+11. les valeurs ne sont pas toutes identiques aux valeurs valables actuelles (station, quantité et heure) : sinon 50308.
 
 Résultat : aucun. Si un contrôle échoue, rien ne change. L'heure n'est pas contrôlée (voir section 5).
 
@@ -212,7 +219,28 @@ Dit qu'un mouvement n'a pas eu lieu : une ligne `CANCEL` est ajoutée à `trace.
 
 Paramètres : `@BatchCode NVARCHAR(30)`, `@MovementId BIGINT`, `@ReasonCode NVARCHAR(50)`, `@ReasonComment NVARCHAR(2000)`, `@AuthorId NVARCHAR(200)`, `@AuthorName NVARCHAR(200)`.
 
-Contrôles, dans cet ordre : auteur (50405, 50406), motif (50407), commentaire (50409, 50408), lot existant (50100), mouvement du lot (50103), mouvement pas déjà annulé (50305), pas la réception (50307), dernier mouvement valable du lot (50306).
+Contrôles, dans cet ordre : auteur (50405, 50406), motif (50407), commentaire (50409, 50408), lot existant (50100 ; un ancien code d'un lot corrigé : 50104), mouvement du lot (50103), mouvement pas déjà annulé (50305), pas la réception (50307), dernier mouvement valable du lot (50306).
+
+Résultat : aucun. Si un contrôle échoue, rien ne change.
+
+### 2.13 `trace.CorrectBatch`
+
+Corrige la fiche d'un lot : son code, sa ferme, sa variété et son jour de récolte (lot 12b, [ADR 0017](adr/0017-correction-de-la-fiche-du-lot.md)). Les quatre nouvelles valeurs sont toujours données (un champ qui ne change pas répète sa valeur actuelle). Une ligne est ajoutée à `trace.BatchCorrection` et `trace.Batch` reçoit les nouvelles valeurs, dans la même transaction, sous le verrou de l'[ADR 0003](adr/0003-verrou-sur-le-lot.md). Le statut et la quantité du lot ne changent jamais, et un lot expédié peut être corrigé. Le lot est cherché par son code **actuel**.
+
+Paramètres : `@BatchCode NVARCHAR(30)`, `@NewBatchCode NVARCHAR(30)`, `@FarmCode NVARCHAR(20)`, `@Variety NVARCHAR(50)`, `@HarvestDate DATE`, `@ReasonCode NVARCHAR(50)`, `@ReasonComment NVARCHAR(2000)`, `@AuthorId NVARCHAR(200)`, `@AuthorName NVARCHAR(200)`.
+
+Contrôles, dans cet ordre (le premier qui échoue donne l'erreur) :
+
+1. auteur donné : sinon 50405 ; auteur assez court : sinon 50406 ;
+2. motif accepté pour une fiche (`DATA_ENTRY_ERROR` ou `OTHER`) : sinon 50407 ;
+3. commentaire d'au plus 500 caractères : sinon 50409 ;
+4. commentaire non vide pour `OTHER` : sinon 50408 ;
+5. nouveau code non vide : sinon 50400 ;
+6. lot existant sous son code actuel : sinon 50100 ; si le code donné est un ancien code d'un lot corrigé : 50104 ;
+7. ferme existante : sinon 50101 ;
+8. nouveau code libre : pas le code actuel d'un autre lot (50202), pas l'ancien code d'un autre lot (50203). Les codes du lot lui-même, actuel ou anciens, sont acceptés : un lot peut reprendre un code qu'il a eu ;
+9. jour de récolte pas après le jour de la réception valable du lot (le même jour est accepté ; un lot sans réception n'est pas contrôlé) : sinon 50309 ;
+10. au moins une des quatre valeurs change : sinon 50308. Les codes et la variété sont comparés avec un classement binaire : un changement de casse seul compte comme un changement.
 
 Résultat : aucun. Si un contrôle échoue, rien ne change.
 
@@ -237,14 +265,16 @@ Les numéros de 50000 à 50099 sont réservés aux gardes des scripts. Les scrip
 
 | N° | Famille | Sens | Message (anglais, exemple) | Levée par |
 |---|---|---|---|---|
-| 50100 | Introuvable | Lot | `Batch 'LOT-1' was not found.` | `AddMovement`, `GetBatch`, `ReplaceMovement`, `CancelMovement` |
-| 50101 | Introuvable | Ferme | `Farm 'F99' was not found.` | `CreateBatch`, `ListBatches` |
+| 50100 | Introuvable | Lot | `Batch 'LOT-1' was not found.` | `AddMovement`, `GetBatch`, `ReplaceMovement`, `CancelMovement`, `CorrectBatch` |
+| 50101 | Introuvable | Ferme | `Farm 'F99' was not found.` | `CreateBatch`, `ListBatches`, `CorrectBatch` |
 | 50102 | Introuvable | Station | `Station 'X' was not found.` | `AddStationCapability`, `CreateBatch`, `AddMovement`, `GetStation`, `ReplaceMovement` |
 | 50103 | Introuvable | Mouvement qui n'est pas dans ce lot | `Movement 12 was not found in batch 'LOT-1'.` | `ReplaceMovement`, `CancelMovement` |
+| 50104 | Introuvable | Ancien code d'un lot corrigé, utilisé pour écrire | `Batch code 'LOT-1' was replaced by 'LOT-1B'.` | `AddMovement`, `ReplaceMovement`, `CancelMovement`, `CorrectBatch` |
 | 50200 | Existe déjà | Code de ferme | `Farm code 'F01' already exists.` | `CreateFarm` |
 | 50201 | Existe déjà | Code de station | `Station code 'SITE-01' already exists.` | `CreateStation` |
-| 50202 | Existe déjà | Code de lot | `Batch code 'LOT-1' already exists.` | `CreateBatch` |
+| 50202 | Existe déjà | Code de lot | `Batch code 'LOT-1' already exists.` | `CreateBatch`, `CorrectBatch` |
 | 50203 | Existe déjà | Fonction déjà déclarée | `Station 'SITE-01' already has the function 'SORTING'.` | `AddStationCapability` |
+| 50203 | Existe déjà | Code qui est l'ancien code d'un autre lot | `Batch code 'LOT-1' is the old code of another batch.` | `CreateBatch`, `CorrectBatch` |
 | 50300 | Règle métier | Lot déjà expédié | `Batch 'LOT-1' is already SHIPPED: no new movement.` | `AddMovement` |
 | 50301 | Règle métier | Étape sautée ou mauvaise | `Batch 'LOT-1' is RECEIVED: the next movement must be SORTING, not PACKING.` | `AddMovement` |
 | 50302 | Règle métier | Quantité qui monte | `Quantity 520.00 is higher than the current quantity 500.00.` | `AddMovement` |
@@ -253,17 +283,18 @@ Les numéros de 50000 à 50099 sont réservés aux gardes des scripts. Les scrip
 | 50305 | Règle métier | Mouvement annulé : plus de correction | `Movement 12 is cancelled: it can no longer be corrected.` | `ReplaceMovement`, `CancelMovement` |
 | 50306 | Règle métier | Annulation d'un mouvement qui n'est pas le dernier valable | `Only the last valid movement of a batch can be cancelled.` | `CancelMovement` |
 | 50307 | Règle métier | Annulation de la réception | `The RECEPTION of a batch cannot be cancelled.` | `CancelMovement` |
-| 50308 | Règle métier | Valeurs identiques : rien à corriger | `The new values are the same as the current ones: nothing to correct.` | `ReplaceMovement` |
-| 50400 | Valeur invalide | Code vide | `The code must not be empty.` | `CreateFarm`, `CreateStation`, `CreateBatch` |
+| 50308 | Règle métier | Valeurs identiques : rien à corriger | `The new values are the same as the current ones: nothing to correct.` | `ReplaceMovement`, `CorrectBatch` |
+| 50309 | Règle métier | Jour de récolte après le jour de la réception | `The harvest date 2026-11-12 is after the reception date 2026-11-10.` | `CreateBatch`, `ReplaceMovement`, `CorrectBatch` |
+| 50400 | Valeur invalide | Code vide | `The code must not be empty.` | `CreateFarm`, `CreateStation`, `CreateBatch`, `CorrectBatch` |
 | 50401 | Valeur invalide | Quantité à 0 ou négative | `The quantity must be greater than 0.` | `CreateBatch`, `AddMovement`, `ReplaceMovement` |
 | 50402 | Valeur invalide | Type de mouvement inconnu | `Unknown movement type 'LOST'.` | `AddStationCapability`, `AddMovement` |
 | 50403 | Valeur invalide | Statut inconnu | `Unknown status 'LOST'.` | `ListBatches` |
 | 50404 | Valeur invalide | Page ou taille de page invalide | `Invalid page number or page size.` | `ListBatches`, `ListFarms`, `ListStations` |
-| 50405 | Valeur invalide | Auteur vide | `The author must not be empty.` | `CreateBatch`, `AddMovement`, `ReplaceMovement`, `CancelMovement` |
-| 50406 | Valeur invalide | Identifiant ou nom de l'auteur trop long | `The author identifier or name is too long.` | `CreateBatch`, `AddMovement`, `ReplaceMovement`, `CancelMovement` |
-| 50407 | Valeur invalide | Motif de correction inconnu | `Unknown reason code 'X'.` | `ReplaceMovement`, `CancelMovement` |
-| 50408 | Valeur invalide | Motif `OTHER` sans commentaire | `The reason OTHER needs a comment.` | `ReplaceMovement`, `CancelMovement` |
-| 50409 | Valeur invalide | Commentaire de plus de 500 caractères | `The comment is too long (500 characters at most).` | `ReplaceMovement`, `CancelMovement` |
+| 50405 | Valeur invalide | Auteur vide | `The author must not be empty.` | `CreateBatch`, `AddMovement`, `ReplaceMovement`, `CancelMovement`, `CorrectBatch` |
+| 50406 | Valeur invalide | Identifiant ou nom de l'auteur trop long | `The author identifier or name is too long.` | `CreateBatch`, `AddMovement`, `ReplaceMovement`, `CancelMovement`, `CorrectBatch` |
+| 50407 | Valeur invalide | Motif de correction inconnu (ou refusé pour une fiche : `MEASUREMENT_ERROR`) | `Unknown reason code 'X'.` | `ReplaceMovement`, `CancelMovement`, `CorrectBatch` |
+| 50408 | Valeur invalide | Motif `OTHER` sans commentaire | `The reason OTHER needs a comment.` | `ReplaceMovement`, `CancelMovement`, `CorrectBatch` |
+| 50409 | Valeur invalide | Commentaire de plus de 500 caractères | `The comment is too long (500 characters at most).` | `ReplaceMovement`, `CancelMovement`, `CorrectBatch` |
 
 Les familles permettront à l'API de répondre sans connaître chaque règle : 501xx introuvable, 502xx existe déjà, 503xx règle métier violée, 504xx valeur invalide.
 
@@ -274,9 +305,10 @@ Les familles permettront à l'API de répondre sans connaître chaque règle : 5
 - **Deux créations simultanées avec le même code** (`CreateFarm`, `CreateStation`, `CreateBatch`) : le verrou de l'ADR 0003 ne peut pas aider (il n'y a pas encore de ligne). La contrainte d'unicité du lot 1 refuse la seconde, avec l'erreur SQL Server habituelle et non la 50200, la 50201 ou la 50202.
 - **Le verrou ne protège que les appels passés par la procédure.** Une écriture directe dans les tables le contourne.
 - **Pas de délai d'attente** sur le verrou : un appel attend aussi longtemps que l'autre n'a pas terminé.
-- **`GetBatch` lit le lot, son parcours puis ses corrections en trois requêtes**, sans verrou : si un mouvement est ajouté ou corrigé entre les lectures, les tableaux peuvent ne pas correspondre.
+- **`GetBatch` lit le lot, son parcours, ses corrections puis les corrections de sa fiche en quatre requêtes**, sans verrou : si un mouvement est ajouté ou corrigé entre les lectures, les tableaux peuvent ne pas correspondre.
 - **`AddMovement` appelée dans une transaction de l'appelant** : son `COMMIT` ne valide rien, le verrou et la modification restent jusqu'au `COMMIT` de l'appelant (observé pendant la preuve de l'ADR 0003). En cas d'erreur, la procédure exécute `ROLLBACK` : d'après le code, cela annule aussi le travail de l'appelant (non testé).
 - **L'auteur est pris tel quel**, pour les mouvements comme pour les corrections. Les procédures contrôlent qu'il est donné et qu'il tient dans les colonnes (50405, 50406), pas qu'il correspond à un compte réel : un appel direct à une procédure peut enregistrer n'importe quel auteur. C'est l'API qui le lit dans le jeton validé.
+- **Corrections de la fiche** (lot 12b) : deux lots qui prennent le même ancien code au même instant ne sont protégés par aucune contrainte, et ce cas n'est pas testé ; le test de concurrence ne couvre que deux corrections vers le même nouveau code, avec un faux jeton ([ADR 0017](adr/0017-correction-de-la-fiche-du-lot.md)). Une variété avec des espaces au début ou à la fin est enregistrée telle quelle.
 - **Pas de modification ni de suppression** de fermes et de stations.
 - **`ListFarms`, `ListStations`, `ListBatches` et `GetStation` lisent en deux requêtes, sans verrou** (la page puis le total, la station puis ses fonctions) : si une ligne est ajoutée entre les deux lectures, les deux tableaux peuvent ne pas correspondre. Même principe que `GetBatch`.
 - **`ListFarms` et `ListStations` ne sont pas mesurées** sur un grand volume : `TraceabilityDev` ne compte que 200 fermes et 30 stations. Le coût de leur tri et de leur total n'est pas connu.

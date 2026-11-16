@@ -51,3 +51,14 @@ public sealed record ReplaceMovementRequest(
 /// <param name="ReasonCode">DATA_ENTRY_ERROR, MEASUREMENT_ERROR or OTHER (upper or lower case).</param>
 /// <param name="ReasonComment">Free comment, at most 500 characters. Required when the reason is OTHER, optional otherwise.</param>
 public sealed record CancelMovementRequest(string? ReasonCode, string? ReasonComment);
+
+/// <summary>The body of POST /batches/{batchCode}/correct.</summary>
+/// <param name="NewBatchCode">Code of the batch after the correction: letters A-Z, digits, '-' and '_', at most 30 characters. Give the current code again if it does not change.</param>
+/// <param name="FarmCode">Code of the farm after the correction, at most 20 characters. Give the current one again if it does not change.</param>
+/// <param name="Variety">Tomato variety after the correction, at most 50 characters. Give the current one again if it does not change.</param>
+/// <param name="HarvestDate">Harvest day after the correction, written like 2026-10-14 (a day, no time). It must not be after the day of the reception.</param>
+/// <param name="ReasonCode">DATA_ENTRY_ERROR or OTHER (upper or lower case). MEASUREMENT_ERROR is not accepted for a sheet.</param>
+/// <param name="ReasonComment">Free comment, at most 500 characters. Required when the reason is OTHER, optional otherwise.</param>
+public sealed record CorrectBatchRequest(
+    string? NewBatchCode, string? FarmCode, string? Variety, DateOnly? HarvestDate,
+    string? ReasonCode, string? ReasonComment);

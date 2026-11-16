@@ -17,11 +17,15 @@ const MESSAGE_BY_CODE: Record<number, string> = {
   50101: 'Ferme introuvable.',
   50102: 'Station introuvable.',
   50103: "Ce mouvement n'appartient pas à ce lot.",
+  // Lot 12b: the batch was written with a code that is no longer its current code.
+  50104: 'Ce code est un ancien code de lot : utilisez le code actuel.',
   // Already exists (writes).
   50200: 'Une ferme porte déjà ce code.',
   50201: 'Une station porte déjà ce code.',
   50202: 'Un lot porte déjà ce code.',
-  50203: 'Cette station a déjà cette fonction.',
+  // Two meanings: a station already has the function, or (lot 12b) a code is the old code of another
+  // batch. This general text fits both; each form gives its own (see CodeMessages).
+  50203: 'Ce code ou cette fonction existe déjà.',
   // A business rule is broken (writes).
   50300: "Ce lot est déjà expédié : aucun mouvement n'est plus possible.",
   50301: "Ce mouvement n'est pas l'étape suivante du lot.",
@@ -33,6 +37,9 @@ const MESSAGE_BY_CODE: Record<number, string> = {
   50306: "Seul le dernier mouvement valable d'un lot peut être annulé.",
   50307: "La réception d'un lot ne peut pas être annulée.",
   50308: 'Les nouvelles valeurs sont identiques aux valeurs actuelles : rien à corriger.',
+  // Lot 12b: the harvest day and the reception day of a batch (both ways: a harvest after the
+  // reception, or a reception moved before the harvest).
+  50309: 'La date de récolte ne peut pas être après le jour de la réception.',
   // A value is not valid.
   50400: 'Le code ne peut pas être vide.',
   50401: 'La quantité doit être supérieure à 0.',
@@ -46,13 +53,28 @@ const MESSAGE_BY_CODE: Record<number, string> = {
   50409: 'Le commentaire est trop long (500 caractères au plus).',
 }
 
-export function describeError(error: unknown): ErrorMessage {
+// The texts that ONE form gives to some error codes, instead of the general ones above (lot 12b).
+// The code 50203 means "this station already has this function" for a station and "this code is the
+// old code of another batch" for a batch: the general text cannot say both exactly.
+export type CodeMessages = Record<number, string>
+
+function messageForCode(errorCode: number | undefined, own: CodeMessages): string | undefined {
+  if (errorCode === undefined) {
+    return undefined
+  }
+  if (Object.hasOwn(own, errorCode)) {
+    return own[errorCode]
+  }
+  return Object.hasOwn(MESSAGE_BY_CODE, errorCode) ? MESSAGE_BY_CODE[errorCode] : undefined
+}
+
+export function describeError(error: unknown, own: CodeMessages = {}): ErrorMessage {
   if (error instanceof NetworkError) {
     return { message: "Impossible de joindre l'API. Est-elle lancée ?" }
   }
 
   if (error instanceof ApiError) {
-    const byCode = error.errorCode === undefined ? undefined : MESSAGE_BY_CODE[error.errorCode]
+    const byCode = messageForCode(error.errorCode, own)
     if (byCode) {
       return { message: byCode }
     }
@@ -120,7 +142,7 @@ function translateFieldErrors(fieldErrors: Record<string, string[]> | undefined)
   return result
 }
 
-export function describeWriteError(error: unknown): WriteErrorMessage {
+export function describeWriteError(error: unknown, own: CodeMessages = {}): WriteErrorMessage {
   if (error instanceof NetworkError) {
     // The request may have reached the API: with no answer, we cannot know if the data was saved.
     return {
@@ -131,13 +153,12 @@ export function describeWriteError(error: unknown): WriteErrorMessage {
   }
 
   if (error instanceof ApiError && error.status === 400) {
-    const knownCode = error.errorCode !== undefined && Object.hasOwn(MESSAGE_BY_CODE, error.errorCode)
-    if (!knownCode) {
+    if (messageForCode(error.errorCode, own) === undefined) {
       const fieldMessages = translateFieldErrors(error.fieldErrors)
       const hasFields = Object.keys(fieldMessages).length > 0
       return { message: hasFields ? 'Certains champs sont invalides.' : 'Requête invalide.', fieldMessages }
     }
   }
 
-  return { ...describeError(error), fieldMessages: {} }
+  return { ...describeError(error, own), fieldMessages: {} }
 }

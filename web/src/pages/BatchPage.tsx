@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, Navigate, useNavigate, useParams } from 'react-router'
 import { getBatch } from '../api/client'
-import type { Correction, Movement } from '../api/types'
+import type { Correction, Movement, SheetCorrection } from '../api/types'
 import AddMovementForm from '../components/AddMovementForm'
 import BackLink from '../components/BackLink'
 import type { Column } from '../components/column'
@@ -14,14 +14,16 @@ import ListCard from '../components/ListCard'
 import Loading from '../components/Loading'
 import PageTitle from '../components/PageTitle'
 import RecipientMessage from '../components/RecipientMessage'
+import SheetCorrectionForm from '../components/SheetCorrectionForm'
 import StatusBadge from '../components/StatusBadge'
 import SuccessMessage from '../components/SuccessMessage'
 import SupervisorOnly from '../components/SupervisorOnly'
 import WriterOnly from '../components/WriterOnly'
 import { formatDate, formatKg, formatUtc } from '../lib/format'
 import { authorLabel, correctionKindLabel, movementLabel, reasonLabel } from '../lib/labels'
-import { recipientMessage } from '../lib/recipientMessage'
-import type { CorrectionSummary } from '../lib/recipientMessage'
+import { recipientMessage, sheetRecipientMessage } from '../lib/recipientMessage'
+import type { CorrectionSummary, SheetCorrectionSummary } from '../lib/recipientMessage'
+import { sheetChanges } from '../lib/sheetChanges'
 import { useApi } from '../lib/useApi'
 
 // A cancelled movement did not happen: its values stay readable, struck through.
@@ -32,6 +34,18 @@ function struck(movement: Movement, content: ReactNode): ReactNode {
 // The value first entered, shown under the valid value when a correction changed it.
 function Original({ children }: { children: ReactNode }) {
   return <span className="block text-xs font-normal text-ink-soft">{children}</span>
+}
+
+// Lot 12b: the API sends the names of the authors (authorName) to the auditor and to the supervisor
+// only; the others get null. The columns of the authors are then left out of the tables.
+const AUTHOR_HEADERS = ['Auteur', 'Corrigé par']
+
+function hasAuthors(items: Array<{ authorName: string | null }>): boolean {
+  return items.some((item) => item.authorName !== null)
+}
+
+function withoutAuthors<T>(columns: Column<T>[], show: boolean): Column<T>[] {
+  return show ? columns : columns.filter((column) => !AUTHOR_HEADERS.includes(column.header))
 }
 
 const MOVEMENT_COLUMNS: Column<Movement>[] = [
@@ -93,8 +107,18 @@ const MOVEMENT_COLUMNS: Column<Movement>[] = [
   },
 ]
 
-// The history of the corrections (lot 12a), in the order they were made. The name of the author is
-// shown to everyone who can read the batch.
+// The reason of a correction, with its comment under it.
+function Reason({ code, comment }: { code: string; comment: string }) {
+  return (
+    <>
+      {reasonLabel(code)}
+      {comment !== '' && <span className="block text-sm text-ink-soft">{comment}</span>}
+    </>
+  )
+}
+
+// The history of the corrections of the movements (lot 12a), in the order they were made. The name
+// of the author is shown only when the API sends it (lot 12b).
 const CORRECTION_COLUMNS: Column<Correction>[] = [
   { header: 'Date de la correction', cell: (correction) => formatUtc(correction.correctedAt) },
   { header: 'Mouvement', cell: (correction) => movementLabel(correction.movementType) },
@@ -106,22 +130,42 @@ const CORRECTION_COLUMNS: Column<Correction>[] = [
         ? '—'
         : `${correction.stationCode} · ${formatKg(correction.quantityKg)} · ${formatUtc(correction.occurredAt)}`,
   },
+  { header: 'Motif', cell: (correction) => <Reason code={correction.reasonCode} comment={correction.reasonComment} /> },
+  { header: 'Corrigé par', cell: (correction) => authorLabel(correction.authorName) },
+]
+
+// The history of the corrections of the sheet (lot 12b): only the fields that changed are listed.
+const SHEET_CORRECTION_COLUMNS: Column<SheetCorrection>[] = [
+  { header: 'Date de la correction', cell: (correction) => formatUtc(correction.correctedAt) },
   {
-    header: 'Motif',
-    cell: (correction) => (
-      <>
-        {reasonLabel(correction.reasonCode)}
-        {correction.reasonComment !== '' && (
-          <span className="block text-sm text-ink-soft">{correction.reasonComment}</span>
-        )}
-      </>
-    ),
+    header: 'Modifications',
+    cell: (correction) =>
+      sheetChanges(
+        {
+          batchCode: correction.oldBatchCode,
+          farmCode: correction.oldFarmCode,
+          variety: correction.oldVariety,
+          harvestDate: correction.oldHarvestDate,
+        },
+        {
+          batchCode: correction.newBatchCode,
+          farmCode: correction.newFarmCode,
+          variety: correction.newVariety,
+          harvestDate: correction.newHarvestDate,
+        },
+      ).map((line) => (
+        <span key={line} className="block">
+          {line}
+        </span>
+      )),
   },
+  { header: 'Motif', cell: (correction) => <Reason code={correction.reasonCode} comment={correction.reasonComment} /> },
   { header: 'Corrigé par', cell: (correction) => authorLabel(correction.authorName) },
 ]
 
 export default function BatchPage() {
   const { batchCode = '' } = useParams()
+  const navigate = useNavigate()
   // Raised when a movement has been added: the batch is read again.
   const [refresh, setRefresh] = useState(0)
   // The last movement added, with the batch it was added to (the message is only for that batch).
@@ -134,8 +178,23 @@ export default function BatchPage() {
     shipped: boolean
   } | null>(null)
 
+  // The last correction of the sheet (lot 12b). batchCode is the code the batch has AFTER the
+  // correction, which is the code of the address once the page has moved to it.
+  const [sheetCorrected, setSheetCorrected] = useState<{
+    batchCode: string
+    summary: SheetCorrectionSummary
+    shipped: boolean
+  } | null>(null)
+
   const load = useCallback((signal: AbortSignal) => getBatch(batchCode, signal), [batchCode])
   const state = useApi(load, refresh)
+
+  // An old code of the batch reads the batch (the API finds it) but cannot write (error 50104). The
+  // address is replaced by the current code, so that every form writes with the current code. While
+  // the address changes, `useApi` never shows the old answer, so this cannot loop.
+  if (state.status === 'success' && state.data.batchCode !== batchCode) {
+    return <Navigate to={`/batches/${encodeURIComponent(state.data.batchCode)}`} replace />
+  }
 
   return (
     <section>
@@ -163,7 +222,7 @@ export default function BatchPage() {
                 <p className="py-8 text-center text-ink-soft">Aucun mouvement enregistré.</p>
               ) : (
                 <DataTable
-                  columns={MOVEMENT_COLUMNS}
+                  columns={withoutAuthors(MOVEMENT_COLUMNS, hasAuthors(state.data.movements))}
                   items={state.data.movements}
                   rowKey={(movement) => String(movement.movementId)}
                 />
@@ -177,8 +236,25 @@ export default function BatchPage() {
               <div>
                 <ListCard>
                   <DataTable
-                    columns={CORRECTION_COLUMNS}
+                    columns={withoutAuthors(CORRECTION_COLUMNS, hasAuthors(state.data.corrections))}
                     items={state.data.corrections}
+                    rowKey={(correction) => String(correction.correctionId)}
+                  />
+                </ListCard>
+              </div>
+            </>
+          )}
+
+          {state.data.sheetCorrections.length > 0 && (
+            <>
+              <h2 className="mt-5 mb-2 inline-block rounded bg-veil px-3 py-1 text-lg font-semibold">
+                Corrections de la fiche
+              </h2>
+              <div>
+                <ListCard>
+                  <DataTable
+                    columns={withoutAuthors(SHEET_CORRECTION_COLUMNS, hasAuthors(state.data.sheetCorrections))}
+                    items={state.data.sheetCorrections}
                     rowKey={(correction) => String(correction.correctionId)}
                   />
                 </ListCard>
@@ -232,6 +308,39 @@ export default function BatchPage() {
                   shipped: state.data.status === 'SHIPPED',
                 })
                 setRefresh((n) => n + 1)
+              }}
+            />
+
+            <h2 className="mt-5 mb-2 inline-block rounded bg-veil px-3 py-1 text-lg font-semibold">Corriger la fiche</h2>
+            {sheetCorrected?.batchCode === batchCode && (
+              <div className="mb-3">
+                <SuccessMessage>Fiche corrigée.</SuccessMessage>
+                {sheetCorrected.shipped && (
+                  <RecipientMessage message={sheetRecipientMessage(sheetCorrected.summary)} />
+                )}
+              </div>
+            )}
+            <SheetCorrectionForm
+              key={`${state.data.batchCode}-${state.data.sheetCorrections.length}`}
+              batchCode={batchCode}
+              sheet={{
+                batchCode: state.data.batchCode,
+                farmCode: state.data.farmCode,
+                variety: state.data.variety,
+                harvestDate: state.data.harvestDate,
+              }}
+              onStart={() => setSheetCorrected(null)}
+              onCorrected={(summary) => {
+                setSheetCorrected({
+                  batchCode: summary.after.batchCode,
+                  summary,
+                  shipped: state.data.status === 'SHIPPED',
+                })
+                if (summary.after.batchCode === batchCode) {
+                  setRefresh((n) => n + 1)
+                } else {
+                  navigate(`/batches/${encodeURIComponent(summary.after.batchCode)}`, { replace: true })
+                }
               }}
             />
           </SupervisorOnly>

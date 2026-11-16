@@ -30,6 +30,10 @@ describe('labels', () => {
     expect(authorLabel('constructor')).toBe('constructor')
   })
 
+  it('writes a dash when the API does not send the name of the author (lot 12b)', () => {
+    expect(authorLabel(null)).toBe('—')
+  })
+
   it('writes the reasons and the kinds of correction in French, and shows an unknown one as it is', () => {
     expect(['DATA_ENTRY_ERROR', 'MEASUREMENT_ERROR', 'OTHER'].map(reasonLabel)).toEqual([
       'Erreur de saisie',

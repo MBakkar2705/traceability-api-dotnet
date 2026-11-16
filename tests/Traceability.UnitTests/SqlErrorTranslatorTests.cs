@@ -7,12 +7,14 @@ namespace Traceability.UnitTests;
 // are observed by the integration tests.
 public class SqlErrorTranslatorTests
 {
-    // U1: the numbers raised by the procedures, grouped by family (lot 12a added the corrections).
+    // U1: the numbers raised by the procedures, grouped by family (lot 12a added the corrections;
+    // lot 12b added 50104 and 50309, and 50203 is raised by the sheet corrections too).
     [Theory]
     [InlineData(50100, 404)]
     [InlineData(50101, 404)]
     [InlineData(50102, 404)]
     [InlineData(50103, 404)]
+    [InlineData(50104, 404)]
     [InlineData(50200, 409)]
     [InlineData(50201, 409)]
     [InlineData(50202, 409)]
@@ -26,6 +28,7 @@ public class SqlErrorTranslatorTests
     [InlineData(50306, 422)]
     [InlineData(50307, 422)]
     [InlineData(50308, 422)]
+    [InlineData(50309, 422)]
     [InlineData(50400, 400)]
     [InlineData(50401, 400)]
     [InlineData(50402, 400)]

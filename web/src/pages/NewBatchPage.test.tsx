@@ -56,6 +56,7 @@ const batch = {
   quantityKg: 125.5,
   status: 'RECEIVED',
   corrections: [],
+  sheetCorrections: [],
   movements: [
     mv({ movementId: 1, movementType: 'RECEPTION', stationCode: 'ZT-STATION', quantityKg: 125.5, occurredAt: '2026-10-22T08:30:00Z', authorName: 'writer-test' }),
   ],
@@ -136,6 +137,30 @@ describe('NewBatchPage', () => {
     expect((screen.getByLabelText('Code du lot') as HTMLInputElement).value).toBe('ZT-LOT')
     expect((screen.getByLabelText('Quantité (kg)') as HTMLInputElement).value).toBe('125.5')
     expect(screen.getByRole('heading', { name: 'Nouveau lot' })).toBeTruthy()
+  })
+
+  it('says that the code is the old code of another batch (50203), and not a text about stations (lot 12b)', async () => {
+    stubApi({ '/batches': () => problem(409, { errorCode: 50203 }) })
+    renderApp('/new-batch')
+
+    fillTheForm()
+    send()
+
+    const text = (await screen.findByRole('alert')).textContent
+    expect(text).toContain("Ce code est l'ancien code d'un autre lot.")
+    expect(text).not.toContain('Cette station')
+  })
+
+  it('says that the harvest day cannot be after the reception day (50309, lot 12b)', async () => {
+    stubApi({ '/batches': () => problem(422, { errorCode: 50309 }) })
+    renderApp('/new-batch')
+
+    fillTheForm()
+    send()
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'La date de récolte ne peut pas être après le jour de la réception.',
+    )
   })
 
   it('shows the messages of an error of shape under the right fields', async () => {

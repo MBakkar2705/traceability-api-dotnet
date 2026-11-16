@@ -1,9 +1,12 @@
 // The message that a supervisor can copy and send to the recipient of a batch that was already
-// shipped, when one of its movements is corrected (lot 12a). The application does not send it and
-// does not record that it was sent: the supervisor, or the sales contact, forwards it.
+// shipped, when one of its movements is corrected (lot 12a), or its sheet (lot 12b). The application
+// does not send it and does not record that it was sent: the supervisor, or the sales contact,
+// forwards it.
 
 import { formatKg, formatUtc } from './format'
 import { movementLabel, reasonLabel } from './labels'
+import { sheetChanges } from './sheetChanges'
+import type { SheetValues } from './sheetChanges'
 
 export interface MovementValues {
   stationCode: string
@@ -38,6 +41,19 @@ function changes(before: MovementValues, after: MovementValues): string[] {
   return lines
 }
 
+// The end of every message: the reason (with the comment, if there is one), a request, a closing.
+function ending(reasonCode: string, reasonComment: string): string[] {
+  const comment = reasonComment.trim()
+  return [
+    '',
+    `Motif : ${reasonLabel(reasonCode)}${comment === '' ? '' : ` (${comment})`}.`,
+    '',
+    'Merci de tenir compte de cette correction.',
+    '',
+    'Cordialement',
+  ]
+}
+
 export function recipientMessage(summary: CorrectionSummary): string {
   const step = movementLabel(summary.movementType).toLowerCase()
   const lines = ['Bonjour,', '']
@@ -54,8 +70,30 @@ export function recipientMessage(summary: CorrectionSummary): string {
     }
   }
 
-  const comment = summary.reasonComment.trim()
-  lines.push('', `Motif : ${reasonLabel(summary.reasonCode)}${comment === '' ? '' : ` (${comment})`}.`)
-  lines.push('', 'Merci de tenir compte de cette correction.', '', 'Cordialement')
+  lines.push(...ending(summary.reasonCode, summary.reasonComment))
+  return lines.join('\n')
+}
+
+// A correction of the sheet of a batch (lot 12b): the values before and after.
+export interface SheetCorrectionSummary {
+  before: SheetValues
+  after: SheetValues
+  reasonCode: string
+  reasonComment: string
+}
+
+// Only what changed is listed. When the code changes, the message says which code to use from now
+// on; it says nothing about the application, which the recipient may not use.
+export function sheetRecipientMessage(summary: SheetCorrectionSummary): string {
+  const oldCode = summary.before.batchCode
+  const lines = ['Bonjour,', '', `Une correction a été enregistrée sur la fiche du lot ${oldCode}.`]
+  const listed = sheetChanges(summary.before, summary.after)
+  if (listed.length > 0) {
+    lines.push('Valeurs corrigées :', ...listed.map((line) => `- ${line}`))
+  }
+  if (summary.before.batchCode !== summary.after.batchCode) {
+    lines.push(`Le lot doit maintenant être désigné par le code ${summary.after.batchCode}.`)
+  }
+  lines.push(...ending(summary.reasonCode, summary.reasonComment))
   return lines.join('\n')
 }

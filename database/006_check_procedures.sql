@@ -1,11 +1,11 @@
 /*
   006_check_procedures.sql
-  Tests the 9 stored procedures of the schema trace (contract: docs/procedures.md).
+  Tests the 10 stored procedures of the schema trace (contract: docs/procedures.md).
 
   - Runs ONLY on TraceabilityTest. The name is written in the script, so SQLCMD
     mode is not needed. On any other database the script refuses to run.
   - Run 001, 002, 004 and 005 on TraceabilityTest first (a database made before lot 12a also
-    needs 019, then 005 again).
+    needs 019, then 005 again; a database made before lot 12b also needs 020, then 005 again).
   - Replayable: it first removes the test rows of a previous run (codes that start
     with ZZ-), with DELETE ... WHERE only. Other rows are never touched.
   - Unlike 003, nothing is rolled back: the procedures have their own transactions.
@@ -18,8 +18,14 @@
   - Lot 12a: tests 48 to 88 are about the corrections (ReplaceMovement, CancelMovement, and the
     new GetBatch). They use their own batches ZZ-C1 to ZZ-C4 and depend on each other: do not
     reorder them.
+  - Lot 12b: tests 89 to 122 are about the correction of the sheet of a batch (CorrectBatch), the
+    old codes (AddMovement, ReplaceMovement, CancelMovement, CreateBatch, GetBatch) and the harvest
+    date rule. They use their own batches ZZ-D1 to ZZ-D4 (and ZZ-P5) and depend on each other: do
+    not reorder them.
+  - 003 cannot be run after this script: it leaves its ZZ- rows and 003 refuses to start (see the
+    header of 003).
   - Tests 32, 33 and 38 (ListBatches) return two result sets, tests 30, 41, 86 and 87 (GetBatch)
-    return three: the script checks their number and shape (WITH RESULT SETS), their content is
+    return four: the script checks their number and shape (WITH RESULT SETS), their content is
     checked BY EYE.
     Tests 32, 33 and 38 show what to expect in the grid, before the results (changed
     when ListBatches got its total).
@@ -41,21 +47,21 @@ BEGIN
 END;
 GO
 
--- Safety 2: the 9 procedures must exist (004 and 005).
+-- Safety 2: the 10 procedures must exist (004 and 005).
 IF (SELECT COUNT(*) FROM sys.procedures
     WHERE schema_id = SCHEMA_ID(N'trace')
       AND name IN (N'CreateFarm', N'CreateStation', N'AddStationCapability',
                    N'CreateBatch', N'AddMovement', N'GetBatch', N'ListBatches',
-                   N'ReplaceMovement', N'CancelMovement')) <> 9
+                   N'ReplaceMovement', N'CancelMovement', N'CorrectBatch')) <> 10
 BEGIN
-    RAISERROR(N'The 9 procedures of the schema trace are missing. Run 004 and 005 first (019 before them if the table MovementCorrection is missing). Nothing was done.', 16, 1);
+    RAISERROR(N'The 10 procedures of the schema trace are missing. Run 004 and 005 first (019 and 020 before them if the table MovementCorrection or BatchCorrection is missing). Nothing was done.', 16, 1);
     SET NOEXEC ON;
 END;
 GO
 
--- Helper: a short "fingerprint" of the 6 tables (row counts + a checksum of the
--- status and quantity of every batch + a checksum of the journal). Read before and after a refusal: if it
--- changed, the refused call changed something.
+-- Helper: a short "fingerprint" of the 7 tables (row counts + a checksum of the code, farm, variety,
+-- harvest date, status and quantity of every batch + a checksum of the journal). Read before and after
+-- a refusal: if it changed, the refused call changed something.
 CREATE OR ALTER FUNCTION dbo.TestFingerprint()
 RETURNS NVARCHAR(300)
 AS
@@ -67,13 +73,18 @@ BEGIN
         (SELECT COUNT(*) FROM trace.Batch), N'/',
         (SELECT COUNT(*) FROM trace.Movement), N'/',
         (SELECT COUNT(*) FROM trace.MovementCorrection), N'/',
-        (SELECT CHECKSUM_AGG(CHECKSUM(BatchId, Status, QuantityKg)) FROM trace.Batch), N'/',
+        (SELECT COUNT(*) FROM trace.BatchCorrection), N'/',
+        (SELECT CHECKSUM_AGG(CHECKSUM(BatchId, BatchCode, FarmId, Variety, HarvestDate, Status, QuantityKg))
+         FROM trace.Batch), N'/',
         (SELECT CHECKSUM_AGG(CHECKSUM(MovementId, StationId, QuantityKg, OccurredAt)) FROM trace.Movement));
 END;
 GO
 
 -- Cleanup of a previous run. DELETE with WHERE only, in the order of the foreign
 -- keys, and only the rows whose code starts with ZZ- (test data).
+DELETE FROM trace.BatchCorrection
+WHERE BatchId IN (SELECT BatchId FROM trace.Batch WHERE BatchCode LIKE N'ZZ-%');
+
 DELETE FROM trace.MovementCorrection
 WHERE MovementId IN (SELECT m.MovementId
                      FROM trace.Movement AS m
@@ -96,7 +107,7 @@ DELETE FROM trace.Farm
 WHERE Code LIKE N'ZZ-%';
 GO
 
-/* ===================== Setup and the 88 tests (one batch) ===================== */
+/* ===================== Setup and the 122 tests (one batch) ===================== */
 
 SET NOCOUNT ON;
 
@@ -814,11 +825,12 @@ END CATCH;
 /* ---------- GetBatch (tests 30 and 31) ---------- */
 
 -- 30. GetBatch: control (the shape is checked by the script, the content BY EYE)
-PRINT N'Test 30: GetBatch ZZ-B-NEW. Check by eye the three result sets displayed just below:';
+PRINT N'Test 30: GetBatch ZZ-B-NEW. Check by eye the four result sets displayed just below:';
 PRINT N'  1) one row: ZZ-B-NEW, ZZ-F01, Cherry, 2026-10-14, 465.00, SHIPPED';
 PRINT N'  2) four rows, in this order: RECEPTION ZZ-S01 500.00 / SORTING ZZ-S01 470.00 / PACKING ZZ-S02 465.00 / SHIPMENT ZZ-S03 465.00';
 PRINT N'     AuthorName is Test Author on the four rows, IsCancelled 0, CorrectionCount 0, Original columns = the values';
 PRINT N'  3) no row (no correction)';
+PRINT N'  4) no row (no correction of the sheet)';
 BEGIN TRY
     EXEC trace.GetBatch @BatchCode = N'ZZ-B-NEW'
     WITH RESULT SETS
@@ -832,11 +844,16 @@ BEGIN TRY
         (CorrectionId BIGINT, MovementId BIGINT, Kind NVARCHAR(10), MovementType NVARCHAR(20),
          StationCode NVARCHAR(20), QuantityKg DECIMAL(10,2), OccurredAt DATETIME2,
          ReasonCode NVARCHAR(20), ReasonComment NVARCHAR(500), AuthorName NVARCHAR(100),
+         CorrectedAt DATETIME2),
+        (CorrectionId BIGINT, OldBatchCode NVARCHAR(30), NewBatchCode NVARCHAR(30),
+         OldFarmCode NVARCHAR(20), NewFarmCode NVARCHAR(20), OldVariety NVARCHAR(50),
+         NewVariety NVARCHAR(50), OldHarvestDate DATE, NewHarvestDate DATE,
+         ReasonCode NVARCHAR(20), ReasonComment NVARCHAR(500), AuthorName NVARCHAR(100),
          CorrectedAt DATETIME2)
     );
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'GetBatch: control (content checked by eye)', N'(accepted)',
-            N'To check by eye (see the 3 result sets above)',
+            N'To check by eye (see the 4 result sets above)',
             N'The script checked the number and the shape of the result sets, not the values');
 END TRY
 BEGIN CATCH
@@ -1110,10 +1127,11 @@ BEGIN CATCH
 END CATCH;
 
 -- 41. GetBatch: the author name of each movement (shape checked by the script, content BY EYE; needs tests 39 and 40)
-PRINT N'Test 41: GetBatch ZZ-B-AUT. Check by eye the three result sets displayed just below:';
+PRINT N'Test 41: GetBatch ZZ-B-AUT. Check by eye the four result sets displayed just below:';
 PRINT N'  1) one row: ZZ-B-AUT, ZZ-F01, Cherry, 2026-10-14, 470.00, SORTED';
 PRINT N'  2) two rows, in this order: RECEPTION ZZ-S01 500.00 ... Author One / SORTING ZZ-S01 470.00 ... Author Two (column AuthorName)';
 PRINT N'  3) no row (no correction)';
+PRINT N'  4) no row (no correction of the sheet)';
 BEGIN TRY
     EXEC trace.GetBatch @BatchCode = N'ZZ-B-AUT'
     WITH RESULT SETS
@@ -1127,11 +1145,16 @@ BEGIN TRY
         (CorrectionId BIGINT, MovementId BIGINT, Kind NVARCHAR(10), MovementType NVARCHAR(20),
          StationCode NVARCHAR(20), QuantityKg DECIMAL(10,2), OccurredAt DATETIME2,
          ReasonCode NVARCHAR(20), ReasonComment NVARCHAR(500), AuthorName NVARCHAR(100),
+         CorrectedAt DATETIME2),
+        (CorrectionId BIGINT, OldBatchCode NVARCHAR(30), NewBatchCode NVARCHAR(30),
+         OldFarmCode NVARCHAR(20), NewFarmCode NVARCHAR(20), OldVariety NVARCHAR(50),
+         NewVariety NVARCHAR(50), OldHarvestDate DATE, NewHarvestDate DATE,
+         ReasonCode NVARCHAR(20), ReasonComment NVARCHAR(500), AuthorName NVARCHAR(100),
          CorrectedAt DATETIME2)
     );
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'GetBatch: the author name of each movement (content checked by eye)', N'(accepted)',
-            N'To check by eye (see the 3 result sets above)',
+            N'To check by eye (see the 4 result sets above)',
             N'The script checked the number and the shape of the result sets, not the values');
 END TRY
 BEGIN CATCH
@@ -2255,7 +2278,7 @@ END CATCH;
 /* ---------- GetBatch and the journal (tests 86 to 88) ---------- */
 
 -- 86. GetBatch: a batch with replaced and cancelled movements (shape checked by the script, content BY EYE)
-PRINT N'Test 86: GetBatch ZZ-C1. Check by eye the three result sets displayed just below:';
+PRINT N'Test 86: GetBatch ZZ-C1. Check by eye the four result sets displayed just below:';
 PRINT N'  1) one row: ZZ-C1, ZZ-F01, Test variety, 2026-10-14, 455.00, PACKED';
 PRINT N'  2) four rows (MovementId order):';
 PRINT N'     RECEPTION ZZ-S01 500.00 06:30, IsCancelled 0, CorrectionCount 0, original = same values';
@@ -2264,6 +2287,7 @@ PRINT N'     PACKING ZZ-S02 455.00 13:40, IsCancelled 0, CorrectionCount 1, orig
 PRINT N'     SHIPMENT ZZ-S03 460.00 17:05, IsCancelled 1, CorrectionCount 2, original ZZ-S03 465.00 17:05';
 PRINT N'  3) five rows (CorrectionId order): SORTING REPLACE ZZ-S01 480.00 / SHIPMENT REPLACE 460.00 / SORTING REPLACE ZZ-S04 480.00 10:00 (OTHER) / SHIPMENT CANCEL 460.00 (OTHER) / PACKING REPLACE 455.00';
 PRINT N'     each row has ReasonCode, ReasonComment, AuthorName Supervisor One and a CorrectedAt';
+PRINT N'  4) no row (no correction of the sheet)';
 BEGIN TRY
     EXEC trace.GetBatch @BatchCode = N'ZZ-C1'
     WITH RESULT SETS
@@ -2277,11 +2301,16 @@ BEGIN TRY
         (CorrectionId BIGINT, MovementId BIGINT, Kind NVARCHAR(10), MovementType NVARCHAR(20),
          StationCode NVARCHAR(20), QuantityKg DECIMAL(10,2), OccurredAt DATETIME2,
          ReasonCode NVARCHAR(20), ReasonComment NVARCHAR(500), AuthorName NVARCHAR(100),
+         CorrectedAt DATETIME2),
+        (CorrectionId BIGINT, OldBatchCode NVARCHAR(30), NewBatchCode NVARCHAR(30),
+         OldFarmCode NVARCHAR(20), NewFarmCode NVARCHAR(20), OldVariety NVARCHAR(50),
+         NewVariety NVARCHAR(50), OldHarvestDate DATE, NewHarvestDate DATE,
+         ReasonCode NVARCHAR(20), ReasonComment NVARCHAR(500), AuthorName NVARCHAR(100),
          CorrectedAt DATETIME2)
     );
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'GetBatch: a batch with replaced and cancelled movements (content checked by eye)', N'(accepted)',
-            N'To check by eye (see the 3 result sets above)',
+            N'To check by eye (see the 4 result sets above)',
             N'The script checked the number and the shape of the result sets, not the values');
 END TRY
 BEGIN CATCH
@@ -2293,11 +2322,12 @@ BEGIN CATCH
 END CATCH;
 
 -- 87. GetBatch: a batch with two cancelled movements and a new one (shape checked by the script, content BY EYE)
-PRINT N'Test 87: GetBatch ZZ-C2. Check by eye the three result sets displayed just below:';
+PRINT N'Test 87: GetBatch ZZ-C2. Check by eye the four result sets displayed just below:';
 PRINT N'  1) one row: ZZ-C2, ZZ-F01, Test variety, 2026-10-14, 480.00, SORTED';
 PRINT N'  2) four rows (MovementId order): RECEPTION 510.00 (CorrectionCount 1, original 500.00) / SORTING 470.00 (IsCancelled 1, CorrectionCount 1)';
 PRINT N'     / PACKING 465.00 (IsCancelled 1, CorrectionCount 1) / SORTING ZZ-S01 480.00 2026-10-15 08:00 (IsCancelled 0, CorrectionCount 0, author Author Three)';
 PRINT N'  3) three rows (CorrectionId order): RECEPTION REPLACE 510.00 / PACKING CANCEL 465.00 / SORTING CANCEL 470.00';
+PRINT N'  4) no row (no correction of the sheet)';
 BEGIN TRY
     EXEC trace.GetBatch @BatchCode = N'ZZ-C2'
     WITH RESULT SETS
@@ -2311,11 +2341,16 @@ BEGIN TRY
         (CorrectionId BIGINT, MovementId BIGINT, Kind NVARCHAR(10), MovementType NVARCHAR(20),
          StationCode NVARCHAR(20), QuantityKg DECIMAL(10,2), OccurredAt DATETIME2,
          ReasonCode NVARCHAR(20), ReasonComment NVARCHAR(500), AuthorName NVARCHAR(100),
+         CorrectedAt DATETIME2),
+        (CorrectionId BIGINT, OldBatchCode NVARCHAR(30), NewBatchCode NVARCHAR(30),
+         OldFarmCode NVARCHAR(20), NewFarmCode NVARCHAR(20), OldVariety NVARCHAR(50),
+         NewVariety NVARCHAR(50), OldHarvestDate DATE, NewHarvestDate DATE,
+         ReasonCode NVARCHAR(20), ReasonComment NVARCHAR(500), AuthorName NVARCHAR(100),
          CorrectedAt DATETIME2)
     );
     INSERT @results (test_name, expected, outcome, detail)
     VALUES (N'GetBatch: a batch with two cancelled movements and a new one (content checked by eye)', N'(accepted)',
-            N'To check by eye (see the 3 result sets above)',
+            N'To check by eye (see the 4 result sets above)',
             N'The script checked the number and the shape of the result sets, not the values');
 END TRY
 BEGIN CATCH
@@ -2348,6 +2383,899 @@ VALUES (N'The journal trace.Movement was never changed by the corrections', N'(a
              THEN N'Accepted as expected'
              ELSE N'ATTENTION: a movement of the journal was changed' END,
         N'12 movements, 5750.00 kg in all, and the first values of the corrected movements are still there');
+
+
+/* ---------- Correction of the sheet of a batch (tests 89 to 122, lot 12b) ---------- */
+
+-- Data of this part, inserted DIRECTLY in the tables (like the setup above). Each batch has its own role:
+--   ZZ-D1 RECEIVED 500 (RECEPTION 06:30): its code, then several fields, are corrected; it takes back its
+--         first code; its old codes are used by the refusals and by GetBatch.
+--   ZZ-D2 SHIPPED 465 (RECEPTION 500, SORTING 470, PACKING 465, SHIPMENT 465): a shipped batch is corrected.
+--   ZZ-D3 RECEIVED 500 (RECEPTION 06:30): harvest date, comment of 500 characters, change of case only,
+--         and its RECEPTION moved to the harvest day.
+--   ZZ-D4 RECEIVED 500 (RECEPTION 06:30): NEVER corrected; the refused calls use it, so its values are known.
+--   ZZ-P5 (from the setup, no movement): a batch without reception.
+-- The tests below depend on each other (they are run in this order, like 39 to 41).
+DECLARE @d1_rec BIGINT, @d3_rec BIGINT, @d4_rec BIGINT;
+DECLARE @id65    NVARCHAR(200) = REPLICATE(N'a', 65);
+DECLARE @name101 NVARCHAR(200) = REPLICATE(N'n', 101);
+
+BEGIN TRY
+    INSERT trace.Batch (BatchCode, FarmId, Variety, HarvestDate, QuantityKg, Status)
+    SELECT v.BatchCode, f.FarmId, N'Test variety', '2026-10-14', v.QuantityKg, v.Status
+    FROM (VALUES (N'ZZ-D1', 500.00, N'RECEIVED'),
+                 (N'ZZ-D2', 465.00, N'SHIPPED'),
+                 (N'ZZ-D3', 500.00, N'RECEIVED'),
+                 (N'ZZ-D4', 500.00, N'RECEIVED')) AS v (BatchCode, QuantityKg, Status)
+    CROSS JOIN trace.Farm AS f
+    WHERE f.Code = N'ZZ-F01'
+    ORDER BY v.BatchCode;
+
+    INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+    SELECT b.BatchId, st.StationId, v.MovementType, v.QuantityKg, v.OccurredAt, N'orig-id', N'Original Author'
+    FROM (VALUES (N'ZZ-D1', N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T06:30:00'),
+                 (N'ZZ-D2', N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T06:30:00'),
+                 (N'ZZ-D2', N'ZZ-S01', N'SORTING',   470.00, '2026-10-14T09:15:00'),
+                 (N'ZZ-D2', N'ZZ-S02', N'PACKING',   465.00, '2026-10-14T13:40:00'),
+                 (N'ZZ-D2', N'ZZ-S03', N'SHIPMENT',  465.00, '2026-10-14T17:05:00'),
+                 (N'ZZ-D3', N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T06:30:00'),
+                 (N'ZZ-D4', N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T06:30:00')
+         ) AS v (BatchCode, StationCode, MovementType, QuantityKg, OccurredAt)
+    JOIN trace.Batch   AS b  ON b.BatchCode = v.BatchCode
+    JOIN trace.Station AS st ON st.Code = v.StationCode
+    ORDER BY v.BatchCode, v.OccurredAt;
+
+    SELECT @d1_rec = MovementId FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId WHERE b.BatchCode = N'ZZ-D1' AND m.MovementType = N'RECEPTION';
+    SELECT @d3_rec = MovementId FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId WHERE b.BatchCode = N'ZZ-D3' AND m.MovementType = N'RECEPTION';
+    SELECT @d4_rec = MovementId FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId WHERE b.BatchCode = N'ZZ-D4' AND m.MovementType = N'RECEPTION';
+END TRY
+BEGIN CATCH
+    DECLARE @setup12b_error NVARCHAR(2000) = ERROR_MESSAGE();
+    RAISERROR(N'Setup of the batch correction tests failed, tests not run: %s', 16, 1, @setup12b_error);
+    RETURN;
+END CATCH;
+
+/* ---------- CorrectBatch: accepted cases (tests 89 to 98) ---------- */
+
+-- 89. CorrectBatch: control (code of a RECEIVED batch changed, old values kept)
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D1', @NewBatchCode = N'ZZ-D1X', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (code of a RECEIVED batch changed, old values kept)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch
+                 WHERE BatchCode = N'ZZ-D1X' AND Status = N'RECEIVED' AND QuantityKg = 500.00) = 1
+                 AND (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-D1') = 0
+                 AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                      WHERE b.BatchCode = N'ZZ-D1X' AND c.OldBatchCode = N'ZZ-D1' AND c.NewBatchCode = N'ZZ-D1X'
+                        AND c.OldFarmId = c.NewFarmId AND c.OldVariety = N'Test variety' AND c.NewVariety = N'Test variety'
+                        AND c.OldHarvestDate = '2026-10-14' AND c.NewHarvestDate = '2026-10-14'
+                        AND c.ReasonCode = N'DATA_ENTRY_ERROR' AND c.ReasonComment = N''
+                        AND c.AuthorId = N'sup-id-1' AND c.AuthorName = N'Supervisor One'
+                        AND c.CorrectedAt IS NOT NULL) = 1
+                 AND (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                      WHERE b.BatchCode = N'ZZ-D1X') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The batch now has the code ZZ-D1X; one row keeps ZZ-D1 and ZZ-D1X, the author and the reason; the movement is untouched');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (code of a RECEIVED batch changed, old values kept)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 90. CorrectBatch: control (several fields at once, reason OTHER with a comment)
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D1X', @NewBatchCode = N'ZZ-D1X', @FarmCode = N'ZZ-F02',
+         @Variety = N'Other variety', @HarvestDate = '2026-10-13',
+         @ReasonCode = N'OTHER', @ReasonComment = N'Sheet written for the wrong farm',
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (several fields at once, reason OTHER with a comment)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch AS b JOIN trace.Farm AS f ON f.FarmId = b.FarmId
+                 WHERE b.BatchCode = N'ZZ-D1X' AND f.Code = N'ZZ-F02' AND b.Variety = N'Other variety'
+                   AND b.HarvestDate = '2026-10-13' AND b.Status = N'RECEIVED' AND b.QuantityKg = 500.00) = 1
+                 AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c
+                      JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                      JOIN trace.Farm AS fo ON fo.FarmId = c.OldFarmId
+                      JOIN trace.Farm AS fn ON fn.FarmId = c.NewFarmId
+                      WHERE b.BatchCode = N'ZZ-D1X' AND c.OldBatchCode = N'ZZ-D1X' AND c.NewBatchCode = N'ZZ-D1X'
+                        AND fo.Code = N'ZZ-F01' AND fn.Code = N'ZZ-F02'
+                        AND c.OldVariety = N'Test variety' AND c.NewVariety = N'Other variety'
+                        AND c.OldHarvestDate = '2026-10-14' AND c.NewHarvestDate = '2026-10-13'
+                        AND c.ReasonCode = N'OTHER' AND c.ReasonComment = N'Sheet written for the wrong farm') = 1
+                 AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                 WHERE b.BatchCode = N'ZZ-D1X') = 2
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'Farm, variety and harvest date changed together; the second row keeps the old values of all three fields');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (several fields at once, reason OTHER with a comment)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 91. CorrectBatch: control (a SHIPPED batch can be corrected, status and quantity unchanged)
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D2', @NewBatchCode = N'ZZ-D2', @FarmCode = N'ZZ-F01',
+         @Variety = N'Corrected variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = N'Variety typed wrongly',
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (a SHIPPED batch can be corrected, status and quantity unchanged)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch
+                 WHERE BatchCode = N'ZZ-D2' AND Variety = N'Corrected variety'
+                   AND Status = N'SHIPPED' AND QuantityKg = 465.00) = 1
+                 AND (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                      WHERE b.BatchCode = N'ZZ-D2') = 4
+                 AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                 WHERE b.BatchCode = N'ZZ-D2') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The SHIPPED batch keeps its status, its 465.00 kg and its 4 movements; one correction row');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (a SHIPPED batch can be corrected, status and quantity unchanged)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 92. CorrectBatch: control (reason code in lower case stored in capitals, earlier harvest date)
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D3', @NewBatchCode = N'ZZ-D3', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-13',
+         @ReasonCode = N'data_entry_error', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (reason code in lower case stored in capitals, earlier harvest date)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                 WHERE b.BatchCode = N'ZZ-D3'
+                   AND c.ReasonCode COLLATE Latin1_General_BIN2 = N'DATA_ENTRY_ERROR' COLLATE Latin1_General_BIN2
+                   AND c.OldHarvestDate = '2026-10-14' AND c.NewHarvestDate = '2026-10-13') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The reason code is stored in capitals (binary comparison); harvest date moved from 2026-10-14 to 2026-10-13');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (reason code in lower case stored in capitals, earlier harvest date)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 93. CorrectBatch: control (harvest date equal to the reception day is accepted)
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D3', @NewBatchCode = N'ZZ-D3', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (harvest date equal to the reception day is accepted)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-D3' AND HarvestDate = '2026-10-14') = 1
+                 AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                 WHERE b.BatchCode = N'ZZ-D3') = 2
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The reception is on 2026-10-14 at 06:30: a harvest on the same day is accepted');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (harvest date equal to the reception day is accepted)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 94. CorrectBatch: control (a comment of exactly 500 characters)
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D3', @NewBatchCode = N'ZZ-D3', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety 2', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = @comment500,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (a comment of exactly 500 characters)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                 WHERE b.BatchCode = N'ZZ-D3' AND LEN(c.ReasonComment) = 500) = 1
+                 AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                 WHERE b.BatchCode = N'ZZ-D3') = 3
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'A comment of 500 characters is stored whole');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (a comment of exactly 500 characters)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 95. CorrectBatch: control (batch without reception: the harvest date rule is not applied)
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-P5', @NewBatchCode = N'ZZ-P5', @FarmCode = N'ZZ-F03',
+         @Variety = N'Test variety', @HarvestDate = '2030-01-01',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (batch without reception: the harvest date rule is not applied)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-P5' AND HarvestDate = '2030-01-01') = 1
+                 AND (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                      WHERE b.BatchCode = N'ZZ-P5') = 0
+                 AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                 WHERE b.BatchCode = N'ZZ-P5') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'ZZ-P5 has no movement, so there is no reception to compare with: the correction is accepted');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (batch without reception: the harvest date rule is not applied)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 96. CorrectBatch: control (a batch can take back its own old code)
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D1X', @NewBatchCode = N'ZZ-D1', @FarmCode = N'ZZ-F02',
+         @Variety = N'Other variety', @HarvestDate = '2026-10-13',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (a batch can take back its own old code)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-D1' AND Variety = N'Other variety') = 1
+                 AND (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-D1X') = 0
+                 AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                 WHERE b.BatchCode = N'ZZ-D1') = 3
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'ZZ-D1 is again the code of the batch, three corrections are kept; ZZ-D1X is now an old code');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (a batch can take back its own old code)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 97. CorrectBatch: control (change of case only is a change)
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D3', @NewBatchCode = N'zz-d3', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety 2', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (change of case only is a change)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch
+                 WHERE BatchCode COLLATE Latin1_General_BIN2 = N'zz-d3' COLLATE Latin1_General_BIN2) = 1
+                 AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                 WHERE b.BatchCode = N'ZZ-D3') = 4
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The code is stored as zz-d3 (binary comparison); a fourth correction row');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: control (change of case only is a change)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 98. ReplaceMovement: control (a reception moved to the harvest day is accepted)
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-D3', @MovementId = @d3_rec, @StationCode = N'ZZ-S01',
+         @QuantityKg = 500.00, @OccurredAt = '2026-10-14T00:00:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (a reception moved to the harvest day is accepted)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.MovementCorrection
+                 WHERE MovementId = @d3_rec AND Kind = N'REPLACE' AND OccurredAt = '2026-10-14T00:00:00') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The harvest date of ZZ-D3 is 2026-10-14: the same day is accepted');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (a reception moved to the harvest day is accepted)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+/* ---------- CorrectBatch: refused cases (tests 99 to 114) ---------- */
+
+-- 99. CorrectBatch: author id NULL
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = NULL, @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: author id NULL', N'50405', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: author id NULL', N'50405',
+            CASE WHEN ERROR_NUMBER() <> 50405
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 100. CorrectBatch: blank author name
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'   ';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: blank author name', N'50405', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: blank author name', N'50405',
+            CASE WHEN ERROR_NUMBER() <> 50405
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 101. CorrectBatch: author id too long (65 characters)
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = @id65, @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: author id too long (65 characters)', N'50406', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: author id too long (65 characters)', N'50406',
+            CASE WHEN ERROR_NUMBER() <> 50406
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 102. CorrectBatch: author name too long (101 characters)
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = @name101;
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: author name too long (101 characters)', N'50406', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: author name too long (101 characters)', N'50406',
+            CASE WHEN ERROR_NUMBER() <> 50406
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 103. CorrectBatch: reason not accepted for a batch (MEASUREMENT_ERROR)
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'MEASUREMENT_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: reason not accepted for a batch (MEASUREMENT_ERROR)', N'50407', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: reason not accepted for a batch (MEASUREMENT_ERROR)', N'50407',
+            CASE WHEN ERROR_NUMBER() <> 50407
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 104. CorrectBatch: reason NULL
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = NULL, @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: reason NULL', N'50407', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: reason NULL', N'50407',
+            CASE WHEN ERROR_NUMBER() <> 50407
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 105. CorrectBatch: reason OTHER without a comment
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'OTHER', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: reason OTHER without a comment', N'50408', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: reason OTHER without a comment', N'50408',
+            CASE WHEN ERROR_NUMBER() <> 50408
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 106. CorrectBatch: comment of 501 characters
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = @comment501,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: comment of 501 characters', N'50409', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: comment of 501 characters', N'50409',
+            CASE WHEN ERROR_NUMBER() <> 50409
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 107. CorrectBatch: blank new code
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'   ', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: blank new code', N'50400', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: blank new code', N'50400',
+            CASE WHEN ERROR_NUMBER() <> 50400
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 108. CorrectBatch: unknown batch
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D-NOPE', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: unknown batch', N'50100', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: unknown batch', N'50100',
+            CASE WHEN ERROR_NUMBER() <> 50100
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 109. CorrectBatch: old code used to correct (the batch is found by its current code)
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D1X', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: old code used to correct (the batch is found by its current code)', N'50104', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: old code used to correct (the batch is found by its current code)', N'50104',
+            CASE WHEN ERROR_NUMBER() <> 50104
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 110. CorrectBatch: unknown farm
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F-NOPE',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: unknown farm', N'50101', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: unknown farm', N'50101',
+            CASE WHEN ERROR_NUMBER() <> 50101
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 111. CorrectBatch: new code is the current code of another batch
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D1', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: new code is the current code of another batch', N'50202', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: new code is the current code of another batch', N'50202',
+            CASE WHEN ERROR_NUMBER() <> 50202
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 112. CorrectBatch: new code is the old code of another batch
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D1X', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: new code is the old code of another batch', N'50203', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: new code is the old code of another batch', N'50203',
+            CASE WHEN ERROR_NUMBER() <> 50203
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 113. CorrectBatch: harvest date after the reception day
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4N', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-15',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: harvest date after the reception day', N'50309', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: harvest date after the reception day', N'50309',
+            CASE WHEN ERROR_NUMBER() <> 50309
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 114. CorrectBatch: same values as the current ones
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CorrectBatch
+         @BatchCode = N'ZZ-D4', @NewBatchCode = N'ZZ-D4', @FarmCode = N'ZZ-F01',
+         @Variety = N'Test variety', @HarvestDate = '2026-10-14',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: same values as the current ones', N'50308', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CorrectBatch: same values as the current ones', N'50308',
+            CASE WHEN ERROR_NUMBER() <> 50308
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+/* ---------- Old codes and the harvest date in the other procedures (tests 115 to 121) ---------- */
+
+-- 115. AddMovement: old code of a corrected batch
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-D1X', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T09:15:00',
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: old code of a corrected batch', N'50104', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: old code of a corrected batch', N'50104',
+            CASE WHEN ERROR_NUMBER() <> 50104
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 116. ReplaceMovement: old code of a corrected batch
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-D1X', @MovementId = @d1_rec, @StationCode = N'ZZ-S01',
+         @QuantityKg = 495.00, @OccurredAt = '2026-10-14T06:30:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: old code of a corrected batch', N'50104', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: old code of a corrected batch', N'50104',
+            CASE WHEN ERROR_NUMBER() <> 50104
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 117. CancelMovement: old code of a corrected batch
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CancelMovement
+         @BatchCode = N'ZZ-D1X', @MovementId = @d1_rec,
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CancelMovement: old code of a corrected batch', N'50104', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CancelMovement: old code of a corrected batch', N'50104',
+            CASE WHEN ERROR_NUMBER() <> 50104
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 118. CreateBatch: code that is the old code of another batch
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CreateBatch
+         @BatchCode = N'ZZ-D1X', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
+         @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: code that is the old code of another batch', N'50203', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: code that is the old code of another batch', N'50203',
+            CASE WHEN ERROR_NUMBER() <> 50203
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 119. CreateBatch: harvest date after the reception day
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CreateBatch
+         @BatchCode = N'ZZ-B-X50', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
+         @HarvestDate = '2026-10-15', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
+         @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: harvest date after the reception day', N'50309', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: harvest date after the reception day', N'50309',
+            CASE WHEN ERROR_NUMBER() <> 50309
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 120. ReplaceMovement: reception moved before the harvest day
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-D4', @MovementId = @d4_rec, @StationCode = N'ZZ-S01',
+         @QuantityKg = 500.00, @OccurredAt = '2026-10-13T23:00:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: reception moved before the harvest day', N'50309', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: reception moved before the harvest day', N'50309',
+            CASE WHEN ERROR_NUMBER() <> 50309
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 121. GetBatch: read by an old code, with the corrections of the sheet (shape checked by the script, content BY EYE)
+PRINT N'Test 121: GetBatch ZZ-D1X (an OLD code of the batch ZZ-D1). Check by eye the four result sets displayed just below:';
+PRINT N'  1) one row, with the CURRENT code: ZZ-D1, ZZ-F02, Other variety, 2026-10-13, 500.00, RECEIVED';
+PRINT N'  2) one row: RECEPTION ZZ-S01 500.00 2026-10-14 06:30, AuthorName Original Author, IsCancelled 0, CorrectionCount 0';
+PRINT N'  3) no row (no correction of a movement)';
+PRINT N'  4) three rows (CorrectionId order), each with AuthorName Supervisor One and a CorrectedAt:';
+PRINT N'     ZZ-D1 to ZZ-D1X, same farm ZZ-F01, same variety, same date, DATA_ENTRY_ERROR, no comment';
+PRINT N'     ZZ-D1X to ZZ-D1X, ZZ-F01 to ZZ-F02, Test variety to Other variety, 2026-10-14 to 2026-10-13, OTHER, Sheet written for the wrong farm';
+PRINT N'     ZZ-D1X to ZZ-D1, ZZ-F02 both sides, Other variety both sides, 2026-10-13 both sides, DATA_ENTRY_ERROR, no comment';
+BEGIN TRY
+    EXEC trace.GetBatch @BatchCode = N'ZZ-D1X'
+    WITH RESULT SETS
+    (
+        (BatchCode NVARCHAR(30), FarmCode NVARCHAR(20), Variety NVARCHAR(50),
+         HarvestDate DATE, QuantityKg DECIMAL(10,2), Status NVARCHAR(20)),
+        (MovementId BIGINT, MovementType NVARCHAR(20), StationCode NVARCHAR(20),
+         QuantityKg DECIMAL(10,2), OccurredAt DATETIME2, AuthorName NVARCHAR(100),
+         IsCancelled BIT, CorrectionCount INT, OriginalStationCode NVARCHAR(20),
+         OriginalQuantityKg DECIMAL(10,2), OriginalOccurredAt DATETIME2),
+        (CorrectionId BIGINT, MovementId BIGINT, Kind NVARCHAR(10), MovementType NVARCHAR(20),
+         StationCode NVARCHAR(20), QuantityKg DECIMAL(10,2), OccurredAt DATETIME2,
+         ReasonCode NVARCHAR(20), ReasonComment NVARCHAR(500), AuthorName NVARCHAR(100),
+         CorrectedAt DATETIME2),
+        (CorrectionId BIGINT, OldBatchCode NVARCHAR(30), NewBatchCode NVARCHAR(30),
+         OldFarmCode NVARCHAR(20), NewFarmCode NVARCHAR(20), OldVariety NVARCHAR(50),
+         NewVariety NVARCHAR(50), OldHarvestDate DATE, NewHarvestDate DATE,
+         ReasonCode NVARCHAR(20), ReasonComment NVARCHAR(500), AuthorName NVARCHAR(100),
+         CorrectedAt DATETIME2)
+    );
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'GetBatch: read by an old code, with the sheet corrections (content checked by eye)', N'(accepted)',
+            N'To check by eye (see the 4 result sets above)',
+            N'The script checked the number and the shape of the result sets, not the values');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'GetBatch: read by an old code, with the sheet corrections (content checked by eye)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused or wrong shape, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 122. The journal trace.Movement was never changed by the sheet corrections, and refused calls left no row
+INSERT @results (test_name, expected, outcome, detail)
+VALUES (N'The journal was not changed by the sheet corrections; refused calls left no row', N'(accepted)',
+        CASE WHEN (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                   WHERE b.BatchCode IN (N'ZZ-D1', N'ZZ-D2', N'ZZ-D3', N'ZZ-D4')) = 7
+              AND (SELECT SUM(m.QuantityKg) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                   WHERE b.BatchCode IN (N'ZZ-D1', N'ZZ-D2', N'ZZ-D3', N'ZZ-D4')) = 3400.00
+              AND (SELECT COUNT(*) FROM trace.Movement WHERE MovementId = @d1_rec
+                   AND QuantityKg = 500.00 AND OccurredAt = '2026-10-14T06:30:00') = 1
+              AND (SELECT COUNT(*) FROM trace.Movement WHERE MovementId = @d3_rec
+                   AND QuantityKg = 500.00 AND OccurredAt = '2026-10-14T06:30:00') = 1
+              AND (SELECT COUNT(*) FROM trace.Movement WHERE MovementId = @d4_rec
+                   AND QuantityKg = 500.00 AND OccurredAt = '2026-10-14T06:30:00') = 1
+              AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                   WHERE b.BatchCode LIKE N'ZZ-%') = 9
+              AND (SELECT COUNT(*) FROM trace.BatchCorrection AS c JOIN trace.Batch AS b ON b.BatchId = c.BatchId
+                   WHERE b.BatchCode = N'ZZ-D4') = 0
+             THEN N'Accepted as expected'
+             ELSE N'ATTENTION: a movement of the journal was changed, or a refused call left a row' END,
+        N'7 movements, 3400.00 kg, first values still there; 9 correction rows (ZZ-D1 3, ZZ-D2 1, ZZ-D3 4, ZZ-P5 1) and none for ZZ-D4');
 
 
 /* ===================== Results ===================== */

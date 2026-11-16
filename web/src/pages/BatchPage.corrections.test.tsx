@@ -36,10 +36,10 @@ const shipment = mv({ movementId: 4, movementType: 'SHIPMENT', stationCode: 'SIT
 const base = { batchCode: 'LOT-0000001', farmCode: 'F001', variety: 'Roma', harvestDate: '2026-10-14' }
 
 // Sorted, nothing corrected.
-const sorted = { ...base, quantityKg: 480, status: 'SORTED', corrections: [], movements: [reception, sorting] }
+const sorted = { ...base, quantityKg: 480, status: 'SORTED', corrections: [], sheetCorrections: [], movements: [reception, sorting] }
 
 // Shipped, nothing corrected.
-const shipped = { ...base, quantityKg: 470, status: 'SHIPPED', corrections: [], movements: [reception, sorting, packing, shipment] }
+const shipped = { ...base, quantityKg: 470, status: 'SHIPPED', corrections: [], sheetCorrections: [], movements: [reception, sorting, packing, shipment] }
 
 // Packed: the sorting was corrected (475 instead of 480), the shipment was cancelled.
 const withCorrections = {
@@ -52,6 +52,7 @@ const withCorrections = {
     packing,
     { ...shipment, isCancelled: true, correctionCount: 1 },
   ],
+  sheetCorrections: [],
   corrections: [
     {
       correctionId: 7, movementId: 2, kind: 'REPLACE', movementType: 'SORTING', stationCode: 'SITE-02',
@@ -160,11 +161,15 @@ describe('BatchPage, correcting a movement', () => {
   const REASON = 'Motif'
   const COMMENT = 'Commentaire (obligatoire pour « Autre »)'
 
+  // The supervisor also sees the form that corrects the sheet (lot 12b), which has fields with the
+  // same names (the reason, the comment): the fields are searched in the form of the movement only.
+  const movementForm = () => screen.getByLabelText(MOVEMENT).closest('form')!
+
   function fill(label: string, value: string) {
-    fireEvent.change(screen.getByLabelText(label), { target: { value } })
+    fireEvent.change(within(movementForm()).getByLabelText(label), { target: { value } })
   }
 
-  const valueOf = (label: string) => (screen.getByLabelText(label) as HTMLInputElement).value
+  const valueOf = (label: string) => (within(movementForm()).getByLabelText(label) as HTMLInputElement).value
 
   const posts = (api: ReturnType<typeof stubApi>) => api.mock.calls.filter(([, init]) => init?.method === 'POST')
 
@@ -356,6 +361,6 @@ describe('BatchPage, correcting a movement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la correction' }))
 
     expect((await screen.findByRole('alert')).textContent).toContain('Certains champs sont invalides.')
-    expect(screen.getByLabelText(COMMENT).closest('div')!.textContent).toContain('500 caractères au plus.')
+    expect(within(movementForm()).getByLabelText(COMMENT).closest('div')!.textContent).toContain('500 caractères au plus.')
   })
 })

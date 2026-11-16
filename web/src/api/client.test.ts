@@ -6,6 +6,7 @@ import {
   addMovement,
   buildUrl,
   cancelMovement,
+  correctBatch,
   createBatch,
   createFarm,
   createStation,
@@ -153,6 +154,14 @@ const replacement = {
   reasonComment: 'Balance mal tarée',
 }
 const cancellation = { reasonCode: 'OTHER', reasonComment: 'Mouvement saisi sur le mauvais lot' }
+const sheetCorrection = {
+  newBatchCode: 'ZT-BATCH-2',
+  farmCode: 'ZT-FARM',
+  variety: 'Cherry',
+  harvestDate: '2026-10-13',
+  reasonCode: 'DATA_ENTRY_ERROR',
+  reasonComment: 'Mauvaise variété saisie',
+}
 
 describe('the writes', () => {
   const postInit = (body: unknown) => ({
@@ -197,6 +206,12 @@ describe('the writes', () => {
       path: '/batches/ZT-BATCH/movements/12/cancel',
       body: cancellation,
     },
+    {
+      name: 'correctBatch (lot 12b)',
+      call: () => correctBatch('ZT-BATCH', sheetCorrection),
+      path: '/batches/ZT-BATCH/correct',
+      body: sheetCorrection,
+    },
   ])('$name sends its body with POST and accepts an answer 201 with no body', async ({ call, path, body }) => {
     const fetchMock = stubFetch(() => Promise.resolve(created()))
 
@@ -212,11 +227,13 @@ describe('the writes', () => {
     await addMovement('A B/1', movement)
     await replaceMovement('A B/1', 3, replacement)
     await cancelMovement('A B/1', 3, cancellation)
+    await correctBatch('A B/1', sheetCorrection)
 
     expect(fetchMock.mock.calls[0][0]).toBe(`${BASE}/stations/A%20B%2F1/capabilities`)
     expect(fetchMock.mock.calls[1][0]).toBe(`${BASE}/batches/A%20B%2F1/movements`)
     expect(fetchMock.mock.calls[2][0]).toBe(`${BASE}/batches/A%20B%2F1/movements/3/replace`)
     expect(fetchMock.mock.calls[3][0]).toBe(`${BASE}/batches/A%20B%2F1/movements/3/cancel`)
+    expect(fetchMock.mock.calls[4][0]).toBe(`${BASE}/batches/A%20B%2F1/correct`)
   })
 
   it('sends no signal: a write is never cancelled half way', async () => {

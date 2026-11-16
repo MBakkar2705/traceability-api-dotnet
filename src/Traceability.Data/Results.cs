@@ -29,5 +29,14 @@ public sealed record CorrectionRow(
     decimal QuantityKg, DateTime OccurredAt, string ReasonCode, string ReasonComment,
     string AuthorName, DateTime CorrectedAt);
 
+// One row of trace.BatchCorrection (lot 12b): the sheet of a batch before (Old) and after (New) a
+// correction. The farms are given by their code. The identifier of the author is not read (like
+// for the movements).
+public sealed record SheetCorrectionRow(
+    long CorrectionId, string OldBatchCode, string NewBatchCode, string OldFarmCode, string NewFarmCode,
+    string OldVariety, string NewVariety, DateOnly OldHarvestDate, DateOnly NewHarvestDate,
+    string ReasonCode, string ReasonComment, string AuthorName, DateTime CorrectedAt);
+
 public sealed record BatchDetailsRow(
-    BatchRow Batch, IReadOnlyList<MovementRow> Movements, IReadOnlyList<CorrectionRow> Corrections);
+    BatchRow Batch, IReadOnlyList<MovementRow> Movements, IReadOnlyList<CorrectionRow> Corrections,
+    IReadOnlyList<SheetCorrectionRow> SheetCorrections);

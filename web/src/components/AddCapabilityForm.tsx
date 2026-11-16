@@ -12,6 +12,10 @@ import SuccessMessage from './SuccessMessage'
 // The names of the fields in the API (and of the inputs).
 const FIELD_NAMES = ['movementType']
 
+// The code 50203 also means "old code of another batch" for a batch (lot 12b): here it says that
+// the station already has the function.
+const OWN_MESSAGES = { 50203: 'Cette station a déjà cette fonction.' }
+
 interface AddCapabilityFormProps {
   stationCode: string
   // Called when the function has been added: the page reads the station again.
@@ -20,7 +24,7 @@ interface AddCapabilityFormProps {
 
 // The form that adds a function (a movement type) to a station.
 export default function AddCapabilityForm({ stationCode, onAdded }: AddCapabilityFormProps) {
-  const { state, submit } = useSubmit()
+  const { state, submit } = useSubmit(OWN_MESSAGES)
   const [addedType, setAddedType] = useState<string | null>(null)
   const fieldMessages = state.status === 'error' ? state.error.fieldMessages : {}
   const sending = state.status === 'sending'

@@ -17,7 +17,7 @@ Le modèle garde deux sortes de données : `Movement` est un journal où l'on n'
 - **L'API lit l'auteur dans le jeton déjà validé, jamais dans le corps de la requête**, par `CurrentUser` (`sub` et `preferred_username`). Pour que les champs gardent le nom qu'ils ont dans le jeton, `MapInboundClaims` est réglé à `false` (par défaut, le gestionnaire de jetons de .NET renomme `sub`).
 - **Un jeton valide sans `sub` ou sans `preferred_username` ne peut pas écrire un mouvement** : réponse 403. Les lectures ne sont pas touchées.
 - **L'API et la base ne renvoient que le nom.** L'identifiant ne sort pas de la base. L'interface ajoute une colonne « Auteur » au parcours d'un lot.
-- **Visibilité** : tous les rôles qui lisent (`reader` et `writer`) voient le nom de l'auteur. Aucune règle ne le cache. Avec des personnes réelles, ou pour un public extérieur (un organisme d'audit, par exemple), qui voit quoi se déciderait avec les responsables des données (RGPD, audit).
+- **Visibilité** : tous les rôles qui lisent (`reader` et `writer`) voient le nom de l'auteur. Aucune règle ne le cache. Avec des personnes réelles, ou pour un public extérieur (un organisme d'audit, par exemple), qui voit quoi se déciderait avec les responsables des données (RGPD, audit). **Remplacé au lot 12b** : seuls `auditor` et `supervisor` voient maintenant le nom (voir l'[ADR 0017](0017-correction-de-la-fiche-du-lot.md)).
 - **Migration** : `database/018_add_movement_author.sql` met à niveau une base existante, en une seule transaction. Par défaut (`@keep = N'NO'`) elle est annulée à la fin, c'est un essai à blanc ; les contrôles du script portent sur les colonnes, la valeur de remplacement et les contraintes. Une base neuve reçoit les colonnes par `002`. Les scripts `007` et `016` écrivent la valeur de remplacement ou passent les deux paramètres. La CI n'est pas modifiée.
 - **Tests** : les tests d'intégration donnent l'identité par des en-têtes de test (faux schéma d'authentification) ; un test vérifie le réglage `MapInboundClaims`. `006` et `003` testent les procédures et les contraintes. La vraie lecture du jeton est essayée à la main avec Keycloak.
 
@@ -43,7 +43,7 @@ Positives :
 
 Négatives :
 
-- **Le nom est visible de tous les rôles qui lisent.** Aucune règle de visibilité n'existe (voir la décision).
+- **Le nom est visible de tous les rôles qui lisent.** Aucune règle de visibilité n'existe (voir la décision). **Remplacé au lot 12b** (voir l'[ADR 0017](0017-correction-de-la-fiche-du-lot.md)).
 - **Un vrai utilisateur nommé `Initial_User` serait affiché « Données initiales »** : l'interface ne distingue pas le nom de la valeur de remplacement.
 - **Le nom est celui du moment de la saisie** : un changement de nom ultérieur ne change pas les lignes déjà écrites.
 - **Les procédures ne vérifient pas que l'auteur est un vrai compte** : un appel direct à une procédure peut enregistrer n'importe quelle valeur non vide.

@@ -1,5 +1,6 @@
 // The only module that calls the API: one function per route (the 5 GET routes of the lot 4a,
-// the 5 POST routes of the lot 4b, the 2 correction routes of the lot 12a).
+// the 5 POST routes of the lot 4b, the 2 correction routes of the lot 12a, the correction of the
+// sheet of a batch of the lot 12b).
 // A read can be cancelled with an AbortSignal. A write never is: cancelling a call does not
 // cancel what the server does, so the screen could not know if the data was saved.
 
@@ -15,6 +16,7 @@ import type {
   NewFarm,
   NewMovement,
   NewReplacement,
+  NewSheetCorrection,
   NewStation,
   Page,
   Station,
@@ -192,4 +194,10 @@ export async function cancelMovement(
   cancellation: NewCancellation,
 ): Promise<void> {
   await postJson(`/batches/${segment(batchCode)}/movements/${movementId}/cancel`, cancellation)
+}
+
+// Lot 12b (role supervisor): corrects the sheet of a batch (code, farm, variety, harvest date). The
+// batch is found by its current code; the old values are kept in the history of the batch.
+export async function correctBatch(batchCode: string, correction: NewSheetCorrection): Promise<void> {
+  await postJson(`/batches/${segment(batchCode)}/correct`, correction)
 }

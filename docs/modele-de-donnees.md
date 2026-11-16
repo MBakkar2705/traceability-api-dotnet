@@ -8,7 +8,7 @@ Le contexte métier est dans [fonctionnel.md](fonctionnel.md).
 
 ![Modèle de données du lot 1](images/schema-lot1.svg)
 
-Ce schéma est celui du lot 1 : il ne montre ni les colonnes d'auteur (lot 11) ni la table `MovementCorrection` (lot 12a), décrites plus bas.
+Ce schéma est celui du lot 1 : il ne montre ni les colonnes d'auteur (lot 11) ni les tables `MovementCorrection` (lot 12a) et `BatchCorrection` (lot 12b), décrites plus bas.
 
 Lecture :
 
@@ -17,6 +17,7 @@ Lecture :
 - Une station a plusieurs fonctions (`Station` 1 → N `StationCapability`).
 - Une fonction d'une station sert à plusieurs mouvements (`StationCapability` 1 → N `Movement`).
 - Un mouvement peut avoir plusieurs corrections (`Movement` 1 → N `MovementCorrection`) ; une correction vise un seul mouvement.
+- Un lot peut avoir plusieurs corrections de sa fiche (`Batch` 1 → N `BatchCorrection`) ; une correction vise un seul lot, et garde l'ancienne et la nouvelle ferme (deux liens vers `Farm`).
 
 Toutes les tables sont dans le schéma SQL `trace`.
 
@@ -35,12 +36,12 @@ Toutes les colonnes sont `NOT NULL` (validé). Légende : PK clé primaire, FK c
 
 ### 2.2 `trace.Batch` : les lots (la photo)
 
-Une ligne par lot. Elle donne l'état actuel : statut et dernière quantité connue.
+Une ligne par lot. Elle donne l'état actuel : statut, dernière quantité connue et valeurs actuelles de la fiche. Depuis le lot 12b, le code, la ferme, la variété et le jour de récolte peuvent être corrigés : les anciennes valeurs sont alors dans `trace.BatchCorrection` (section 2.7).
 
 | Colonne | Type | Contrainte | Rôle |
 |---|---|---|---|
 | `BatchId` | `INT` | PK, `IDENTITY` | Numéro technique, utilisé pour les liens entre tables. |
-| `BatchCode` | `NVARCHAR(30)` | UQ, CK non vide | Code lisible du lot (par exemple `LOT-2026-0001`). |
+| `BatchCode` | `NVARCHAR(30)` | UQ, CK non vide | Code lisible du lot (par exemple `LOT-2026-0001`). Unique parmi les codes actuels ; un ancien code est gardé dans `BatchCorrection` et reste réservé à ce lot (voir 2.7). |
 | `FarmId` | `INT` | FK → `Farm.FarmId` | Ferme d'origine. |
 | `Variety` | `NVARCHAR(50)` | | Variété de tomate. |
 | `HarvestDate` | `DATE` | | Date de récolte. |
@@ -108,6 +109,30 @@ Une ligne par correction (lot 12a, [ADR 0016](adr/0016-correction-des-mouvements
 
 La version valable d'un mouvement est sa ligne de `Movement` avec sa dernière correction appliquée ; une annulation est définitive. Un index non unique, `IX_MovementCorrection_MovementId` (sur `MovementId`), retrouve les corrections d'un mouvement ; il est créé avec la table et n'a pas été mesuré (la table commence vide). La table est créée par `002` pour une base neuve et par `database/019_add_movement_correction.sql` pour une base existante.
 
+### 2.7 `trace.BatchCorrection` : les corrections de la fiche des lots
+
+Une ligne par correction de la fiche d'un lot (lot 12b, [ADR 0017](adr/0017-correction-de-la-fiche-du-lot.md)). On ajoute des lignes, on ne modifie ni n'efface jamais une ligne. `Batch` garde les valeurs actuelles ; cette table garde l'ancienne et la nouvelle valeur des quatre champs de la fiche.
+
+| Colonne | Type | Contrainte | Rôle |
+|---|---|---|---|
+| `CorrectionId` | `BIGINT` | PK, `IDENTITY` | Numéro technique. Pour un lot, la plus grande valeur est sa dernière correction. |
+| `BatchId` | `INT` | FK → `Batch.BatchId` | Le lot corrigé. |
+| `OldBatchCode` | `NVARCHAR(30)` | | Le code avant la correction. |
+| `NewBatchCode` | `NVARCHAR(30)` | CK non vide | Le code après la correction. |
+| `OldFarmId` | `INT` | FK → `Farm.FarmId` | La ferme avant la correction. |
+| `NewFarmId` | `INT` | FK → `Farm.FarmId` | La ferme après la correction. |
+| `OldVariety` | `NVARCHAR(50)` | | La variété avant la correction. |
+| `NewVariety` | `NVARCHAR(50)` | | La variété après la correction. |
+| `OldHarvestDate` | `DATE` | | Le jour de récolte avant la correction. |
+| `NewHarvestDate` | `DATE` | | Le jour de récolte après la correction. |
+| `ReasonCode` | `NVARCHAR(20)` | CK | `DATA_ENTRY_ERROR` ou `OTHER`. |
+| `ReasonComment` | `NVARCHAR(500)` | CK | Le commentaire, texte vide s'il n'y en a pas. Il ne peut pas être vide pour `OTHER`. |
+| `AuthorId` | `NVARCHAR(64)` | CK non vide | Identifiant du compte qui a corrigé (champ `sub` du jeton). |
+| `AuthorName` | `NVARCHAR(100)` | CK non vide | Nom d'utilisateur au moment de la correction. |
+| `CorrectedAt` | `DATETIME2` | `DEFAULT SYSUTCDATETIME()` | Date et heure de la correction, en UTC, mises par la base. |
+
+Une contrainte refuse une ligne où rien ne change : au moins une des quatre valeurs doit être différente (les codes et la variété sont comparés avec un classement binaire, qui tient compte de la casse : un changement de casse seul compte comme un changement). Deux index non uniques, `IX_BatchCorrection_BatchId` (retrouver les corrections d'un lot) et `IX_BatchCorrection_OldBatchCode` (retrouver un lot par un ancien code), sont créés avec la table et n'ont pas été mesurés (la table commence vide). La table est créée par `002` pour une base neuve et par `database/020_add_batch_correction.sql` pour une base existante.
+
 ## 3. Choix de conception
 
 - **Deux identifiants par objet** : un numéro technique (`IDENTITY`) pour les liens entre tables, un code lisible unique pour les humains et l'API. Un code métier peut changer de format, un numéro technique ne change pas.
@@ -120,6 +145,7 @@ La version valable d'un mouvement est sa ligne de `Movement` avec sa dernière c
 - **`DATETIME2` en UTC** : plus précis et plus étendu que `DATETIME`. L'UTC évite les ambiguïtés de fuseau et de changement d'heure.
 - **Schéma `trace`** : regroupe les objets du projet, séparés du schéma par défaut `dbo`.
 - **Les corrections dans une table à part** (lot 12a) : le journal `Movement` reste un journal où l'on n'ajoute que des lignes. La table reprend les mêmes clés étrangères sur deux colonnes (station et fonction) que `Movement` : une version corrigée ne peut pas viser une station qui n'a pas la fonction.
+- **Les corrections de la fiche dans une table à part** (lot 12b) : `Batch` reste l'état actuel et rien n'est écrasé en silence. Un ancien code reste réservé au lot qui l'a eu : ce sont les procédures qui le contrôlent, la base n'a pas de contrainte pour cela (voir [ADR 0017](adr/0017-correction-de-la-fiche-du-lot.md)).
 - **Deux index supplémentaires, ajoutés après mesure** : les clés primaires et les contraintes d'unicité créent déjà des index, et une clé étrangère ne crée pas d'index toute seule. Au lot 2b, sur 1 000 000 de lots inventés, `IX_Movement_BatchId` (sur `Movement (BatchId)`) a été ajouté : le parcours d'un lot passe de 25 412 à 15 lectures logiques. Deux autres index ont été essayés puis abandonnés au même lot, `Batch (Status)` et `Batch (FarmId)`, parce que SQL Server ne s'en servait pas ou qu'ils faisaient pire (voir [mesures.md](mesures.md)). Index simple plutôt que couvrant : voir l'[ADR 0004](adr/0004-index-simple-sur-mouvement-par-lot.md). Au lot 5, `IX_Batch_FarmId` (sur `Batch (FarmId)`, 13,57 Mo) a été ajouté : SQL Server ne l'utilise que si le plan du total est refait à chaque appel (`OPTION (RECOMPILE)`) ; le total d'une ferme de 25 000 lots passe alors de 10 574 à 47 lectures logiques, pour environ 0,12 ms de plus par lot créé (voir l'[ADR 0008](adr/0008-listbatches-page-avant-jointure-total-recompile.md)).
 
 ## 4. Ce que garantit la base, ce que garantira la procédure
@@ -133,6 +159,7 @@ La base garantit seule (clés, unicité, CHECK) :
 - Les statuts et les types de mouvement sont dans la liste.
 - Les quantités sont supérieures à 0.
 - Une correction vise un mouvement existant, avec une station qui a la fonction du mouvement ; son genre et son motif sont dans la liste ; un commentaire est présent pour le motif `OTHER` ; l'auteur n'est ni vide, ni fait d'espaces.
+- Une correction de la fiche vise un lot et des fermes existants ; au moins une des quatre valeurs change ; son motif est dans la liste ; un commentaire est présent pour le motif `OTHER` ; l'auteur n'est ni vide, ni fait d'espaces.
 
 Les procédures stockées garantiront (voir les règles dans [fonctionnel.md](fonctionnel.md)) :
 
@@ -142,8 +169,9 @@ Les procédures stockées garantiront (voir les règles dans [fonctionnel.md](fo
 - Un mouvement et la mise à jour du lot (statut, quantité) dans la même transaction.
 - La création d'un lot avec son premier mouvement `RECEPTION`.
 - Les règles des corrections (`ReplaceMovement`, `CancelMovement`) : quantité entre les étapes voisines, dernier mouvement seulement pour l'annulation, jamais la réception, annulation définitive, valeurs identiques refusées ; et la mise à jour du statut et de la quantité du lot.
+- Les règles de la correction de la fiche (`CorrectBatch`) : ferme existante, code libre (ni code actuel d'un autre lot, ni ancien code d'un autre lot), jour de récolte pas après le jour de la réception (aussi à la création d'un lot et quand on déplace la réception), valeurs identiques refusées ; le lot et la ligne de correction dans la même transaction.
 
-Le journal `Movement` n'est jamais modifié : les procédures n'ont pas de `UPDATE` ni de `DELETE` dessus (les corrections vont dans `MovementCorrection`). Les droits d'accès à la table seront restreints plus tard.
+Le journal `Movement` n'est jamais modifié : les procédures n'ont pas de `UPDATE` ni de `DELETE` dessus (les corrections vont dans `MovementCorrection`). `BatchCorrection` n'est jamais modifiée non plus : les procédures n'y font qu'un `INSERT`. Les droits d'accès à la table seront restreints plus tard.
 
 ## 5. Limites connues
 
@@ -156,3 +184,5 @@ Le journal `Movement` n'est jamais modifié : les procédures n'ont pas de `UPDA
 - Les procédures de correction ne vérifient pas que l'auteur est un vrai compte, ni l'heure d'une version corrigée (comme pour la saisie).
 - Pas de table d'utilisateurs : l'auteur d'un mouvement est enregistré (identifiant et nom pris dans le jeton), mais la base ne connaît pas les comptes et ne vérifie pas qu'un auteur existe.
 - Les index sont mesurés sur des données inventées et une seule machine. Le coût en écriture n'est mesuré que pour `IX_Batch_FarmId` (environ 0,12 ms par lot créé, dans SSMS, au lot 5) ; pour `IX_Movement_BatchId`, il ne l'est pas (voir [mesures.md](mesures.md), sections 5 et 9.4).
+- Deux lots qui prennent le même ancien code au même instant ne sont protégés par aucune contrainte, et ce cas n'est pas testé (voir [ADR 0017](adr/0017-correction-de-la-fiche-du-lot.md)).
+- Les espaces au début et à la fin d'une variété ne sont pas retirés : une variété `Cherry ` est enregistrée telle quelle, à la création comme à la correction (relevé au lot 12b, [verification.md](verification.md) 23.3).

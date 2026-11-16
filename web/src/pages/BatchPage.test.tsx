@@ -36,6 +36,7 @@ const batch = {
   quantityKg: 500.5,
   status: 'SHIPPED',
   corrections: [],
+  sheetCorrections: [],
   movements: [
     mv({ movementId: 1, movementType: 'RECEPTION', stationCode: 'SITE-01', quantityKg: 500.5, occurredAt: '2026-10-14T08:30:00Z', authorName: 'Initial_User' }),
     mv({ movementId: 2, movementType: 'SORTING', stationCode: 'SITE-02', quantityKg: 480, occurredAt: '2026-10-14T10:05:30.1234567Z', authorName: 'writer-test' }),

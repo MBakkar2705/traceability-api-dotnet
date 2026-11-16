@@ -215,6 +215,34 @@ public sealed class TraceabilityDb
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Corrects the sheet of a batch (lot 12b): code, farm, variety and harvest date. The four new
+    /// values are always given (a field that does not change repeats its current value). A row is
+    /// added to trace.BatchCorrection and trace.Batch gets the new values, in one transaction. The
+    /// batch is found by its CURRENT code. authorId and authorName say who corrects.
+    /// </summary>
+    public async Task CorrectBatchAsync(
+        string? batchCode, string? newBatchCode, string? farmCode, string? variety, DateOnly? harvestDate,
+        string? reasonCode, string? reasonComment,
+        string? authorId, string? authorName,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = CreateCommand(
+            connection, "trace.CorrectBatch",
+            Text("@BatchCode", batchCode), Text("@NewBatchCode", newBatchCode),
+            Text("@FarmCode", farmCode), Text("@Variety", variety),
+            Day("@HarvestDate", harvestDate),
+            Text("@ReasonCode", reasonCode), Text("@ReasonComment", reasonComment),
+            Text("@AuthorId", authorId), Text("@AuthorName", authorName));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads a batch, its movements, the corrections of its movements and (lot 12b) the corrections
+    /// of its sheet. The batch is found by its current code, or else by an old code: the batch that
+    /// comes back then carries its current code.
+    /// </summary>
     public async Task<BatchDetailsRow> GetBatchAsync(
         string? batchCode, CancellationToken cancellationToken = default)
     {
@@ -251,7 +279,18 @@ public sealed class TraceabilityDb
             }
         }
 
-        return new BatchDetailsRow(batch, movements, corrections);
+        // Fourth table (lot 12b): the corrections of the sheet of the batch, in CorrectionId order
+        // (empty if the sheet was never corrected).
+        var sheetCorrections = new List<SheetCorrectionRow>();
+        if (await reader.NextResultAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                sheetCorrections.Add(ReadSheetCorrection(reader));
+            }
+        }
+
+        return new BatchDetailsRow(batch, movements, corrections, sheetCorrections);
     }
 
     public async Task<PageRow<BatchRow>> ListBatchesAsync(
@@ -375,6 +414,21 @@ public sealed class TraceabilityDb
             GetString(reader, "StationCode"),
             reader.GetDecimal(reader.GetOrdinal("QuantityKg")),
             GetUtc(reader, "OccurredAt"),
+            GetString(reader, "ReasonCode"),
+            GetString(reader, "ReasonComment"),
+            GetString(reader, "AuthorName"),
+            GetUtc(reader, "CorrectedAt"));
+
+    private static SheetCorrectionRow ReadSheetCorrection(SqlDataReader reader) =>
+        new(reader.GetInt64(reader.GetOrdinal("CorrectionId")),
+            GetString(reader, "OldBatchCode"),
+            GetString(reader, "NewBatchCode"),
+            GetString(reader, "OldFarmCode"),
+            GetString(reader, "NewFarmCode"),
+            GetString(reader, "OldVariety"),
+            GetString(reader, "NewVariety"),
+            DateOnly.FromDateTime(reader.GetDateTime(reader.GetOrdinal("OldHarvestDate"))),
+            DateOnly.FromDateTime(reader.GetDateTime(reader.GetOrdinal("NewHarvestDate"))),
             GetString(reader, "ReasonCode"),
             GetString(reader, "ReasonComment"),
             GetString(reader, "AuthorName"),

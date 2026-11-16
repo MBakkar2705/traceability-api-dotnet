@@ -14,6 +14,10 @@
       {
         "name": "supervisor",
         "description": "Correction (lot 12a): can read, and replace or cancel a movement. Does not enter movements."
+      },
+      {
+        "name": "auditor",
+        "description": "Audit (lot 12b): can read, and sees the names of the authors. Does not write and does not correct."
       }
     ]
   },

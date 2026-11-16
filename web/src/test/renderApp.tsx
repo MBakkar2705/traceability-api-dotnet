@@ -9,6 +9,7 @@ import type { AuthState } from '../auth/AuthContext'
 export const WRITER: AuthState = { status: 'signedIn', userName: 'writer-test', roles: ['writer'] }
 export const SUPERVISOR: AuthState = { status: 'signedIn', userName: 'supervisor-test', roles: ['supervisor'] }
 export const READER: AuthState = { status: 'signedIn', userName: 'reader-test', roles: ['reader'] }
+export const AUDITOR: AuthState = { status: 'signedIn', userName: 'auditor-test', roles: ['auditor'] }
 
 // The whole application, as if the browser were at this address. By default a writer is signed
 // in, so that the screens show everything they offer. It gives back the result of render and the

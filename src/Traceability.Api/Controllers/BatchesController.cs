@@ -9,14 +9,14 @@ namespace Traceability.Api.Controllers;
 
 [ApiController]
 [Route("batches")]
-public sealed class BatchesController(TraceabilityDb db) : ControllerBase
+public sealed class BatchesController(TraceabilityDb db, IAuthorizationService authorization) : ControllerBase
 {
     /// <summary>Creates a batch (status RECEIVED) and records its first movement, a RECEPTION.</summary>
     /// <response code="201">The batch is created. The body is empty; the Location header points to the batch.</response>
     /// <response code="400">A field is missing, malformed or too long, or the time has no Z or offset (no errorCode); or the batch code is empty (errorCode 50400); or the quantity is 0 or less (errorCode 50401).</response>
     /// <response code="404">Unknown farm (errorCode 50101) or unknown station (errorCode 50102).</response>
-    /// <response code="409">The batch code is already taken (errorCode 50202).</response>
-    /// <response code="422">The station does not have the RECEPTION function (errorCode 50303).</response>
+    /// <response code="409">The batch code is already taken (errorCode 50202), or it is an old code of another batch (errorCode 50203).</response>
+    /// <response code="422">The station does not have the RECEPTION function (errorCode 50303); or the harvest day is after the day of the reception (errorCode 50309).</response>
     /// <response code="401">No valid token.</response>
     /// <response code="403">The token does not have the role writer; or it does not give the claims sub and preferred_username, so the author of the movement is unknown.</response>
     [HttpPost]
@@ -74,7 +74,7 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     /// <response code="400">A filter is malformed or too long (no errorCode); or the status is unknown (errorCode 50403); or the page number or size is invalid (errorCode 50404).</response>
     /// <response code="404">Unknown farm (errorCode 50101).</response>
     /// <response code="401">No valid token.</response>
-    /// <response code="403">The token has none of the roles reader, writer and supervisor.</response>
+    /// <response code="403">The token has none of the roles reader, writer, supervisor and auditor.</response>
     [HttpGet]
     [Authorize(Policy = Policies.CanRead)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -113,19 +113,24 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
         return new PageResponse<BatchResponse>(items, page.TotalCount, pageNumber, pageSize);
     }
 
-    /// <summary>Reads a batch with its movements, in the order they were recorded, and the corrections of these movements.</summary>
+    /// <summary>Reads a batch with its movements, in the order they were recorded, the corrections of these movements and the corrections of its sheet.</summary>
     /// <remarks>
     /// Each movement carries the name of its author and its VALID values (its latest correction
     /// applied); the original values are given next to them. A cancelled movement stays in the list
     /// with isCancelled true. The corrections are listed in the order they were made.
+    /// Lot 12b: sheetCorrections lists the corrections of the sheet of the batch (code, farm, variety,
+    /// harvest date), with the old and the new values. The batch is found by its current code, or
+    /// else by an old code: the answer then carries the CURRENT code in batchCode, which may differ
+    /// from the code in the address. The names of the authors (authorName) are given to the roles
+    /// auditor and supervisor only; for the other roles authorName is null.
     /// </remarks>
     /// <param name="batchCode">Code of the batch.</param>
     /// <param name="cancellationToken">Cancels the call if the client disconnects.</param>
-    /// <response code="200">The batch, its movements and its corrections. Times are in UTC and end with Z.</response>
+    /// <response code="200">The batch, its movements, its corrections and the corrections of its sheet. Times are in UTC and end with Z.</response>
     /// <response code="400">The code is malformed or too long (no errorCode).</response>
     /// <response code="404">Unknown batch (errorCode 50100).</response>
     /// <response code="401">No valid token.</response>
-    /// <response code="403">The token has none of the roles reader, writer and supervisor.</response>
+    /// <response code="403">The token has none of the roles reader, writer, supervisor and auditor.</response>
     [HttpGet("{batchCode}")]
     [Authorize(Policy = Policies.CanRead)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -145,21 +150,32 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
         }
 
         var details = await db.GetBatchAsync(batchCode, cancellationToken);
+
+        // Lot 12b: the names of the authors are given to the roles auditor and supervisor only.
+        var canSeeAuthors = (await authorization.AuthorizeAsync(User, Policies.CanSeeAuthors)).Succeeded;
+        string? Visible(string authorName) => canSeeAuthors ? authorName : null;
+
         var batch = details.Batch;
         var movements = details.Movements
             .Select(m => new MovementResponse(
-                m.MovementId, m.MovementType, m.StationCode, m.QuantityKg, m.OccurredAt, m.AuthorName,
+                m.MovementId, m.MovementType, m.StationCode, m.QuantityKg, m.OccurredAt, Visible(m.AuthorName),
                 m.IsCancelled, m.CorrectionCount,
                 m.OriginalStationCode, m.OriginalQuantityKg, m.OriginalOccurredAt))
             .ToList();
         var corrections = details.Corrections
             .Select(c => new CorrectionResponse(
                 c.CorrectionId, c.MovementId, c.Kind, c.MovementType, c.StationCode,
-                c.QuantityKg, c.OccurredAt, c.ReasonCode, c.ReasonComment, c.AuthorName, c.CorrectedAt))
+                c.QuantityKg, c.OccurredAt, c.ReasonCode, c.ReasonComment, Visible(c.AuthorName), c.CorrectedAt))
+            .ToList();
+        var sheetCorrections = details.SheetCorrections
+            .Select(s => new SheetCorrectionResponse(
+                s.CorrectionId, s.OldBatchCode, s.NewBatchCode, s.OldFarmCode, s.NewFarmCode,
+                s.OldVariety, s.NewVariety, s.OldHarvestDate, s.NewHarvestDate,
+                s.ReasonCode, s.ReasonComment, Visible(s.AuthorName), s.CorrectedAt))
             .ToList();
         return new BatchDetailsResponse(
             batch.BatchCode, batch.FarmCode, batch.Variety, batch.HarvestDate,
-            batch.QuantityKg, batch.Status, movements, corrections);
+            batch.QuantityKg, batch.Status, movements, corrections, sheetCorrections);
     }
 
     /// <summary>Adds the next movement of a batch and updates its status and quantity.</summary>
@@ -173,7 +189,7 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     /// <param name="cancellationToken">Cancels the call if the client disconnects.</param>
     /// <response code="201">The movement is recorded. The body is empty; the Location header points to the batch.</response>
     /// <response code="400">A field is missing, malformed or too long, or the time has no Z or offset (no errorCode); or the quantity is 0 or less (errorCode 50401); or the movement type is unknown (errorCode 50402).</response>
-    /// <response code="404">Unknown batch (errorCode 50100) or unknown station (errorCode 50102).</response>
+    /// <response code="404">Unknown batch (errorCode 50100) or unknown station (errorCode 50102); or the code is an old code of a corrected batch (errorCode 50104).</response>
     /// <response code="422">The batch is already SHIPPED (errorCode 50300); or the movement is not the next step (errorCode 50301); or the quantity is higher than the current one (errorCode 50302); or the station does not have the function (errorCode 50303).</response>
     /// <response code="401">No valid token.</response>
     /// <response code="403">The token does not have the role writer; or it does not give the claims sub and preferred_username, so the author of the movement is unknown.</response>
@@ -229,8 +245,8 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     /// <param name="cancellationToken">Cancels the call if the client disconnects.</param>
     /// <response code="201">The correction is recorded. The body is empty; the Location header points to the batch.</response>
     /// <response code="400">A field is missing, malformed or too long, or the time has no Z or offset (no errorCode); or the quantity is 0 or less (errorCode 50401); or the reason is unknown (errorCode 50407); or the reason is OTHER without a comment (errorCode 50408); or the comment is too long (errorCode 50409).</response>
-    /// <response code="404">Unknown batch (errorCode 50100), unknown station (errorCode 50102), or the movement is not in this batch (errorCode 50103).</response>
-    /// <response code="422">The station does not have the function of the movement (errorCode 50303); or the quantity is higher than the previous step or lower than the next step (errorCode 50304); or the movement is cancelled (errorCode 50305); or the new values are the same as the current ones (errorCode 50308).</response>
+    /// <response code="404">Unknown batch (errorCode 50100), unknown station (errorCode 50102), the movement is not in this batch (errorCode 50103), or the code is an old code of a corrected batch (errorCode 50104).</response>
+    /// <response code="422">The station does not have the function of the movement (errorCode 50303); or the quantity is higher than the previous step or lower than the next step (errorCode 50304); or the movement is cancelled (errorCode 50305); or the new values are the same as the current ones (errorCode 50308); or a RECEPTION is moved before the harvest day of the batch (errorCode 50309).</response>
     /// <response code="401">No valid token.</response>
     /// <response code="403">The token does not have the role supervisor; or it does not give the claims sub and preferred_username, so the author of the correction is unknown.</response>
     [HttpPost("{batchCode}/movements/{movementId}/replace")]
@@ -283,7 +299,7 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
     /// <param name="cancellationToken">Cancels the call if the client disconnects.</param>
     /// <response code="201">The cancellation is recorded. The body is empty; the Location header points to the batch.</response>
     /// <response code="400">A field is missing, malformed or too long (no errorCode); or the reason is unknown (errorCode 50407); or the reason is OTHER without a comment (errorCode 50408); or the comment is too long (errorCode 50409).</response>
-    /// <response code="404">Unknown batch (errorCode 50100), or the movement is not in this batch (errorCode 50103).</response>
+    /// <response code="404">Unknown batch (errorCode 50100), the movement is not in this batch (errorCode 50103), or the code is an old code of a corrected batch (errorCode 50104).</response>
     /// <response code="422">The movement is already cancelled (errorCode 50305); or it is not the last valid movement (errorCode 50306); or it is the RECEPTION (errorCode 50307).</response>
     /// <response code="401">No valid token.</response>
     /// <response code="403">The token does not have the role supervisor; or it does not give the claims sub and preferred_username, so the author of the correction is unknown.</response>
@@ -319,6 +335,70 @@ public sealed class BatchesController(TraceabilityDb db) : ControllerBase
 
         // 201 with an empty body: the Location header points to the batch.
         Response.Headers["Location"] = Url.Action(nameof(Get), new { batchCode });
+        return StatusCode(StatusCodes.Status201Created);
+    }
+
+    /// <summary>Corrects the sheet of a batch: its code, its farm, its variety and its harvest date. The old values are kept.</summary>
+    /// <remarks>
+    /// Lot 12b. The four new values are always given: a field that does not change repeats its
+    /// current value. The batch is never changed without a trace: a correction is recorded with the
+    /// old and the new values, the reason and the supervisor who made it, and the batch gets the new
+    /// values in the same transaction. The status and the quantity never change here. A SHIPPED batch
+    /// can be corrected too. The batch is found by its CURRENT code: an old code answers 404 with the
+    /// current code in the message. The new code must be free: not the code of another batch, not an
+    /// old code of another batch; a batch may take back one of its own old codes. The harvest day
+    /// must not be after the day of the valid reception (the same day is accepted). At least one value
+    /// must change; a change of letter case in the code or the variety counts. The reason is
+    /// DATA_ENTRY_ERROR or OTHER (MEASUREMENT_ERROR is for the quantities of the movements).
+    /// </remarks>
+    /// <param name="batchCode">CURRENT code of the batch.</param>
+    /// <param name="request">The JSON body of the request.</param>
+    /// <param name="cancellationToken">Cancels the call if the client disconnects.</param>
+    /// <response code="201">The correction is recorded. The body is empty; the Location header points to the batch under its new code.</response>
+    /// <response code="400">A field is missing, malformed or too long (no errorCode); or the new code is empty (errorCode 50400); or the reason is not accepted for a sheet (errorCode 50407); or the reason is OTHER without a comment (errorCode 50408); or the comment is too long (errorCode 50409).</response>
+    /// <response code="404">Unknown batch (errorCode 50100); or unknown farm (errorCode 50101); or the code is an old code of a corrected batch (errorCode 50104).</response>
+    /// <response code="409">The new code is already the code of another batch (errorCode 50202), or the old code of another batch (errorCode 50203).</response>
+    /// <response code="422">The new values are the same as the current ones (errorCode 50308); or the harvest day is after the day of the reception (errorCode 50309).</response>
+    /// <response code="401">No valid token.</response>
+    /// <response code="403">The token does not have the role supervisor; or it does not give the claims sub and preferred_username, so the author of the correction is unknown.</response>
+    [HttpPost("{batchCode}/correct")]
+    [Authorize(Policy = Policies.CanCorrect)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> Correct(
+        string batchCode, CorrectBatchRequest request, CancellationToken cancellationToken)
+    {
+        if (!CurrentUser.TryRead(User, out var author))
+        {
+            return AuthorUnknown();
+        }
+
+        var errors = new FieldErrors();
+        errors.RequireCode("batchCode", batchCode, CodeRules.BatchMaxLength);
+        errors.RequireCode("newBatchCode", request.NewBatchCode, CodeRules.BatchMaxLength);
+        errors.RequireCode("farmCode", request.FarmCode, CodeRules.FarmMaxLength);
+        errors.RequireText("variety", request.Variety, FieldLimits.VarietyMaxLength);
+        errors.RequireValue("harvestDate", request.HarvestDate);
+        errors.RequireText("reasonCode", request.ReasonCode, FieldLimits.ReasonCodeMaxLength);
+        errors.OptionalText("reasonComment", request.ReasonComment, FieldLimits.ReasonCommentMaxLength);
+        if (errors.HasErrors)
+        {
+            errors.ApplyTo(ModelState);
+            return ValidationProblem();
+        }
+
+        await db.CorrectBatchAsync(
+            batchCode, request.NewBatchCode, request.FarmCode, request.Variety, request.HarvestDate,
+            request.ReasonCode, request.ReasonComment, author.Id, author.Name, cancellationToken);
+
+        // 201 with an empty body: the Location header points to the batch under its NEW code, because
+        // the old code no longer finds it for writing.
+        Response.Headers["Location"] = Url.Action(nameof(Get), new { batchCode = request.NewBatchCode });
         return StatusCode(StatusCodes.Status201Created);
     }
 

@@ -13,8 +13,12 @@ import { useSubmit } from '../lib/useSubmit'
 // The names of the fields in the API (and of the inputs).
 const FIELD_NAMES = ['batchCode', 'farmCode', 'variety', 'harvestDate', 'quantityKg', 'stationCode', 'occurredAt']
 
+// The code 50203 also means "this station already has this function" for a station: here it says
+// that the code of the batch is the old code of another batch (lot 12b).
+const OWN_MESSAGES = { 50203: "Ce code est l'ancien code d'un autre lot." }
+
 export default function NewBatchPage() {
-  const { state, submit } = useSubmit()
+  const { state, submit } = useSubmit(OWN_MESSAGES)
   const navigate = useNavigate()
   // The time of the reception starts at the current time (UTC), read once when the page opens.
   const [now] = useState(nowUtcInput)
