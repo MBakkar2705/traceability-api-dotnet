@@ -82,6 +82,8 @@ describe('describeWriteError', () => {
     [422, 50302, 'La quantité dépasse la quantité actuelle du lot.'],
     [422, 50303, "Cette station n'a pas la fonction de ce mouvement."],
     [422, 50309, 'La date de récolte ne peut pas être après le jour de la réception.'],
+    [422, 50310, "L'heure ne peut pas dépasser de plus de 5 minutes l'heure du serveur. Vérifiez l'heure saisie (elle est en UTC) et l'horloge de votre ordinateur."],
+    [422, 50311, "L'heure doit être après celle de l'étape précédente et, pour une correction, avant celle de l'étape suivante."],
     [400, 50400, 'Le code ne peut pas être vide.'],
     [400, 50401, 'La quantité doit être supérieure à 0.'],
     [400, 50402, 'Type de mouvement inconnu.'],

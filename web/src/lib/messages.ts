@@ -40,6 +40,10 @@ const MESSAGE_BY_CODE: Record<number, string> = {
   // Lot 12b: the harvest day and the reception day of a batch (both ways: a harvest after the
   // reception, or a reception moved before the harvest).
   50309: 'La date de récolte ne peut pas être après le jour de la réception.',
+  // Lot 12c: the time of a movement. 50311 is one number for both directions (after the previous step;
+  // for a correction, also before the next step), so one text serves all the forms.
+  50310: "L'heure ne peut pas dépasser de plus de 5 minutes l'heure du serveur. Vérifiez l'heure saisie (elle est en UTC) et l'horloge de votre ordinateur.",
+  50311: "L'heure doit être après celle de l'étape précédente et, pour une correction, avant celle de l'étape suivante.",
   // A value is not valid.
   50400: 'Le code ne peut pas être vide.',
   50401: 'La quantité doit être supérieure à 0.',
