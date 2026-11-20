@@ -50,8 +50,9 @@ Négatives :
 - **Deux étapes à la même heure sont refusées**, même si elles ont eu lieu dans la même minute.
 - **Les anciennes données hors ordre restent comme elles sont.** `021` a trouvé des mouvements hors ordre sur `TraceabilityTest` et aucun sur `TraceabilityDev` (3 min 12 s pour 3 250 000 mouvements valables).
 - **Le texte de 50310 dans les formulaires d'ajout et de correction** n'a été vu que par les tests automatiques de l'interface, pas dans le navigateur.
-- **La CI n'est pas encore lue** (M19 de [verification.md](../verification.md)) et n'utilise ni Keycloak ni vrai jeton ; elle ne rejoue pas `020`.
+- **La CI n'utilise ni Keycloak ni vrai jeton** et ne rejoue pas `020` ; ses nombres de tests C# et d'interface ne sont pas relevés (M19 de [verification.md](../verification.md)).
 
 ## Notes
 
-- 2026-11-20 : ce document est écrit après l'essai de la section 24 de [verification.md](../verification.md). Les règles ont été validées une à une pendant la préparation du lot, avant l'écriture du code. Les alternatives ci-dessus ont été rédigées en écrivant ce document, aucune n'a été essayée. La ligne M19 (CI) sera complétée après le push.
+- 2026-11-20 : ce document est écrit après l'essai de la section 24 de [verification.md](../verification.md). Les règles ont été validées une à une pendant la préparation du lot, avant l'écriture du code. Les alternatives ci-dessus ont été rédigées en écrivant ce document, aucune n'a été essayée.
+- 2026-11-20, après la fusion : la CI est verte sur la branche, la pull request et `main` ; `006` a tourné sur la base neuve de la CI (150 tests). Elle ne rejoue toujours pas `020` ([verification.md](../verification.md), section 24, M19).
