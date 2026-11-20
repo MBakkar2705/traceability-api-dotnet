@@ -48,7 +48,7 @@ Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
 ## SQL
 - Procédures stockées pour les règles métier (ordre des statuts, quantité qui ne monte pas).
 - Claude signale tout DROP / TRUNCATE / DELETE sans WHERE avant exécution.
-- Les durées de `019`, `020` et `021` sur `TraceabilityDev` n'ont pas été mesurées : ne pas en annoncer.
+- La durée de `021` sur `TraceabilityDev` a été mesurée le 2026-11-20 : 3 min 12 s (3 250 000 mouvements). Celles de `019` et `020` ne l'ont pas été : ne pas en annoncer.
 
 ## Git
 - Pas de `git commit` ni `git push` par Claude (lecture seule OK : status, diff, log).

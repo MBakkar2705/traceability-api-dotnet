@@ -190,6 +190,6 @@ Depuis le lot 12a, une faute de saisie sur un mouvement se corrige (règle 8), e
 Depuis le lot 12c, l'heure est contrôlée (règle 12). Ce qui reste ouvert :
 
 - **Les 5 minutes** : c'est un choix de conception. À l'essai, +4 minutes sont acceptées et +6 refusées en SQL, +2 acceptées et +10 refusées par l'API ; la limite exacte n'a pas été essayée. Le métier réel dira si 5 minutes conviennent.
-- **Les anciennes données** : si des mouvements d'avant le lot 12c sont dans le désordre, rien ne les corrige ni ne les signale. `database/021_find_unordered_movements.sql` les compte et les liste en lecture seule ; il n'a été lancé que sur la base de test, pas sur `TraceabilityDev`.
+- **Les anciennes données** : si des mouvements d'avant le lot 12c sont dans le désordre, rien ne les corrige ni ne les signale. `database/021_find_unordered_movements.sql` les compte et les liste en lecture seule ; lancé sur `TraceabilityDev`, il n'a trouvé aucun mouvement hors ordre (3 min 12 s pour 3 250 000 mouvements).
 - **Deux appels simultanés** sur le même lot, et **un ordinateur dont l'horloge est en avance** de plus de 5 minutes sur SQL Server : non essayés (voir [verification.md](verification.md), section 24.3).
 - **La saisie tardive** : l'heure ne permet pas de savoir quand un mouvement a été saisi.
