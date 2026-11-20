@@ -236,6 +236,28 @@ describe('BatchPage, adding a movement', () => {
     expect(reads(api)).toHaveLength(1)
   })
 
+  // Lot 12c: the two refusals about the time of a movement.
+  it.each([
+    [50310, "L'heure ne peut pas dépasser de plus de 5 minutes l'heure du serveur. Vérifiez l'heure saisie (elle est en UTC) et l'horloge de votre ordinateur."],
+    [50311, "L'heure doit être après celle de l'étape précédente et, pour une correction, avant celle de l'étape suivante."],
+  ])('says in French why the time is refused (%i), keeps what was typed, and does not read the batch again', async (errorCode, expected) => {
+    const api = stubApi({
+      '/batches/LOT-0000001': () => ok(received),
+      '/batches/LOT-0000001/movements': () => problem(422, { errorCode }),
+    })
+    renderApp('/batches/LOT-0000001')
+    await screen.findByText('Roma')
+
+    fill(STATION, 'SITE-02')
+    fill(TIME, '2026-10-22T09:00')
+    add()
+
+    expect((await screen.findByRole('alert')).textContent).toContain(expected)
+    expect(valueOf(STATION)).toBe('SITE-02')
+    expect(valueOf(TIME)).toBe('2026-10-22T09:00')
+    expect(reads(api)).toHaveLength(1)
+  })
+
   it('shows the messages of an error of shape under the right fields', async () => {
     const errors = { stationCode: ['The field is required.'], quantityKg: ['The field is required.'] }
     stubApi({

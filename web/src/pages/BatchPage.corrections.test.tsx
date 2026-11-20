@@ -333,6 +333,27 @@ describe('BatchPage, correcting a movement', () => {
     expect(screen.queryByText('Correction enregistrée.')).toBeNull()
   })
 
+  // Lot 12c: the two refusals about the time of a movement.
+  it.each([
+    [50310, "L'heure ne peut pas dépasser de plus de 5 minutes l'heure du serveur. Vérifiez l'heure saisie (elle est en UTC) et l'horloge de votre ordinateur."],
+    [50311, "L'heure doit être après celle de l'étape précédente et, pour une correction, avant celle de l'étape suivante."],
+  ])('says in French why the time is refused (%i), keeps what was typed, and does not read the batch again', async (errorCode, expected) => {
+    const api = stubApi({
+      [URL_BATCH]: () => ok(sorted),
+      [`${URL_BATCH}/movements/2/replace`]: () => problem(422, { errorCode }),
+    })
+    renderApp(URL_BATCH, SUPERVISOR)
+    await screen.findByText('Roma')
+
+    fill(TIME, '2026-10-14T09:00')
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la correction' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain(expected)
+    expect(valueOf(TIME)).toBe('2026-10-14T09:00')
+    expect(api.mock.calls.filter(([, init]) => init?.method !== 'POST')).toHaveLength(1)
+    expect(screen.queryByText('Correction enregistrée.')).toBeNull()
+  })
+
   it('says why a movement cannot be cancelled', async () => {
     stubApi({
       [URL_BATCH]: () => ok(sorted),

@@ -71,7 +71,7 @@ public class SheetCorrectionsTests(ApiFixture api)
             stationCode,
             movementType,
             quantityKg,
-            occurredAt = "2026-10-14T08:00:00Z",
+            occurredAt = TestData.TimeOfStep(movementType),
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }

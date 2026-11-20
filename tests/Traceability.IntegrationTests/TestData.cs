@@ -11,6 +11,16 @@ public static class TestData
     // A code that no other test uses: 15 characters, letters and digits only.
     public static string NewCode() => "ZT-" + Guid.NewGuid().ToString("N")[..12].ToUpperInvariant();
 
+    // Lot 12c: a movement must be after the previous valid one (never at the same time). The tests
+    // enter the steps of a batch at times that grow with the step, on a day in the past:
+    // the reception is at 06:00, then SORTING 08:00, PACKING 09:00 and SHIPMENT 10:00 (UTC).
+    public static string TimeOfStep(string movementType) => movementType switch
+    {
+        "PACKING" => "2026-10-14T09:00:00Z",
+        "SHIPMENT" => "2026-10-14T10:00:00Z",
+        _ => "2026-10-14T08:00:00Z",
+    };
+
     public static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response) =>
         await response.Content.ReadFromJsonAsync<JsonElement>();
 

@@ -163,6 +163,20 @@ describe('NewBatchPage', () => {
     )
   })
 
+  it('says that the time cannot be more than 5 minutes after the clock of the server (50310, lot 12c), and keeps what was typed', async () => {
+    stubApi({ '/batches': () => problem(422, { errorCode: 50310 }) })
+    renderApp('/new-batch')
+
+    fillTheForm()
+    send()
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      "L'heure ne peut pas dépasser de plus de 5 minutes l'heure du serveur. Vérifiez l'heure saisie (elle est en UTC) et l'horloge de votre ordinateur.",
+    )
+    expect((screen.getByLabelText('Date et heure de réception (UTC)') as HTMLInputElement).value).toBe('2026-10-22T08:30')
+    expect((screen.getByLabelText('Code du lot') as HTMLInputElement).value).toBe('ZT-LOT')
+  })
+
   it('shows the messages of an error of shape under the right fields', async () => {
     const errors = {
       batchCode: ['The field is required.'],

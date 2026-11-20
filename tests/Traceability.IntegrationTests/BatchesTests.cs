@@ -70,7 +70,7 @@ public class BatchesTests(ApiFixture api)
             stationCode,
             movementType,
             quantityKg,
-            occurredAt = "2026-10-14T08:00:00Z",
+            occurredAt = TestData.TimeOfStep(movementType),
         });
 
     private async Task AddMovementAsync(string batchCode, string stationCode, string movementType, decimal quantityKg)

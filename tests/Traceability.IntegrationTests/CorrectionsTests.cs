@@ -49,13 +49,14 @@ public class CorrectionsTests(ApiFixture api)
             stationCode,
             movementType,
             quantityKg,
-            occurredAt = "2026-10-14T08:00:00Z",
+            occurredAt = TestData.TimeOfStep(movementType),
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
     // A batch SHIPPED on one station that has all the functions: RECEPTION 500, SORTING 480,
-    // PACKING 470, SHIPMENT 470. Every movement after the reception is at 2026-10-14T08:00:00Z.
+    // PACKING 470, SHIPMENT 470. The reception is at 06:00, SORTING at 08:00, PACKING at 09:00 and
+    // SHIPMENT at 10:00 (2026-10-14, UTC): lot 12c refuses two steps at the same time.
     private async Task<(string StationCode, string BatchCode)> CreateShippedBatchAsync()
     {
         var farm = await CreateFarmAsync();
@@ -97,11 +98,17 @@ public class CorrectionsTests(ApiFixture api)
         batch.GetProperty("movements").EnumerateArray()
             .Single(m => m.GetProperty("movementType").GetString() == movementType);
 
-    private static Task<HttpResponseMessage> ReplaceAsync(
+    // Lot 12c: with no time given, the replacement sends the current time of the movement, as the form
+    // of the interface does (it prefills the time). So a correction of the quantity or of the station
+    // does not change the time. If the batch or the movement cannot be read (unknown batch, movement of
+    // another batch, no right to read), the old default time is sent and the route gives its usual error.
+    private static async Task<HttpResponseMessage> ReplaceAsync(
         HttpClient client, string batchCode, long movementId, string stationCode, decimal quantityKg,
         string reasonCode = "DATA_ENTRY_ERROR", string? reasonComment = null,
-        string occurredAt = "2026-10-14T08:00:00Z") =>
-        client.PostAsJsonAsync($"/batches/{batchCode}/movements/{movementId}/replace", new
+        string? occurredAt = null)
+    {
+        occurredAt ??= await CurrentTimeOfAsync(client, batchCode, movementId) ?? "2026-10-14T08:00:00Z";
+        return await client.PostAsJsonAsync($"/batches/{batchCode}/movements/{movementId}/replace", new
         {
             stationCode,
             quantityKg,
@@ -109,6 +116,28 @@ public class CorrectionsTests(ApiFixture api)
             reasonCode,
             reasonComment,
         });
+    }
+
+    // The valid time of a movement as the API writes it (it ends with Z), or null if it cannot be read.
+    private static async Task<string?> CurrentTimeOfAsync(HttpClient client, string batchCode, long movementId)
+    {
+        var response = await client.GetAsync($"/batches/{batchCode}");
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            return null;
+        }
+
+        var batch = await TestData.ReadJsonAsync(response);
+        foreach (var movement in batch.GetProperty("movements").EnumerateArray())
+        {
+            if (movement.GetProperty("movementId").GetInt64() == movementId)
+            {
+                return movement.GetProperty("occurredAt").GetString();
+            }
+        }
+
+        return null;
+    }
 
     private static Task<HttpResponseMessage> CancelAsync(
         HttpClient client, string batchCode, long movementId,
@@ -158,7 +187,7 @@ public class CorrectionsTests(ApiFixture api)
         var response = await ReplaceAsync(
             supervisor, batchCode, sortingId, station, 475m,
             reasonCode: "MEASUREMENT_ERROR", reasonComment: "Scale was not zeroed",
-            occurredAt: "2026-10-14T09:30:00Z");
+            occurredAt: "2026-10-14T07:30:00Z");
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.NotNull(response.Headers.Location);
@@ -173,7 +202,7 @@ public class CorrectionsTests(ApiFixture api)
         Assert.Equal(475m, sorting.GetProperty("quantityKg").GetDecimal());
         Assert.Equal(480m, sorting.GetProperty("originalQuantityKg").GetDecimal());
         Assert.Equal(
-            DateTime.Parse("2026-10-14T09:30:00Z").ToUniversalTime(),
+            DateTime.Parse("2026-10-14T07:30:00Z").ToUniversalTime(),
             sorting.GetProperty("occurredAt").GetDateTime().ToUniversalTime());
         Assert.Equal(
             DateTime.Parse("2026-10-14T08:00:00Z").ToUniversalTime(),

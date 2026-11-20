@@ -18,6 +18,10 @@
   as a fourth result. The procedures that write refuse an old code. CreateBatch and ReplaceMovement
   refuse a harvest date after the reception. New errors: 50104 (old code used to write), 50203 (code
   kept for another batch), 50309 (harvest date after the reception).
+  Lot 12c: CreateBatch, AddMovement and ReplaceMovement refuse a time in the future (50310): up to
+  5 minutes after the clock of the server is accepted. AddMovement and ReplaceMovement refuse a time
+  that is not strictly after the previous valid movement or not strictly before the next valid one
+  (50311). ReplaceMovement checks the time only when it changes. New errors: 50310, 50311.
 
   - Replayable: CREATE OR ALTER replaces a procedure that already exists.
   - Run 001 and 002 first, with the same DbName. A database created before lot 12a needs
@@ -49,6 +53,7 @@ GO
 /* The author is recorded on that movement (lot 11).                  */
 /* Lot 12b: an old code of another batch is refused (50203), and      */
 /* so is a harvest date after the reception (50309).                  */
+/* Lot 12c: a reception time in the future is refused (50310).        */
 /* ------------------------------------------------------------------ */
 CREATE OR ALTER PROCEDURE trace.CreateBatch
     @BatchCode   NVARCHAR(30),
@@ -68,6 +73,7 @@ BEGIN
     DECLARE @FarmId INT;
     DECLARE @StationId INT;
     DECLARE @BatchId INT;
+    DECLARE @Now DATETIME2;
     DECLARE @msg NVARCHAR(2048);
 
     -- 1. The author must be given (NULL or blank counts as empty). The API reads it from the
@@ -152,6 +158,19 @@ BEGIN
         THROW 50309, @msg, 1;
     END;
 
+    -- 11. The reception time must not be in the future (lot 12c). The clock of the server is read
+    --     here, and 5 minutes more are accepted, for a clock that is a little fast. A NULL time is
+    --     not compared here: the column refuses it below.
+    SET @Now = SYSUTCDATETIME();
+
+    IF @OccurredAt > DATEADD(MINUTE, 5, @Now)
+    BEGIN
+        SET @msg = CONCAT(N'The time ', CONVERT(NVARCHAR(19), @OccurredAt, 126),
+                          N' is in the future (more than 5 minutes after ',
+                          CONVERT(NVARCHAR(19), @Now, 126), N', the time of the server).');
+        THROW 50310, @msg, 1;
+    END;
+
     -- The batch and its first movement: both are created, or none.
     BEGIN TRY
         BEGIN TRANSACTION;
@@ -179,6 +198,8 @@ GO
 /* transaction. The batch row is locked first (ADR 0003): a second    */
 /* call on the same batch waits, then reads the updated batch.        */
 /* The author of the movement is given by the caller (lot 11).        */
+/* Lot 12c: a time in the future is refused (50310), and so is a time */
+/* that is not after the previous valid movement (50311).             */
 /* ------------------------------------------------------------------ */
 CREATE OR ALTER PROCEDURE trace.AddMovement
     @BatchCode    NVARCHAR(30),
@@ -199,6 +220,8 @@ BEGIN
     DECLARE @CurrentQuantity DECIMAL(10,2);
     DECLARE @ExpectedType NVARCHAR(20);
     DECLARE @NewStatus NVARCHAR(20);
+    DECLARE @Now DATETIME2;
+    DECLARE @PreviousTime DATETIME2;
     DECLARE @msg NVARCHAR(2048);
 
     -- 1. The author must be given (NULL or blank counts as empty). The API reads it from the
@@ -316,6 +339,40 @@ BEGIN
             THROW 50302, @msg, 1;
         END;
 
+        -- 11. The time must not be in the future (lot 12c): the clock of the server, and 5 minutes
+        --     more are accepted, for a clock that is a little fast. A NULL time is not compared here:
+        --     the column refuses it below.
+        SET @Now = SYSUTCDATETIME();
+
+        IF @OccurredAt > DATEADD(MINUTE, 5, @Now)
+        BEGIN
+            SET @msg = CONCAT(N'The time ', CONVERT(NVARCHAR(19), @OccurredAt, 126),
+                              N' is in the future (more than 5 minutes after ',
+                              CONVERT(NVARCHAR(19), @Now, 126), N', the time of the server).');
+            THROW 50310, @msg, 1;
+        END;
+
+        -- 12. The time must be strictly after the last valid movement of the batch (lot 12c): the
+        --     latest correction applied, a cancelled movement does not count. The first movement
+        --     of a batch is its RECEPTION, so there is always a movement before.
+        SELECT TOP (1) @PreviousTime = COALESCE(c.OccurredAt, m.OccurredAt)
+        FROM trace.Movement AS m
+        OUTER APPLY (SELECT TOP (1) cc.Kind, cc.OccurredAt
+                     FROM trace.MovementCorrection AS cc
+                     WHERE cc.MovementId = m.MovementId
+                     ORDER BY cc.CorrectionId DESC) AS c
+        WHERE m.BatchId = @BatchId
+          AND (c.Kind IS NULL OR c.Kind <> N'CANCEL')
+        ORDER BY m.MovementId DESC;
+
+        IF @OccurredAt <= @PreviousTime
+        BEGIN
+            SET @msg = CONCAT(N'The time ', CONVERT(NVARCHAR(19), @OccurredAt, 126),
+                              N' is not after the time of the previous step (',
+                              CONVERT(NVARCHAR(19), @PreviousTime, 126), N').');
+            THROW 50311, @msg, 1;
+        END;
+
         SET @NewStatus = CASE @MovementType
                              WHEN N'SORTING'  THEN N'SORTED'
                              WHEN N'PACKING'  THEN N'PACKED'
@@ -349,6 +406,8 @@ GO
 /* the batch follows. The status of the batch never changes here.     */
 /* Lot 12b: the RECEPTION cannot be moved before the harvest (50309); */
 /* an old code of the batch is refused (50104).                       */
+/* Lot 12c: when the time changes, it must not be in the future       */
+/* (50310), nor out of order with the valid steps around it (50311).  */
 /* ------------------------------------------------------------------ */
 CREATE OR ALTER PROCEDURE trace.ReplaceMovement
     @BatchCode     NVARCHAR(30),
@@ -376,9 +435,12 @@ BEGIN
     DECLARE @NextQuantity DECIMAL(10,2);
     DECLARE @IsLast BIT;
     DECLARE @HarvestDate DATE;
+    DECLARE @Now DATETIME2;
+    DECLARE @PreviousTime DATETIME2;
+    DECLARE @NextTime DATETIME2;
     DECLARE @msg NVARCHAR(2048);
     DECLARE @Valid TABLE (MovementId BIGINT NOT NULL PRIMARY KEY, MovementType NVARCHAR(20) NOT NULL,
-                          QuantityKg DECIMAL(10,2) NOT NULL);
+                          QuantityKg DECIMAL(10,2) NOT NULL, OccurredAt DATETIME2 NOT NULL);
 
     -- 1. The author must be given (NULL or blank counts as empty). The API reads it from the
     --    validated token; the database does not trust that it did, and checks it too.
@@ -510,10 +572,11 @@ BEGIN
 
         -- The valid version of every movement of the batch that is not cancelled: its row in
         -- trace.Movement with its latest correction (highest CorrectionId) applied.
-        INSERT @Valid (MovementId, MovementType, QuantityKg)
-        SELECT m.MovementId, m.MovementType, COALESCE(c.QuantityKg, m.QuantityKg)
+        INSERT @Valid (MovementId, MovementType, QuantityKg, OccurredAt)
+        SELECT m.MovementId, m.MovementType, COALESCE(c.QuantityKg, m.QuantityKg),
+               COALESCE(c.OccurredAt, m.OccurredAt)
         FROM trace.Movement AS m
-        OUTER APPLY (SELECT TOP (1) cc.Kind, cc.QuantityKg
+        OUTER APPLY (SELECT TOP (1) cc.Kind, cc.QuantityKg, cc.OccurredAt
                      FROM trace.MovementCorrection AS cc
                      WHERE cc.MovementId = m.MovementId
                      ORDER BY cc.CorrectionId DESC) AS c
@@ -567,7 +630,51 @@ BEGIN
             END;
         END;
 
-        -- 13. The new values must differ from the current ones.
+        -- 13. The time (lot 12c): checked only when it changes, so that the correction of a quantity
+        --     is not refused because of a time that was already out of order. Not in the future (the
+        --     clock of the server, 5 minutes more are accepted), strictly after the previous valid
+        --     movement and strictly before the next one. The first step has no step before, the last
+        --     no step after.
+        IF @OccurredAt <> @CurrentTime
+        BEGIN
+            SET @Now = SYSUTCDATETIME();
+
+            IF @OccurredAt > DATEADD(MINUTE, 5, @Now)
+            BEGIN
+                SET @msg = CONCAT(N'The time ', CONVERT(NVARCHAR(19), @OccurredAt, 126),
+                                  N' is in the future (more than 5 minutes after ',
+                                  CONVERT(NVARCHAR(19), @Now, 126), N', the time of the server).');
+                THROW 50310, @msg, 1;
+            END;
+
+            SELECT TOP (1) @PreviousTime = OccurredAt
+            FROM @Valid
+            WHERE MovementId < @MovementId
+            ORDER BY MovementId DESC;
+
+            SELECT TOP (1) @NextTime = OccurredAt
+            FROM @Valid
+            WHERE MovementId > @MovementId
+            ORDER BY MovementId ASC;
+
+            IF @OccurredAt <= @PreviousTime
+            BEGIN
+                SET @msg = CONCAT(N'The time ', CONVERT(NVARCHAR(19), @OccurredAt, 126),
+                                  N' is not after the time of the previous step (',
+                                  CONVERT(NVARCHAR(19), @PreviousTime, 126), N').');
+                THROW 50311, @msg, 1;
+            END;
+
+            IF @OccurredAt >= @NextTime
+            BEGIN
+                SET @msg = CONCAT(N'The time ', CONVERT(NVARCHAR(19), @OccurredAt, 126),
+                                  N' is not before the time of the next step (',
+                                  CONVERT(NVARCHAR(19), @NextTime, 126), N').');
+                THROW 50311, @msg, 1;
+            END;
+        END;
+
+        -- 14. The new values must differ from the current ones.
         IF @StationId = @CurrentStationId AND @QuantityKg = @CurrentQuantity AND @OccurredAt = @CurrentTime
         BEGIN
             THROW 50308, N'The new values are the same as the current ones: nothing to correct.', 1;

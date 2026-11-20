@@ -22,6 +22,12 @@
     old codes (AddMovement, ReplaceMovement, CancelMovement, CreateBatch, GetBatch) and the harvest
     date rule. They use their own batches ZZ-D1 to ZZ-D4 (and ZZ-P5) and depend on each other: do
     not reorder them.
+  - Lot 12c: tests 123 to 150 are about the time of the movements: 50310 (a time in the future, 5
+    minutes accepted) and 50311 (a time not strictly after the previous valid movement, or not
+    strictly before the next one; checked by AddMovement and by ReplaceMovement when the time
+    changes). They use their own batches ZZ-T1 to ZZ-T10 and depend on each other: do not reorder
+    them. The limit of exactly 5 minutes is not tested (the clock of the server moves): the tests
+    use 4 minutes (accepted) and 6 minutes (refused).
   - 003 cannot be run after this script: it leaves its ZZ- rows and 003 refuses to start (see the
     header of 003).
   - Tests 32, 33 and 38 (ListBatches) return two result sets, tests 30, 41, 86 and 87 (GetBatch)
@@ -107,7 +113,7 @@ DELETE FROM trace.Farm
 WHERE Code LIKE N'ZZ-%';
 GO
 
-/* ===================== Setup and the 122 tests (one batch) ===================== */
+/* ===================== Setup and the 150 tests (one batch) ===================== */
 
 SET NOCOUNT ON;
 
@@ -3276,6 +3282,730 @@ VALUES (N'The journal was not changed by the sheet corrections; refused calls le
              THEN N'Accepted as expected'
              ELSE N'ATTENTION: a movement of the journal was changed, or a refused call left a row' END,
         N'7 movements, 3400.00 kg, first values still there; 9 correction rows (ZZ-D1 3, ZZ-D2 1, ZZ-D3 4, ZZ-P5 1) and none for ZZ-D4');
+
+
+
+/* ---------- The time of the movements (tests 123 to 150, lot 12c) ---------- */
+
+-- Data of this part, inserted DIRECTLY in the tables (like the setup above), on farm ZZ-F01 (harvest
+-- 2026-10-14). The movements of a batch are inserted in the order of their steps (Seq), so that their
+-- MovementId follows the steps, even for ZZ-T4 whose times are already out of order.
+--   ZZ-T1 RECEIVED 500 (RECEPTION 06:30): refused additions, never changed.
+--   ZZ-T3 PACKED 465 (RECEPTION 06:30, SORTING 09:15, PACKING 13:40): refused and accepted corrections.
+--   ZZ-T4 SORTED 470 (RECEPTION 10:00, SORTING 09:00): a batch already out of order (data from before lot
+--         12c): a correction that does not change the time is accepted, one that changes it is checked.
+--   ZZ-T6, ZZ-T7 RECEIVED 500 (RECEPTION 06:30): additions accepted.
+--   ZZ-T8 SORTED 470 (RECEPTION 06:30, SORTING 09:15): the time of the sorting is corrected, then an
+--         addition is checked against the corrected time.
+--   ZZ-T9 PACKED 465 (RECEPTION 06:30, SORTING 09:15, PACKING 13:40): the packing is cancelled, then an
+--         addition is checked without the cancelled step.
+--   ZZ-T5 is created by test 124. The tests below depend on each other (run in this order).
+-- The times "in the future" are computed from the clock of the server when the test runs: 6 minutes
+-- (refused) and 4 minutes (accepted). The limit of exactly 5 minutes is not tested, the clock moves.
+DECLARE @t3_rec BIGINT, @t3_sort BIGINT, @t3_pack BIGINT, @t4_sort BIGINT, @t8_sort BIGINT, @t9_pack BIGINT;
+DECLARE @t12c DATETIME2;
+
+BEGIN TRY
+    INSERT trace.Batch (BatchCode, FarmId, Variety, HarvestDate, QuantityKg, Status)
+    SELECT v.BatchCode, f.FarmId, N'Test variety', '2026-10-14', v.QuantityKg, v.Status
+    FROM (VALUES (N'ZZ-T1', 500.00, N'RECEIVED'),
+                 (N'ZZ-T3', 465.00, N'PACKED'),
+                 (N'ZZ-T4', 470.00, N'SORTED'),
+                 (N'ZZ-T6', 500.00, N'RECEIVED'),
+                 (N'ZZ-T7', 500.00, N'RECEIVED'),
+                 (N'ZZ-T8', 470.00, N'SORTED'),
+                 (N'ZZ-T9', 465.00, N'PACKED')) AS v (BatchCode, QuantityKg, Status)
+    CROSS JOIN trace.Farm AS f
+    WHERE f.Code = N'ZZ-F01'
+    ORDER BY v.BatchCode;
+
+    INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+    SELECT b.BatchId, st.StationId, v.MovementType, v.QuantityKg, v.OccurredAt, N'orig-id', N'Original Author'
+    FROM (VALUES (N'ZZ-T1', 1, N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T06:30:00'),
+                 (N'ZZ-T3', 1, N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T06:30:00'),
+                 (N'ZZ-T3', 2, N'ZZ-S01', N'SORTING',   470.00, '2026-10-14T09:15:00'),
+                 (N'ZZ-T3', 3, N'ZZ-S02', N'PACKING',   465.00, '2026-10-14T13:40:00'),
+                 (N'ZZ-T4', 1, N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T10:00:00'),
+                 (N'ZZ-T4', 2, N'ZZ-S01', N'SORTING',   470.00, '2026-10-14T09:00:00'),
+                 (N'ZZ-T6', 1, N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T06:30:00'),
+                 (N'ZZ-T7', 1, N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T06:30:00'),
+                 (N'ZZ-T8', 1, N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T06:30:00'),
+                 (N'ZZ-T8', 2, N'ZZ-S01', N'SORTING',   470.00, '2026-10-14T09:15:00'),
+                 (N'ZZ-T9', 1, N'ZZ-S01', N'RECEPTION', 500.00, '2026-10-14T06:30:00'),
+                 (N'ZZ-T9', 2, N'ZZ-S01', N'SORTING',   470.00, '2026-10-14T09:15:00'),
+                 (N'ZZ-T9', 3, N'ZZ-S02', N'PACKING',   465.00, '2026-10-14T13:40:00')
+         ) AS v (BatchCode, Seq, StationCode, MovementType, QuantityKg, OccurredAt)
+    JOIN trace.Batch   AS b  ON b.BatchCode = v.BatchCode
+    JOIN trace.Station AS st ON st.Code = v.StationCode
+    ORDER BY v.BatchCode, v.Seq;
+
+    SELECT @t3_rec  = m.MovementId FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId WHERE b.BatchCode = N'ZZ-T3' AND m.MovementType = N'RECEPTION';
+    SELECT @t3_sort = m.MovementId FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId WHERE b.BatchCode = N'ZZ-T3' AND m.MovementType = N'SORTING';
+    SELECT @t3_pack = m.MovementId FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId WHERE b.BatchCode = N'ZZ-T3' AND m.MovementType = N'PACKING';
+    SELECT @t4_sort = m.MovementId FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId WHERE b.BatchCode = N'ZZ-T4' AND m.MovementType = N'SORTING';
+    SELECT @t8_sort = m.MovementId FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId WHERE b.BatchCode = N'ZZ-T8' AND m.MovementType = N'SORTING';
+    SELECT @t9_pack = m.MovementId FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId WHERE b.BatchCode = N'ZZ-T9' AND m.MovementType = N'PACKING';
+END TRY
+BEGIN CATCH
+    DECLARE @setup12c_error NVARCHAR(2000) = ERROR_MESSAGE();
+    RAISERROR(N'Setup of the time tests failed, tests not run: %s', 16, 1, @setup12c_error);
+    RETURN;
+END CATCH;
+
+-- 123. CreateBatch: reception time more than 5 minutes in the future
+SET @t12c = DATEADD(MINUTE, 6, SYSUTCDATETIME());
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.CreateBatch
+         @BatchCode = N'ZZ-T5X', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
+         @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
+         @OccurredAt = @t12c,
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: reception time more than 5 minutes in the future', N'50310', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: reception time more than 5 minutes in the future', N'50310',
+            CASE WHEN ERROR_NUMBER() <> 50310
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 124. CreateBatch: control (reception time 4 minutes in the future is accepted)
+SET @t12c = DATEADD(MINUTE, 4, SYSUTCDATETIME());
+BEGIN TRY
+    EXEC trace.CreateBatch
+         @BatchCode = N'ZZ-T5', @FarmCode = N'ZZ-F01', @Variety = N'Cherry',
+         @HarvestDate = '2026-10-14', @QuantityKg = 500.00, @StationCode = N'ZZ-S01',
+         @OccurredAt = @t12c,
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: control (reception time 4 minutes in the future is accepted)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                  WHERE b.BatchCode = N'ZZ-T5' AND m.MovementType = N'RECEPTION' AND m.OccurredAt = @t12c) = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The batch is created with its reception 4 minutes after the clock of the server');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CreateBatch: control (reception time 4 minutes in the future is accepted)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 125. AddMovement: time more than 5 minutes in the future
+SET @t12c = DATEADD(MINUTE, 6, SYSUTCDATETIME());
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-T1', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = @t12c,
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: time more than 5 minutes in the future', N'50310', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: time more than 5 minutes in the future', N'50310',
+            CASE WHEN ERROR_NUMBER() <> 50310
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 126. AddMovement: time equal to the previous step
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-T1', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T06:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: time equal to the previous step', N'50311', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: time equal to the previous step', N'50311',
+            CASE WHEN ERROR_NUMBER() <> 50311
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 127. AddMovement: time before the previous step
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-T1', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T06:00:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: time before the previous step', N'50311', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: time before the previous step', N'50311',
+            CASE WHEN ERROR_NUMBER() <> 50311
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 128. AddMovement: control (time 4 minutes in the future is accepted)
+SET @t12c = DATEADD(MINUTE, 4, SYSUTCDATETIME());
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-T6', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = @t12c,
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: control (time 4 minutes in the future is accepted)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-T6' AND Status = N'SORTED' AND QuantityKg = 470.00) = 1
+                 AND (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                  WHERE b.BatchCode = N'ZZ-T6') = 2
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The sorting is added 4 minutes after the clock of the server; the batch is SORTED');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: control (time 4 minutes in the future is accepted)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 129. AddMovement: control (time one second after the previous step is accepted)
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-T7', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T06:30:01',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: control (time one second after the previous step is accepted)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-T7' AND Status = N'SORTED' AND QuantityKg = 470.00) = 1
+                 AND (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                  WHERE b.BatchCode = N'ZZ-T7' AND m.MovementType = N'SORTING' AND m.OccurredAt = '2026-10-14T06:30:01') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The sorting at 06:30:01 is accepted after the reception at 06:30:00');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: control (time one second after the previous step is accepted)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 130. ReplaceMovement: time more than 5 minutes in the future
+SET @t12c = DATEADD(MINUTE, 6, SYSUTCDATETIME());
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T3', @MovementId = @t3_pack, @StationCode = N'ZZ-S02',
+         @QuantityKg = 465.00, @OccurredAt = @t12c,
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: time more than 5 minutes in the future', N'50310', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: time more than 5 minutes in the future', N'50310',
+            CASE WHEN ERROR_NUMBER() <> 50310
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 131. ReplaceMovement: time equal to the previous step
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T3', @MovementId = @t3_sort, @StationCode = N'ZZ-S01',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T06:30:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: time equal to the previous step', N'50311', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: time equal to the previous step', N'50311',
+            CASE WHEN ERROR_NUMBER() <> 50311
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 132. ReplaceMovement: time before the previous step
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T3', @MovementId = @t3_sort, @StationCode = N'ZZ-S01',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T06:00:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: time before the previous step', N'50311', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: time before the previous step', N'50311',
+            CASE WHEN ERROR_NUMBER() <> 50311
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 133. ReplaceMovement: time equal to the next step
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T3', @MovementId = @t3_sort, @StationCode = N'ZZ-S01',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T13:40:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: time equal to the next step', N'50311', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: time equal to the next step', N'50311',
+            CASE WHEN ERROR_NUMBER() <> 50311
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 134. ReplaceMovement: time after the next step
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T3', @MovementId = @t3_sort, @StationCode = N'ZZ-S01',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T14:00:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: time after the next step', N'50311', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: time after the next step', N'50311',
+            CASE WHEN ERROR_NUMBER() <> 50311
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 135. ReplaceMovement: reception time equal to the next step
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T3', @MovementId = @t3_rec, @StationCode = N'ZZ-S01',
+         @QuantityKg = 500.00, @OccurredAt = '2026-10-14T09:15:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: reception time equal to the next step', N'50311', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: reception time equal to the next step', N'50311',
+            CASE WHEN ERROR_NUMBER() <> 50311
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 136. ReplaceMovement: reception time after the next step
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T3', @MovementId = @t3_rec, @StationCode = N'ZZ-S01',
+         @QuantityKg = 500.00, @OccurredAt = '2026-10-14T10:00:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: reception time after the next step', N'50311', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: reception time after the next step', N'50311',
+            CASE WHEN ERROR_NUMBER() <> 50311
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 137. ReplaceMovement: new time still out of order in a batch already out of order
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T4', @MovementId = @t4_sort, @StationCode = N'ZZ-S01',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T09:30:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: new time still out of order in a batch already out of order', N'50311', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: new time still out of order in a batch already out of order', N'50311',
+            CASE WHEN ERROR_NUMBER() <> 50311
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 138. ReplaceMovement: control (time between the two neighbours)
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T3', @MovementId = @t3_sort, @StationCode = N'ZZ-S01',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T07:00:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (time between the two neighbours)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.MovementCorrection WHERE MovementId = @t3_sort AND Kind = N'REPLACE' AND OccurredAt = '2026-10-14T07:00:00') = 1
+                 AND (SELECT COUNT(*) FROM trace.Movement WHERE MovementId = @t3_sort AND OccurredAt = '2026-10-14T09:15:00') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'A correction row holds 07:00; the first time 09:15 is still in the journal');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (time between the two neighbours)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 139. ReplaceMovement: control (reception: only the next step counts)
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T3', @MovementId = @t3_rec, @StationCode = N'ZZ-S01',
+         @QuantityKg = 500.00, @OccurredAt = '2026-10-14T06:00:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (reception: only the next step counts)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.MovementCorrection WHERE MovementId = @t3_rec AND Kind = N'REPLACE' AND OccurredAt = '2026-10-14T06:00:00') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The reception moves to 06:00, before its first time, and stays before the sorting at 07:00');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (reception: only the next step counts)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 140. ReplaceMovement: control (last step: 4 minutes in the future is accepted)
+SET @t12c = DATEADD(MINUTE, 4, SYSUTCDATETIME());
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T3', @MovementId = @t3_pack, @StationCode = N'ZZ-S02',
+         @QuantityKg = 465.00, @OccurredAt = @t12c,
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (last step: 4 minutes in the future is accepted)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.MovementCorrection WHERE MovementId = @t3_pack AND Kind = N'REPLACE' AND OccurredAt = @t12c) = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The packing moves to 4 minutes after the clock of the server, after the sorting at 07:00');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (last step: 4 minutes in the future is accepted)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 141. ReplaceMovement: control (quantity only, in a batch already out of order)
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T4', @MovementId = @t4_sort, @StationCode = N'ZZ-S01',
+         @QuantityKg = 460.00, @OccurredAt = '2026-10-14T09:00:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (quantity only, in a batch already out of order)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.MovementCorrection WHERE MovementId = @t4_sort AND Kind = N'REPLACE' AND QuantityKg = 460.00 AND OccurredAt = '2026-10-14T09:00:00') = 1
+                 AND (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-T4' AND Status = N'SORTED' AND QuantityKg = 460.00) = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The time 09:00 is not changed, so it is not checked: the quantity is corrected, the old disorder stays');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (quantity only, in a batch already out of order)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 142. ReplaceMovement: control (the sorting of ZZ-T8 moves to 12:00)
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T8', @MovementId = @t8_sort, @StationCode = N'ZZ-S01',
+         @QuantityKg = 470.00, @OccurredAt = '2026-10-14T12:00:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (the sorting of ZZ-T8 moves to 12:00)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.MovementCorrection WHERE MovementId = @t8_sort AND Kind = N'REPLACE' AND OccurredAt = '2026-10-14T12:00:00') = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The valid time of the sorting is now 12:00 (first time 09:15)');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (the sorting of ZZ-T8 moves to 12:00)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 143. AddMovement: time before the corrected time of the previous step
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-T8', @StationCode = N'ZZ-S02', @MovementType = N'PACKING',
+         @QuantityKg = 465.00, @OccurredAt = '2026-10-14T11:00:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: time before the corrected time of the previous step', N'50311', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: time before the corrected time of the previous step', N'50311',
+            CASE WHEN ERROR_NUMBER() <> 50311
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 144. AddMovement: control (time after the corrected time of the previous step)
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-T8', @StationCode = N'ZZ-S02', @MovementType = N'PACKING',
+         @QuantityKg = 465.00, @OccurredAt = '2026-10-14T12:30:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: control (time after the corrected time of the previous step)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-T8' AND Status = N'PACKED' AND QuantityKg = 465.00) = 1
+                 AND (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                  WHERE b.BatchCode = N'ZZ-T8') = 3
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The packing at 12:30 is accepted: the previous valid time is 12:00, not 09:15');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: control (time after the corrected time of the previous step)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 145. CancelMovement: control (the packing of ZZ-T9 is cancelled)
+BEGIN TRY
+    EXEC trace.CancelMovement
+         @BatchCode = N'ZZ-T9', @MovementId = @t9_pack,
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CancelMovement: control (the packing of ZZ-T9 is cancelled)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.MovementCorrection WHERE MovementId = @t9_pack AND Kind = N'CANCEL') = 1
+                 AND (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-T9' AND Status = N'SORTED' AND QuantityKg = 470.00) = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The packing at 13:40 is cancelled; the batch goes back to SORTED');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'CancelMovement: control (the packing of ZZ-T9 is cancelled)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 146. AddMovement: control (a cancelled step does not count for the order)
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-T9', @StationCode = N'ZZ-S02', @MovementType = N'PACKING',
+         @QuantityKg = 465.00, @OccurredAt = '2026-10-14T10:00:00',
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: control (a cancelled step does not count for the order)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.Batch WHERE BatchCode = N'ZZ-T9' AND Status = N'PACKED' AND QuantityKg = 465.00) = 1
+                 AND (SELECT COUNT(*) FROM trace.Movement AS m JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+                  WHERE b.BatchCode = N'ZZ-T9') = 4
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The new packing at 10:00 is accepted: the cancelled packing at 13:40 is ignored');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: control (a cancelled step does not count for the order)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 147. The first times of the journal were never changed by the corrections of the time
+INSERT @results (test_name, expected, outcome, detail)
+VALUES (N'The first times of the journal were not changed by the corrections of the time', N'(accepted)',
+        CASE WHEN (SELECT COUNT(*) FROM trace.Movement AS m
+                   JOIN (VALUES (@t3_rec,  '2026-10-14T06:30:00'), (@t3_sort, '2026-10-14T09:15:00'),
+                                (@t3_pack, '2026-10-14T13:40:00'), (@t4_sort, '2026-10-14T09:00:00'),
+                                (@t8_sort, '2026-10-14T09:15:00'), (@t9_pack, '2026-10-14T13:40:00'))
+                        AS v (MovementId, OccurredAt)
+                     ON v.MovementId = m.MovementId AND m.OccurredAt = v.OccurredAt) = 6
+             THEN N'Accepted as expected'
+             ELSE N'ATTENTION: a first time of the journal was changed' END,
+        N'6 movements that were corrected or cancelled still hold their first time in trace.Movement');
+
+
+-- Data of tests 148 to 150, inserted DIRECTLY (like the setup above):
+--   ZZ-T10 RECEIVED 500: its RECEPTION was written 2 hours after the clock of the server, like a time in
+--          the future that was accepted before lot 12c. It is used by test 148 only.
+BEGIN TRY
+    INSERT trace.Batch (BatchCode, FarmId, Variety, HarvestDate, QuantityKg, Status)
+    SELECT N'ZZ-T10', f.FarmId, N'Test variety', '2026-10-14', 500.00, N'RECEIVED'
+    FROM trace.Farm AS f
+    WHERE f.Code = N'ZZ-F01';
+
+    INSERT trace.Movement (BatchId, StationId, MovementType, QuantityKg, OccurredAt, AuthorId, AuthorName)
+    SELECT b.BatchId, st.StationId, N'RECEPTION', 500.00, DATEADD(HOUR, 2, SYSUTCDATETIME()),
+           N'orig-id', N'Original Author'
+    FROM trace.Batch AS b
+    CROSS JOIN trace.Station AS st
+    WHERE b.BatchCode = N'ZZ-T10' AND st.Code = N'ZZ-S01';
+END TRY
+BEGIN CATCH
+    DECLARE @setup12c2_error NVARCHAR(2000) = ERROR_MESSAGE();
+    RAISERROR(N'Setup of the tests 148 to 150 failed, tests not run: %s', 16, 1, @setup12c2_error);
+    RETURN;
+END CATCH;
+
+-- 148. AddMovement: time in the future and before the previous step (the future first)
+SET @t12c = DATEADD(HOUR, 1, SYSUTCDATETIME());
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-T10', @StationCode = N'ZZ-S01', @MovementType = N'SORTING',
+         @QuantityKg = 470.00, @OccurredAt = @t12c,
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: time in the future and before the previous step (the future first)', N'50310', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: time in the future and before the previous step (the future first)', N'50310',
+            CASE WHEN ERROR_NUMBER() <> 50310
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 149. AddMovement: batch already SHIPPED and time in the future (50300 comes first)
+SET @t12c = DATEADD(MINUTE, 6, SYSUTCDATETIME());
+SET @before = dbo.TestFingerprint();
+BEGIN TRY
+    EXEC trace.AddMovement
+         @BatchCode = N'ZZ-B-SHIP', @StationCode = N'ZZ-S03', @MovementType = N'SHIPMENT',
+         @QuantityKg = 465.00, @OccurredAt = @t12c,
+         @AuthorId = N'test-author-id', @AuthorName = N'Test Author';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: batch already SHIPPED and time in the future (50300 comes first)', N'50300', N'ATTENTION: accepted', NULL);
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'AddMovement: batch already SHIPPED and time in the future (50300 comes first)', N'50300',
+            CASE WHEN ERROR_NUMBER() <> 50300
+                      THEN CONCAT(N'ATTENTION: error ', ERROR_NUMBER())
+                 WHEN @@TRANCOUNT <> 0 THEN N'ATTENTION: a transaction was left open'
+                 WHEN dbo.TestFingerprint() <> @before THEN N'ATTENTION: refused, but the data changed'
+                 ELSE N'Refused as expected' END,
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
+
+-- 150. ReplaceMovement: control (station only, time unchanged, batch already out of order)
+BEGIN TRY
+    EXEC trace.ReplaceMovement
+         @BatchCode = N'ZZ-T4', @MovementId = @t4_sort, @StationCode = N'ZZ-S04',
+         @QuantityKg = 460.00, @OccurredAt = '2026-10-14T09:00:00',
+         @ReasonCode = N'DATA_ENTRY_ERROR', @ReasonComment = NULL,
+         @AuthorId = N'sup-id-1', @AuthorName = N'Supervisor One';
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (station only, time unchanged, batch already out of order)', N'(accepted)',
+            CASE WHEN (SELECT COUNT(*) FROM trace.MovementCorrection WHERE MovementId = @t4_sort AND Kind = N'REPLACE' AND OccurredAt = '2026-10-14T09:00:00' AND QuantityKg = 460.00
+                 AND StationId = (SELECT StationId FROM trace.Station WHERE Code = N'ZZ-S04')) = 1
+                 THEN N'Accepted as expected'
+                 ELSE N'ATTENTION: accepted, but the effect is not the expected one' END,
+            N'The station changes, the time 09:00 does not: it is not checked, so the old disorder does not block it');
+END TRY
+BEGIN CATCH
+    INSERT @results (test_name, expected, outcome, detail)
+    VALUES (N'ReplaceMovement: control (station only, time unchanged, batch already out of order)', N'(accepted)',
+            CONCAT(N'ATTENTION: refused, error ', ERROR_NUMBER()),
+            LEFT(ERROR_MESSAGE(), 200));
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+END CATCH;
 
 
 /* ===================== Results ===================== */

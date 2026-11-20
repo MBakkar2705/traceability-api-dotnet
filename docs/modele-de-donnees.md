@@ -181,7 +181,7 @@ Le journal `Movement` n'est jamais modifié : les procédures n'ont pas de `UPDA
 - Le classement est insensible à la casse : `F01` et `f01` ne peuvent pas coexister.
 - Pas de découpe ni de fusion de lots.
 - Pas de gestion des retours de marchandise : les règles réelles du métier ne sont pas connues (voir [fonctionnel.md](fonctionnel.md), section 9).
-- Les procédures de correction ne vérifient pas que l'auteur est un vrai compte, ni l'heure d'une version corrigée (comme pour la saisie).
+- Les procédures de correction ne vérifient pas que l'auteur est un vrai compte. L'heure d'une version corrigée est contrôlée depuis le lot 12c, seulement si elle change (voir [fonctionnel.md](fonctionnel.md), règle 12).
 - Pas de table d'utilisateurs : l'auteur d'un mouvement est enregistré (identifiant et nom pris dans le jeton), mais la base ne connaît pas les comptes et ne vérifie pas qu'un auteur existe.
 - Les index sont mesurés sur des données inventées et une seule machine. Le coût en écriture n'est mesuré que pour `IX_Batch_FarmId` (environ 0,12 ms par lot créé, dans SSMS, au lot 5) ; pour `IX_Movement_BatchId`, il ne l'est pas (voir [mesures.md](mesures.md), sections 5 et 9.4).
 - Deux lots qui prennent le même ancien code au même instant ne sont protégés par aucune contrainte, et ce cas n'est pas testé (voir [ADR 0017](adr/0017-correction-de-la-fiche-du-lot.md)).

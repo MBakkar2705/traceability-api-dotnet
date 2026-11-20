@@ -16,7 +16,7 @@ public sealed class BatchesController(TraceabilityDb db, IAuthorizationService a
     /// <response code="400">A field is missing, malformed or too long, or the time has no Z or offset (no errorCode); or the batch code is empty (errorCode 50400); or the quantity is 0 or less (errorCode 50401).</response>
     /// <response code="404">Unknown farm (errorCode 50101) or unknown station (errorCode 50102).</response>
     /// <response code="409">The batch code is already taken (errorCode 50202), or it is an old code of another batch (errorCode 50203).</response>
-    /// <response code="422">The station does not have the RECEPTION function (errorCode 50303); or the harvest day is after the day of the reception (errorCode 50309).</response>
+    /// <response code="422">The station does not have the RECEPTION function (errorCode 50303); or the harvest day is after the day of the reception (errorCode 50309); or the time is more than 5 minutes after the clock of the server (errorCode 50310).</response>
     /// <response code="401">No valid token.</response>
     /// <response code="403">The token does not have the role writer; or it does not give the claims sub and preferred_username, so the author of the movement is unknown.</response>
     [HttpPost]
@@ -190,7 +190,7 @@ public sealed class BatchesController(TraceabilityDb db, IAuthorizationService a
     /// <response code="201">The movement is recorded. The body is empty; the Location header points to the batch.</response>
     /// <response code="400">A field is missing, malformed or too long, or the time has no Z or offset (no errorCode); or the quantity is 0 or less (errorCode 50401); or the movement type is unknown (errorCode 50402).</response>
     /// <response code="404">Unknown batch (errorCode 50100) or unknown station (errorCode 50102); or the code is an old code of a corrected batch (errorCode 50104).</response>
-    /// <response code="422">The batch is already SHIPPED (errorCode 50300); or the movement is not the next step (errorCode 50301); or the quantity is higher than the current one (errorCode 50302); or the station does not have the function (errorCode 50303).</response>
+    /// <response code="422">The batch is already SHIPPED (errorCode 50300); or the movement is not the next step (errorCode 50301); or the quantity is higher than the current one (errorCode 50302); or the station does not have the function (errorCode 50303); or the time is more than 5 minutes after the clock of the server (errorCode 50310); or the time is not after the time of the previous valid step (errorCode 50311).</response>
     /// <response code="401">No valid token.</response>
     /// <response code="403">The token does not have the role writer; or it does not give the claims sub and preferred_username, so the author of the movement is unknown.</response>
     [HttpPost("{batchCode}/movements")]
@@ -246,7 +246,7 @@ public sealed class BatchesController(TraceabilityDb db, IAuthorizationService a
     /// <response code="201">The correction is recorded. The body is empty; the Location header points to the batch.</response>
     /// <response code="400">A field is missing, malformed or too long, or the time has no Z or offset (no errorCode); or the quantity is 0 or less (errorCode 50401); or the reason is unknown (errorCode 50407); or the reason is OTHER without a comment (errorCode 50408); or the comment is too long (errorCode 50409).</response>
     /// <response code="404">Unknown batch (errorCode 50100), unknown station (errorCode 50102), the movement is not in this batch (errorCode 50103), or the code is an old code of a corrected batch (errorCode 50104).</response>
-    /// <response code="422">The station does not have the function of the movement (errorCode 50303); or the quantity is higher than the previous step or lower than the next step (errorCode 50304); or the movement is cancelled (errorCode 50305); or the new values are the same as the current ones (errorCode 50308); or a RECEPTION is moved before the harvest day of the batch (errorCode 50309).</response>
+    /// <response code="422">The station does not have the function of the movement (errorCode 50303); or the quantity is higher than the previous step or lower than the next step (errorCode 50304); or the movement is cancelled (errorCode 50305); or the new values are the same as the current ones (errorCode 50308); or a RECEPTION is moved before the harvest day of the batch (errorCode 50309); or the new time, if it differs from the current one, is more than 5 minutes after the clock of the server (errorCode 50310), or is not after the previous valid step or not before the next valid step (errorCode 50311).</response>
     /// <response code="401">No valid token.</response>
     /// <response code="403">The token does not have the role supervisor; or it does not give the claims sub and preferred_username, so the author of the correction is unknown.</response>
     [HttpPost("{batchCode}/movements/{movementId}/replace")]
