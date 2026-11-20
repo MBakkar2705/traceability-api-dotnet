@@ -74,6 +74,7 @@ Ces règles seront appliquées dans la base de données (procédures stockées e
 8. **Corrections** : seul un utilisateur qui a le rôle `supervisor` peut corriger un mouvement. Il peut **remplacer** ses valeurs (station, quantité, heure ; le type du mouvement ne change pas) ou **l'annuler** (le mouvement n'a pas eu lieu). Un motif est obligatoire : erreur de saisie, erreur de mesure ou autre ; le commentaire (500 caractères au plus) est obligatoire pour « autre ». La valeur valable d'un mouvement est celle de sa dernière correction.
    - La quantité corrigée reste entre celle de l'étape valable précédente et celle de l'étape valable suivante ; l'égalité est acceptée. La réception peut donc être augmentée, tant qu'elle n'est pas inférieure à l'étape suivante ; la dernière étape n'a pas de limite basse, sauf d'être supérieure à 0.
    - La station doit avoir la fonction du mouvement. Des valeurs identiques aux valeurs actuelles sont refusées.
+   - L'heure corrigée suit la règle 12.
    - Seul le dernier mouvement valable peut être annulé, jamais la réception (un lot a toujours sa réception). Un mouvement annulé ne peut plus être corrigé ni annulé.
    - Le statut et la quantité du lot suivent les valeurs valables : annuler l'expédition d'un lot `SHIPPED` le ramène à `PACKED` (c'est le seul cas où un lot expédié bouge, la règle 4 vaut pour l'ajout de mouvements).
    - Chaque correction enregistre son auteur (comme la règle 7) et sa date. Tous les rôles qui lisent voient l'historique des corrections ; le nom de leur auteur n'est montré qu'à `auditor` et `supervisor` (règle 9).
@@ -85,6 +86,12 @@ Ces règles seront appliquées dans la base de données (procédures stockées e
    - Le nouveau code n'est ni le code actuel d'un autre lot, ni un ancien code d'un autre lot. Un lot peut reprendre un code qu'il a eu.
    - L'ancien code reste réservé, pour qu'une étiquette imprimée avec lui mène toujours au bon lot. Lire un lot par son ancien code donne le lot, sous son code actuel. Écrire avec l'ancien code (ajouter, remplacer ou annuler un mouvement, corriger la fiche) est refusé, et le message donne le code actuel.
    - Chaque correction enregistre son auteur et sa date. Tous les rôles qui lisent voient l'historique des corrections de la fiche.
+12. **Heure des mouvements** : une heure ne peut pas dépasser de plus de 5 minutes l'horloge de SQL Server, lue au moment du contrôle (erreur 50310). Elle doit aussi être strictement après celle de l'étape valable précédente et, pour une correction, strictement avant celle de l'étape valable suivante (erreur 50311) ; une heure égale est refusée. Les étapes valables sont les mouvements non annulés, avec leur dernière correction, dans l'ordre d'enregistrement.
+   - Le futur est contrôlé avant l'ordre. Sur un lot `SHIPPED`, le refus d'un nouveau mouvement (règle 4) passe avant les deux.
+   - Le futur est contrôlé à la création du lot (heure de réception), à l'ajout d'un mouvement et au remplacement ; l'ordre, à l'ajout et au remplacement. Un remplacement ne contrôle l'heure que si elle change : un vieux désordre n'empêche pas de corriger la station ou la quantité. L'annulation ne contrôle rien.
+   - Une heure passée est acceptée (saisie tardive) : l'heure dit quand le mouvement a eu lieu, pas quand il a été saisi.
+   - Les heures sont en UTC. Les 5 minutes sont un choix de conception, pas une exigence du métier.
+   - Les mouvements d'avant cette règle ne sont ni corrigés ni signalés par l'API.
 
 ## 6. Exemple de bout en bout
 
@@ -107,11 +114,12 @@ Ferme `F01` « Ferme Nord », région Souss-Massa. Lot `LOT-2026-0001`, variét�
 | 3 | 2026-10-14 13:40 | `PACKING` | `PCK-01` | 465.00 kg | `PACKED` |
 | 4 | 2026-10-14 17:05 | `SHIPMENT` | `SHP-01` | 465.00 kg | `SHIPPED` |
 
-Trois demandes qui seraient refusées :
+Quatre demandes qui seraient refusées :
 
 - Un `SHIPMENT` juste après le `RECEPTION` : une étape est sautée (règle 1).
 - Un `SORTING` à 520.00 kg alors que le lot en a 500.00 : la quantité augmente (règle 2).
 - Un `PACKING` à la station `SITE-01` : cette station n'a pas la fonction `PACKING` (règle 6).
+- Un `SORTING` à 06:30, la même heure que le `RECEPTION` : l'heure n'est pas après celle de l'étape précédente (règle 12).
 
 ## 7. Ce que l'API fera
 
@@ -145,6 +153,13 @@ Validés pour le lot 12b (correction de la fiche), voir [ADR 0017](adr/0017-corr
 - Un ancien code reste réservé au lot qui l'a eu : on le lit, on n'écrit pas avec.
 - Les noms des auteurs ne sont montrés qu'à `auditor` et `supervisor`, un nouveau rôle de lecture.
 
+Validés pour le lot 12c (heure des mouvements), voir [ADR 0018](adr/0018-heure-des-mouvements.md) :
+
+- Une heure plus de 5 minutes dans le futur, ou pas après l'étape précédente, est refusée par la base elle-même (procédures stockées), pas seulement par l'API.
+- Une heure passée reste acceptée (saisie tardive).
+- Un remplacement ne contrôle l'heure que si elle change.
+- Les anciennes données ne sont pas touchées.
+
 ## 9. Limites et évolutions possibles
 
 ### Retours de marchandise
@@ -164,7 +179,7 @@ Un lot expédié reste consultable avec tout son parcours (règle 4), ce qui per
 
 Depuis le lot 12a, une faute de saisie sur un mouvement se corrige (règle 8), et depuis le lot 12b la fiche d'un lot aussi (règle 11). Ce qui reste hors périmètre :
 
-- **L'heure des mouvements** : voir la section ci-dessous ; le lot 12c est prévu pour elle.
+- **L'heure des mouvements** : contrôlée depuis le lot 12c (règle 12) ; ce qui reste ouvert est dans la section ci-dessous.
 - **Le destinataire** : seule l'interface web prévient, par un message à copier ; un appel direct à l'API ne donne rien, aucun courriel n'est envoyé, et rien n'enregistre qu'un message a été transmis, ni l'état du lot au moment de la correction.
 - **La visibilité du nom de l'auteur** : tranchée au lot 12b (règle 9). Ce qui reste ouvert : la confirmer avec les responsables des données si les utilisateurs sont réels.
 - **Un espace au début ou à la fin de la variété** est enregistré tel quel (observé à l'essai du lot 12b, [verification.md](verification.md), section 23).
@@ -172,4 +187,9 @@ Depuis le lot 12a, une faute de saisie sur un mouvement se corrige (règle 8), e
 
 ### Heure des mouvements
 
-L'heure d'un mouvement n'est pas contrôlée, ni à la saisie ni à la correction : un mouvement peut avoir une heure antérieure au précédent ou située dans le futur. Le parcours est donné dans l'ordre d'enregistrement. Le métier réel dira si une règle est nécessaire.
+Depuis le lot 12c, l'heure est contrôlée (règle 12). Ce qui reste ouvert :
+
+- **Les 5 minutes** : c'est un choix de conception. À l'essai, +4 minutes sont acceptées et +6 refusées en SQL, +2 acceptées et +10 refusées par l'API ; la limite exacte n'a pas été essayée. Le métier réel dira si 5 minutes conviennent.
+- **Les anciennes données** : si des mouvements d'avant le lot 12c sont dans le désordre, rien ne les corrige ni ne les signale. `database/021_find_unordered_movements.sql` les compte et les liste en lecture seule ; il n'a été lancé que sur la base de test, pas sur `TraceabilityDev`.
+- **Deux appels simultanés** sur le même lot, et **un ordinateur dont l'horloge est en avance** de plus de 5 minutes sur SQL Server : non essayés (voir [verification.md](verification.md), section 24.3).
+- **La saisie tardive** : l'heure ne permet pas de savoir quand un mouvement a été saisi.

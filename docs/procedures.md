@@ -88,7 +88,8 @@ Contrôles, dans cet ordre :
 7. code du lot pas déjà pris : sinon 50202 ;
 8. code du lot qui n'est pas l'ancien code d'un autre lot : sinon 50203 ;
 9. la station a la fonction `RECEPTION` : sinon 50303 ;
-10. jour de récolte pas après le jour de la réception (le même jour est accepté) : sinon 50309.
+10. jour de récolte pas après le jour de la réception (le même jour est accepté) : sinon 50309 ;
+11. l'heure de la réception n'est pas dans le futur : pas plus de 5 minutes après l'horloge de SQL Server (`SYSUTCDATETIME()`, lue à ce moment), sinon 50310. Une heure passée est acceptée (saisie tardive).
 
 Résultat : aucun. Si un contrôle échoue, aucun lot et aucun mouvement ne sont créés.
 
@@ -118,7 +119,11 @@ Contrôles, dans cet ordre (le premier qui échoue donne l'erreur) :
 7. lot pas déjà `SHIPPED` : sinon 50300 ;
 8. le type est bien l'étape suivante : sinon 50301 ;
 9. la station a la fonction : sinon 50303 ;
-10. la quantité ne dépasse pas la quantité actuelle du lot : sinon 50302. Une quantité égale est acceptée (comme dans l'exemple de [fonctionnel.md](fonctionnel.md)).
+10. la quantité ne dépasse pas la quantité actuelle du lot : sinon 50302. Une quantité égale est acceptée (comme dans l'exemple de [fonctionnel.md](fonctionnel.md)) ;
+11. l'heure n'est pas dans le futur (même règle qu'en 2.4) : sinon 50310 ;
+12. l'heure est strictement après celle du dernier mouvement valable du lot (la dernière correction appliquée ; un mouvement annulé ne compte pas) : sinon 50311. Une heure égale est refusée. La réception étant toujours le premier mouvement, il y a toujours un mouvement avant.
+
+Le futur est contrôlé avant l'ordre : une heure dans le futur et avant l'étape précédente donne 50310. Sur un lot `SHIPPED`, l'erreur 50300 passe avant les contrôles de l'heure.
 
 Résultat : aucun. Si un contrôle échoue, ni le journal ni le lot ne changent.
 
@@ -209,9 +214,12 @@ Contrôles, dans cet ordre (le premier qui échoue donne l'erreur) :
 8. la station a la fonction du mouvement : sinon 50303 ;
 9. la quantité est entre celle de l'étape valable précédente (maximum) et celle de l'étape valable suivante (minimum) : sinon 50304. L'égalité est acceptée. La réception n'a pas d'étape précédente, la dernière étape n'a pas d'étape suivante ;
 10. si le mouvement est la réception, le jour de sa nouvelle heure n'est pas avant le jour de récolte du lot (le même jour est accepté) : sinon 50309 ;
-11. les valeurs ne sont pas toutes identiques aux valeurs valables actuelles (station, quantité et heure) : sinon 50308.
+11. l'heure, **seulement si elle change** (différente de l'heure valable actuelle) : pas dans le futur (plus de 5 minutes après l'horloge de SQL Server), sinon 50310 ; strictement après celle de l'étape valable précédente, sinon 50311 ; strictement avant celle de l'étape valable suivante, sinon 50311. L'égalité est refusée. La réception n'a pas d'étape précédente, la dernière étape n'a pas d'étape suivante. Une correction de la station ou de la quantité seule n'est donc pas bloquée par un vieux désordre ;
+12. les valeurs ne sont pas toutes identiques aux valeurs valables actuelles (station, quantité et heure) : sinon 50308.
 
-Résultat : aucun. Si un contrôle échoue, rien ne change. L'heure n'est pas contrôlée (voir section 5).
+Pour l'heure comme pour la quantité, les étapes voisines sont les mouvements non annulés, avec leur dernière correction appliquée, dans l'ordre de `MovementId`.
+
+Résultat : aucun. Si un contrôle échoue, rien ne change.
 
 ### 2.12 `trace.CancelMovement`
 
@@ -221,7 +229,7 @@ Paramètres : `@BatchCode NVARCHAR(30)`, `@MovementId BIGINT`, `@ReasonCode NVAR
 
 Contrôles, dans cet ordre : auteur (50405, 50406), motif (50407), commentaire (50409, 50408), lot existant (50100 ; un ancien code d'un lot corrigé : 50104), mouvement du lot (50103), mouvement pas déjà annulé (50305), pas la réception (50307), dernier mouvement valable du lot (50306).
 
-Résultat : aucun. Si un contrôle échoue, rien ne change.
+Résultat : aucun. Si un contrôle échoue, rien ne change. L'heure n'est pas contrôlée : une annulation ne change aucune heure.
 
 ### 2.13 `trace.CorrectBatch`
 
@@ -285,6 +293,8 @@ Les numéros de 50000 à 50099 sont réservés aux gardes des scripts. Les scrip
 | 50307 | Règle métier | Annulation de la réception | `The RECEPTION of a batch cannot be cancelled.` | `CancelMovement` |
 | 50308 | Règle métier | Valeurs identiques : rien à corriger | `The new values are the same as the current ones: nothing to correct.` | `ReplaceMovement`, `CorrectBatch` |
 | 50309 | Règle métier | Jour de récolte après le jour de la réception | `The harvest date 2026-11-12 is after the reception date 2026-11-10.` | `CreateBatch`, `ReplaceMovement`, `CorrectBatch` |
+| 50310 | Règle métier | Heure dans le futur (plus de 5 minutes après l'horloge de SQL Server) | `The time 2026-11-20T09:56:23 is in the future (more than 5 minutes after 2026-11-20T09:50:23, the time of the server).` | `CreateBatch`, `AddMovement`, `ReplaceMovement` |
+| 50311 | Règle métier | Heure pas après l'étape précédente, ou, pour un remplacement, pas avant la suivante (même numéro) | `The time 2026-10-14T06:30:00 is not after the time of the previous step (2026-10-14T06:30:00).` | `AddMovement`, `ReplaceMovement` |
 | 50400 | Valeur invalide | Code vide | `The code must not be empty.` | `CreateFarm`, `CreateStation`, `CreateBatch`, `CorrectBatch` |
 | 50401 | Valeur invalide | Quantité à 0 ou négative | `The quantity must be greater than 0.` | `CreateBatch`, `AddMovement`, `ReplaceMovement` |
 | 50402 | Valeur invalide | Type de mouvement inconnu | `Unknown movement type 'LOST'.` | `AddStationCapability`, `AddMovement` |
@@ -300,8 +310,8 @@ Les familles permettront à l'API de répondre sans connaître chaque règle : 5
 
 ## 5. Limites connues
 
-- **L'heure d'un mouvement n'est pas contrôlée** : un mouvement peut avoir une heure antérieure au précédent ou située dans le futur. Le parcours est donné dans l'ordre d'enregistrement. Le métier réel dira si une règle est nécessaire.
-- **Corrections** (lot 12a) : l'heure d'une version corrigée n'est pas contrôlée non plus. Seul le dernier mouvement valable peut être annulé, jamais la réception : un mouvement du milieu ne s'annule pas. Le verrou des corrections n'est essayé qu'avec deux sessions SQL et une transaction tenue ouverte à la main, pas avec deux appels HTTP lancés en même temps (voir [verification.md](verification.md), section 22.3).
+- **L'heure des mouvements** (lot 12c) : une heure dans le futur (plus de 5 minutes après l'horloge de SQL Server) et une heure hors ordre sont refusées (50310, 50311). Les 5 minutes sont un choix de conception : on a vu +4 minutes acceptées et +6 refusées, pas la limite exacte. Une heure passée reste acceptée (saisie tardive) : l'heure ne dit donc pas quand le mouvement a été saisi. `CancelMovement` ne contrôle rien. `ReplaceMovement` ne contrôle l'heure que si elle change : un vieux désordre n'empêche pas de corriger autre chose. Les anciennes données ne sont ni corrigées ni signalées par l'API ; `database/021_find_unordered_movements.sql` les compte et les liste en lecture seule. Deux appels simultanés sur le même lot avec ces contrôles, et un ordinateur dont l'horloge est en avance de plus de 5 minutes sur SQL Server, ne sont pas essayés (voir [verification.md](verification.md), section 24.3).
+- **Corrections** (lot 12a) : seul le dernier mouvement valable peut être annulé, jamais la réception : un mouvement du milieu ne s'annule pas. Le verrou des corrections n'est essayé qu'avec deux sessions SQL et une transaction tenue ouverte à la main, pas avec deux appels HTTP lancés en même temps (voir [verification.md](verification.md), section 22.3).
 - **Deux créations simultanées avec le même code** (`CreateFarm`, `CreateStation`, `CreateBatch`) : le verrou de l'ADR 0003 ne peut pas aider (il n'y a pas encore de ligne). La contrainte d'unicité du lot 1 refuse la seconde, avec l'erreur SQL Server habituelle et non la 50200, la 50201 ou la 50202.
 - **Le verrou ne protège que les appels passés par la procédure.** Une écriture directe dans les tables le contourne.
 - **Pas de délai d'attente** sur le verrou : un appel attend aussi longtemps que l'autre n'a pas terminé.
