@@ -2054,7 +2054,7 @@ Dans PowerShell et SSMS. Les mots de passe sont tapés dans une saisie masquée,
 | N13 | Outils, bloc corrections, `supervisor-test`, sur ce lot : `Replace-Movement` (95.5, `MEASUREMENT_ERROR`), `Correct-Lot` (variété `Cherry`), `Cancel-Movement` de la réception, puis `Read-Lot`. | Observé le 2026-11-23, à 20:55. `HTTP 201`, `HTTP 201`, puis `HTTP 422`, `errorCode` 50307 (« The RECEPTION of a batch cannot be cancelled. »). La fiche : `Cherry`, 95.50 kg (original 100.50), une correction du mouvement et une de la fiche, `authorName` visible (`writer-test`) pour `supervisor`. |
 | N14 | Fichiers côté Windows : `recette-outils.ps1` (44, 68, 118 puis 143 lignes à chaque bloc) et `recette.md` (85 lignes), sans caractère non ASCII dans le premier. | Observé le 2026-11-23, à chaque commit. |
 | N15 | Aucun jeton ni mot de passe dans les fichiers du lot : recherche de `eyJ`, de `password` et de `secret` dans les fichiers modifiés ou nouveaux. | Observé le 2026-11-23, avant le commit des documents. `eyJ` : seulement ce document (le texte qui nomme cette recherche) et `web/package-lock.json` (une empreinte, comme en 24.5). `password` et `secret`, dans les lignes ajoutées par rapport à `main` : des mots dans des commentaires et des noms de paramètres (`recette-outils.ps1`), un renvoi à la section « Secrets » (`CLAUDE.md`), une phrase du README déjà présente et cette ligne ; aucune valeur réelle. |
-| N16 | CI : une fois la branche poussée, `backend`, `frontend` et `docker` sont verts sur la branche, sur la pull request puis sur `main`. | Non observé : la CI n'a pas tourné (rien n'est encore poussé). |
+| N16 | CI : une fois la branche poussée, `backend`, `frontend` et `docker` sont verts sur la branche, sur la pull request puis sur `main`. | Observé le 2026-11-23, après la fusion, dans l'onglet Actions de GitHub. Trois exécutions du workflow CI, toutes vertes : n° 94, push de la branche (commit `25c1772`), 1 min 45 s ; n° 95, pull request n° 33, 1 min 42 s ; n° 96, push sur `main` après la fusion (commit `5eeef54`), 1 min 51 s. Sur la page de la pull request, les six contrôles sont verts et il n'y a pas de conflit ; leurs durées une à une ne sont pas relevées. Dans le journal de `backend` de la n° 96, `006` donne `tests_total` 150, `tests_ok` 142 et `tests_by_eye` 8, sans ligne « ATTENTION » : `006` a donc tourné sur la base neuve de la CI et rend les 150 tests attendus. Les 8 tests à l'œil du journal ont été relus : leurs valeurs sont celles annoncées. Les nombres de tests de `dotnet test` et de Vitest dans la CI n'ont pas été relevés. |
 
 ### 25.3 Ce qui n'est pas essayé
 
@@ -2069,7 +2069,7 @@ Dans PowerShell et SSMS. Les mots de passe sont tapés dans une saisie masquée,
 - **L'origine des numéros d'identité** (`movementId` 9, `correctionId` 11 et 13) : l'explication probable est que les tests de `003` ne rendent pas leurs numéros après l'annulation (`ROLLBACK`), mais ce n'est pas vérifié.
 - **La version de PowerShell** utilisée n'est pas relevée ; le fichier est écrit pour fonctionner avec Windows PowerShell 5.1 comme avec les versions récentes, et il a fonctionné chez toi.
 - **Les scénarios des règles** : au lot 13b.
-- **La CI** : voir N16.
+- **Les durées des six contrôles de la pull request, et les nombres de tests de `dotnet test` et de Vitest dans la CI** : non relevés (voir N16).
 
 ### 25.4 Ce qui est prouvé
 
@@ -2080,6 +2080,7 @@ Dans PowerShell et SSMS. Les mots de passe sont tapés dans une saisie masquée,
 - **L'API lancée sur `TraceabilityAcceptance` y écrit, et seulement là** : le lot d'essai est dans cette base et dans aucune autre (N12).
 - **Les rôles se comportent comme `Program.cs` les définit**, pour les trois comptes essayés : `reader` lit, `writer` écrit sans voir les noms des auteurs, `supervisor` corrige et voit les noms (N10 à N13).
 - **Les quatre blocs d'outils fonctionnent** : authentification, lecture, écriture, corrections (refus 50307 compris), sans jamais afficher le jeton (N10 à N13).
+- **La CI** : verte sur la branche, sur la pull request et sur `main` (N16). `006` a tourné sur la base neuve de la CI et rend 150 tests, dont 142 automatiques et 8 à l'œil. La CI n'exécute ni `900`, ni les outils PowerShell, ni Keycloak, ni l'API sur la base de recette : elle ne prouve pas ces points, qui reposent sur N2 à N13.
 - **Non prouvé** : tout ce qui figure en 25.3.
 
 ### 25.5 Rejouer la vérification
