@@ -66,3 +66,53 @@ function Read-Api($Path) {
 
 # Read-Lot: shows the sheet of one batch (GET /batches/{code}). Usage: Read-Lot 'R01-ORDRE-261123'
 function Read-Lot($Code) { Read-Api "/batches/$([uri]::EscapeDataString($Code))" }
+
+# ================================ Writing ===================================
+
+# Send-Api: POST on a path of the API, with the token kept in $global:Token.
+# $Body is either a hashtable (turned into JSON) or a text sent as it is (to try a wrong or
+# incomplete body). Prints the HTTP code, a hint for 000, 401 and 403, then the body if any.
+# Never prints the token. Dates are given as text ('2026-11-23T06:00:00Z'), quantities as numbers.
+function Send-Api($Path, $Body) {
+  $json = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Compress }
+  $tmp = [IO.Path]::GetTempFileName()
+  try {
+    [IO.File]::WriteAllText($tmp, $json, (New-Object Text.UTF8Encoding($false)))
+    $out = @(curl.exe -s --ssl-no-revoke -X POST -w "`n%{http_code}" -H "Authorization: Bearer $global:Token" -H "Content-Type: application/json" --data-binary "@$tmp" "$global:Api$Path")
+  } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+  $code = $out[-1]
+  $resp = ($out[0..($out.Count - 2)] -join "`n").Trim()
+  "HTTP $code"
+  if ($code -eq '000') { '000: the API does not answer. Is it running?' }
+  if ($code -eq '401') { '401: token missing, expired (300 s) or not accepted. Run Get-Trial again.' }
+  if ($code -eq '403') { '403: this account is not allowed to do this.' }
+  if ($resp) {
+    try { $resp | ConvertFrom-Json | ConvertTo-Json -Depth 10 } catch { $resp }
+  }
+}
+
+# New-Farm: POST /farms. Usage: New-Farm 'FERME-NORD' 'Ferme du Nord' 'Nord'
+function New-Farm($Code, $Name, $Region) {
+  Send-Api '/farms' ([ordered]@{ code = $Code; name = $Name; region = $Region })
+}
+
+# New-Station: POST /stations. Usage: New-Station 'STA-RECEPTION' 'Station de reception'
+function New-Station($Code, $Name) {
+  Send-Api '/stations' ([ordered]@{ code = $Code; name = $Name })
+}
+
+# Add-Capability: POST /stations/{code}/capabilities (RECEPTION, SORTING, PACKING or SHIPMENT).
+function Add-Capability($Station, $Type) {
+  Send-Api "/stations/$([uri]::EscapeDataString($Station))/capabilities" ([ordered]@{ movementType = $Type })
+}
+
+# New-Lot: POST /batches (creates the batch and its reception).
+# Usage: New-Lot 'R01-ORDRE-261123' 'FERME-NORD' 'Roma' '2026-11-22' 100.5 'STA-RECEPTION' '2026-11-23T06:00:00Z'
+function New-Lot($Code, $Farm, $Variety, $Harvest, $Kg, $Station, $At) {
+  Send-Api '/batches' ([ordered]@{ batchCode = $Code; farmCode = $Farm; variety = $Variety; harvestDate = $Harvest; quantityKg = $Kg; stationCode = $Station; occurredAt = $At })
+}
+
+# Add-Movement: POST /batches/{code}/movements (SORTING, then PACKING, then SHIPMENT).
+function Add-Movement($Code, $Station, $Type, $Kg, $At) {
+  Send-Api "/batches/$([uri]::EscapeDataString($Code))/movements" ([ordered]@{ stationCode = $Station; movementType = $Type; quantityKg = $Kg; occurredAt = $At })
+}
