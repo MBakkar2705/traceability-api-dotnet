@@ -121,7 +121,7 @@ Prérequis : SQL Server 2025 et SQL Server Management Studio (SSMS).
 
 1. Se connecter à l'instance locale (`localhost`) avec l'authentification Windows. Dans cette configuration locale, « Certificat de serveur de confiance » est coché : acceptable seulement en local, jamais pour un serveur distant.
 2. Activer le **mode SQLCMD** dans chaque fenêtre de requête : menu Requête > Mode SQLCMD. C'est une bascule propre à chaque fenêtre : si le mode est déjà actif, ne pas cliquer (cela le désactiverait). Sans ce mode, le nom de la base n'est pas remplacé : le script affiche des erreurs ou est arrêté par sa garde, sans rien créer.
-3. Choisir la base : en haut de chaque script, la ligne `:setvar DbName ...` donne le nom (`TraceabilityDev` par défaut). Pour la base de test, remplacer par `TraceabilityTest` sans enregistrer le changement. Le script de remise à zéro (`900`) n'accepte que ces deux noms.
+3. Choisir la base : en haut de chaque script, la ligne `:setvar DbName ...` donne le nom (`TraceabilityDev` par défaut). Pour la base de test, remplacer par `TraceabilityTest` ; pour la base de recette (lot 13a), par `TraceabilityAcceptance` ; dans les deux cas sans enregistrer le changement. Le script de remise à zéro (`900`) n'accepte que ces trois noms.
 4. Exécuter dans l'ordre les scripts du dossier `database/` :
    - `001_create_database.sql` : crée la base (rejouable).
    - `002_create_schema_and_tables.sql` : crée le schéma `trace` et les 7 tables (non rejouable : il échoue si elles existent déjà).

@@ -5,14 +5,17 @@
   Deletes the database named in DbName and ALL its data
   (data file and log file are removed from disk). No backup is made.
 
-  Use it only to start again from scratch, then run 001, 002, 004 and 005 again
-  (003 only checks the schema; on TraceabilityDev, 007 fills it with volume data).
+  Use it only to start again from scratch, then run 001, 002, 004, 005, 011 and 017
+  again (003 only checks the schema; on TraceabilityDev, 007 fills it with volume data).
 
-  - Only two names are allowed: TraceabilityDev and TraceabilityTest. Any other
-    name is refused (never another database).
+  - Only three names are allowed: TraceabilityDev, TraceabilityTest and
+    TraceabilityAcceptance (lot 13a). Any other name is refused (never another
+    database). The names are listed one by one below, never matched with a pattern.
   - Run in SSMS in SQLCMD mode (menu Query > SQLCMD Mode). As written, DbName is
     TraceabilityDev. To reset the test database, change the :setvar line below to
-    TraceabilityTest. Do NOT save that change in the file.
+    TraceabilityTest; for the acceptance database, to TraceabilityAcceptance.
+    Do NOT save that change in the file. Before running, read the :setvar line of
+    the tab you are about to run: it decides which database is dropped.
   - Safety lock: as written, the script does NOTHING. To really drop the database,
     change @confirm to N'YES' below. Do NOT save that change in the file.
   - Other connections to the database (other query windows) are disconnected.
@@ -23,8 +26,8 @@
 USE master;
 GO
 
--- Safety: only the two project databases can be dropped.
-IF N'$(DbName)' NOT IN (N'TraceabilityDev', N'TraceabilityTest')
+-- Safety: only the three project databases can be dropped.
+IF N'$(DbName)' NOT IN (N'TraceabilityDev', N'TraceabilityTest', N'TraceabilityAcceptance')
 BEGIN
     RAISERROR(N'Database name ''$(DbName)'' is not allowed. Nothing done.', 16, 1);
     RETURN;
@@ -48,7 +51,7 @@ BEGIN TRY
     -- Otherwise DROP fails with "database in use" if another window is connected to it.
     ALTER DATABASE $(DbName) SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
     DROP DATABASE $(DbName);
-    PRINT N'Database $(DbName) dropped. Run 001, 002, 004, 005 to rebuild.';
+    PRINT N'Database $(DbName) dropped. Run 001, 002, 004, 005, 011 and 017 to rebuild.';
 END TRY
 BEGIN CATCH
     DECLARE @drop_error NVARCHAR(2000) = ERROR_MESSAGE();
