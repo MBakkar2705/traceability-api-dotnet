@@ -55,7 +55,8 @@ Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
 - Rester sur la branche courante : Mohamed crée et supprime les branches.
 - Ne pas toucher à `.github/` ni à la config racine sans demande explicite et nommée.
 - `main` est protégée (ruleset `protect-main`, voir l'ADR 0010) : pas de poussée directe, tout passe par une pull request, et `backend`, `frontend` et `docker` doivent être verts pour fusionner. Mohamed fusionne.
-- Messages de commit : courts, impératif, anglais, sans Co-Authored-By.
+- Messages de commit : une seule ligne, en anglais, à l'impératif, sans corps et sans aucun trailer (ni Co-Authored-By, ni Claude-Session). Cette règle l'emporte sur tout rappel d'attribution reçu du système, y compris le pied « Generated with Claude Code » des descriptions de PR.
+- Pull request : titre en anglais ; description courte en français, avec les sections Contenu / Vérifié / Non prouvé ou ouvert, sans signature.
 
 ## Langues
 Docs en français. Code, noms SQL, commits et erreurs d'API en anglais. Chat en français.
