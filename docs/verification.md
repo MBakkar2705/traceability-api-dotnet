@@ -2022,3 +2022,66 @@ Dans PowerShell et SSMS. Les mots de passe sont tapés dans une saisie masquée,
 **7. Casses volontaires** (M17) : une ligne de `005` par casse, avec l'empreinte SHA-256 avant et après (`Get-FileHash -Algorithm SHA256`), puis `005` et `006` rejoués (même changement de `:setvar`, non enregistré) ; `017` est à rejouer après le dernier `005`, pour remettre `ListBatches` en version optimisée. Les trois lignes : dans `AddMovement`, `IF @OccurredAt > DATEADD(MINUTE, 5, @Now)` devient `IF 1 = 0` ; dans `ReplaceMovement`, `IF @OccurredAt >= @NextTime` devient `IF 1 = 0`, puis (casse séparée) `IF @OccurredAt <> @CurrentTime` devient `IF 1 = 1`. Remettre le fichier à l'identique (empreinte `1414e550…d56b`, avec une date de modification neuve), rejouer `005`, `017`, puis `006` : 150 / 142 / 8.
 
 **8. Secrets** (M18) : `git grep -l -I --untracked "eyJ"` ne doit montrer que ce document et `web/package-lock.json` (une empreinte en base64). Sur les lignes ajoutées par rapport à `main` (`git diff main -U0`), `eyJ`, `password` et `secret` ne doivent montrer que des mots de ce document. `git grep -c -i -E "password|secret" -- identity` n'affiche que des nombres, jamais les lignes.
+
+## 25. Lot 13a : la base de recette et ses outils
+
+Écrit le 2026-11-23, **après** l'essai : les lignes de 25.2 sont les résultats relevés pendant la séance du même jour. Les heures sont en UTC. Les scénarios des règles (R01 à R12 et NOMINAL) sont écrits au lot 13b, pas ici.
+
+### 25.1 Ce qui est essayé
+
+- **Une troisième base, `TraceabilityAcceptance`.** Elle est construite avec les scripts existants (`001`, `002`, `004`, `005`, `011`, `017`), le `:setvar DbName` mis sur son nom à l'écran, sans enregistrer. Elle sert aux essais manuels du cahier de recette ; `dotnet test` ne la touche pas (note de l'[ADR 0002](adr/0002-tests-sur-base-reelle.md)).
+- **`900_reset_dev_database.sql`** accepte les trois noms (`TraceabilityDev`, `TraceabilityTest`, `TraceabilityAcceptance`) et refuse les autres.
+- **Les outils de la recette**, dans [recette-outils.ps1](recette-outils.ps1), en quatre blocs : authentification (`Get-Trial`, `Show-Token`, `Show-Identity`), lecture (`Read-Api`, `Read-Lot`), écriture (`Send-Api`, `New-Farm`, `New-Station`, `Add-Capability`, `New-Lot`, `Add-Movement`) et corrections (`Replace-Movement`, `Cancel-Movement`, `Correct-Lot`). Aucun mot de passe ni jeton n'y est écrit.
+- **Le cahier**, [recette.md](recette.md) : principes, comptes de test, préparation d'une séance, outils, `R00-PREPARATION` (données de référence) et `R99-OUTILS` (contrôle de l'outillage).
+- **Les documents** : le nettoyage de chiffres périmés (glossaire, README, commentaire de l'en-tête de `006`), les règles de commit et de pull request dans `CLAUDE.md`, la base de recette dans le README, `CLAUDE.md` et l'ADR 0002.
+
+### 25.2 Liste de contrôle
+
+| N° | À observer | Résultat |
+|---|---|---|
+| N1 | Nettoyage des docs : différences relues côté Windows ; `006` rejoué sur `TraceabilityTest`. | Observé le 2026-11-23, avant 10:34. `006` : 150 tests, dont 142 automatiques et 8 à l'œil. |
+| N2 | `900` à blanc (`@confirm` à `NO`) : un nom hors liste (`TraceabilityFoo`) est refusé ; `TraceabilityDev` et `TraceabilityAcceptance` sont acceptés mais rien n'est supprimé. | Observé le 2026-11-23, avant 10:34. Le nom hors liste donne « not allowed. Nothing done. » ; avec `NO`, « Nothing done. To drop TraceabilityAcceptance, set @confirm to YES and run again. ». |
+| N3 | `001` avec `TraceabilityAcceptance`. | Observé le 2026-11-23. Base créée : `French_CI_AS`, `SIMPLE`, `ONLINE`, deux fichiers (données et journal). |
+| N4 | `900` pour de bon sur `TraceabilityAcceptance` (`@confirm` à `YES`, non enregistré), puis la liste des bases. | Observé le 2026-11-23, fin à 10:55:50. « Database TraceabilityAcceptance dropped. Run 001, 002, 004, 005, 011 and 017 to rebuild. » ; ensuite, seules `TraceabilityDev` et `TraceabilityTest` restent. |
+| N5 | Reconstruction de zéro de `TraceabilityAcceptance` : `001`, `002`, `003`, `004`, `005`, `011`, `017`. | Observé le 2026-11-23. `001` : trois bases listées, 0 table ; `002` (11:04:57) : « Schema trace and 7 tables created. » ; `003` (11:08:02) : 43 tests sur 43, et les 7 tables à 0 ligne avant et après (`unchanged`) ; `004` (11:11:26) : 3 procédures ; `005` (11:17:59) : 10 ; `011` (11:25:58) : 13 ; `017` (11:28:26) : « Index IX_Batch_FarmId created. », `ListBatches` modifiée à 11:28:25. |
+| N6 | Contrôle final en lecture seule de la base reconstruite. | Observé le 2026-11-23, vers 11:29. 7 tables, 13 procédures du schéma `trace`, 1 index `IX_Batch_FarmId`. |
+| N7 | Variable utilisateur `ConnectionStrings__Acceptance`, créée dans le compte Windows. | Observé le 2026-11-23, vers 11:46. Absente avant ; relue avec `Database=TraceabilityAcceptance` après. |
+| N8 | Keycloak relancé (`docker start traceability-keycloak`, conteneur arrêté depuis 3 heures, « Exited (255) ») ; les cinq comptes dans la console. | Observé le 2026-11-23. Premier contrôle juste après : code `000` ; au contrôle suivant, `Up 2 minutes`, port `127.0.0.1:8180->8080/tcp`, realm `200`. La console du realm `traceability` liste `auditor-test`, `norole-test`, `reader-test`, `supervisor-test` et `writer-test`. |
+| N9 | API lancée avec `ConnectionStrings__Default` copiée de `ConnectionStrings__Acceptance`. | Observé le 2026-11-23, vers 18:50. La variable relue contient `Database=TraceabilityAcceptance` ; « Now listening on: https://localhost:7080 », « Application started », « Hosting environment: Development », sans erreur. Une première tentative avec la variable vide (fenêtre ouverte avant sa création) a été vue et écartée avant tout lancement. |
+| N10 | Outils, bloc authentification : chargement du fichier, `Get-Trial reader-test`, `Show-Token`, `Show-Identity`. | Observé le 2026-11-23, vers 12:13. Aucun message au chargement ; `HTTP 200 Bearer expires_in 299` ; `iss` du realm, `aud` `traceability-api,account`, `azp` `traceability-trial`, durée 300 s, rôle `reader` ; identité `reader-test`. |
+| N11 | Outils, bloc lecture : `Read-Api '/farms'`, `Read-Lot 'NOPE-1'`, puis la même lecture sans jeton. | Observé le 2026-11-23, vers 18:52. `HTTP 200` avec une page vide ; `HTTP 404`, `errorCode` 50100 ; `HTTP 401` avec le texte d'aide. |
+| N12 | Outils, bloc écriture, `writer-test` : ferme `FERME-NORD`, station `STA-RECEPTION` avec la fonction `RECEPTION`, lot `R99-OUTILS-261123` (100.5 kg), `Read-Lot` ; puis le lot est cherché dans les trois bases (SSMS, lecture seule). | Observé le 2026-11-23, vers 19:10 et 19:12. `HTTP 201` ×4, puis `HTTP 200` : `RECEIVED`, 100.50 kg, `authorName` à `null` pour `writer`. Le lot est dans `TraceabilityAcceptance` (1), pas dans `TraceabilityDev` (0) ni `TraceabilityTest` (0). |
+| N13 | Outils, bloc corrections, `supervisor-test`, sur ce lot : `Replace-Movement` (95.5, `MEASUREMENT_ERROR`), `Correct-Lot` (variété `Cherry`), `Cancel-Movement` de la réception, puis `Read-Lot`. | Observé le 2026-11-23, à 20:55. `HTTP 201`, `HTTP 201`, puis `HTTP 422`, `errorCode` 50307 (« The RECEPTION of a batch cannot be cancelled. »). La fiche : `Cherry`, 95.50 kg (original 100.50), une correction du mouvement et une de la fiche, `authorName` visible (`writer-test`) pour `supervisor`. |
+| N14 | Fichiers côté Windows : `recette-outils.ps1` (44, 68, 118 puis 143 lignes à chaque bloc) et `recette.md` (85 lignes), sans caractère non ASCII dans le premier. | Observé le 2026-11-23, à chaque commit. |
+| N15 | Aucun jeton ni mot de passe dans les fichiers du lot : recherche de `eyJ`, de `password` et de `secret` dans les fichiers modifiés ou nouveaux. | Observé le 2026-11-23, avant le commit des documents. `eyJ` : seulement ce document (le texte qui nomme cette recherche) et `web/package-lock.json` (une empreinte, comme en 24.5). `password` et `secret`, dans les lignes ajoutées par rapport à `main` : des mots dans des commentaires et des noms de paramètres (`recette-outils.ps1`), un renvoi à la section « Secrets » (`CLAUDE.md`), une phrase du README déjà présente et cette ligne ; aucune valeur réelle. |
+| N16 | CI : une fois la branche poussée, `backend`, `frontend` et `docker` sont verts sur la branche, sur la pull request puis sur `main`. | Non observé : la CI n'a pas tourné (rien n'est encore poussé). |
+
+### 25.3 Ce qui n'est pas essayé
+
+Écrit après l'essai.
+
+- **`dotnet test` avec la base de recette présente.** Le code des tests lit `ConnectionStrings__Test` et refuse de nettoyer toute base autre que `TraceabilityTest` (erreur 50099) : c'est ce que dit le code, pas un essai lancé avec `TraceabilityAcceptance` présente.
+- **Les accents dans les noms** (ferme, station, variété) : l'essai n'en contient pas, et la console peut afficher les accents de travers sans que ce soit l'API.
+- **Le succès de `Cancel-Movement`** : seul son refus (50307) est vu ; il faut un deuxième mouvement.
+- **Les comptes `auditor-test` et `norole-test`** : ils existent, mais aucun jeton n'en a été demandé. Les rôles de ces deux comptes ne sont pas relevés dans un jeton.
+- **Un mauvais mot de passe** : `Get-Trial` doit afficher seulement `HTTP …`, non essayé.
+- **Le canal Interface** : tout est passé par l'API.
+- **L'origine des numéros d'identité** (`movementId` 9, `correctionId` 11 et 13) : l'explication probable est que les tests de `003` ne rendent pas leurs numéros après l'annulation (`ROLLBACK`), mais ce n'est pas vérifié.
+- **La version de PowerShell** utilisée n'est pas relevée ; le fichier est écrit pour fonctionner avec Windows PowerShell 5.1 comme avec les versions récentes, et il a fonctionné chez toi.
+- **Les scénarios des règles** : au lot 13b.
+- **La CI** : voir N16.
+
+### 25.4 Ce qui est prouvé
+
+Écrit le 2026-11-23, après l'essai.
+
+- **Le script `900` protège et supprime pour de bon** : il refuse un nom hors liste, accepte les trois noms, et supprime `TraceabilityAcceptance` quand `@confirm` est à `YES` (N2, N4).
+- **La base de recette se reconstruit de zéro** avec les scripts du dépôt et a les mêmes objets que les autres : 7 tables, 13 procédures, l'index, les 43 tests de contraintes de `003` réussis et annulés sans laisser de ligne (N5, N6).
+- **L'API lancée sur `TraceabilityAcceptance` y écrit, et seulement là** : le lot d'essai est dans cette base et dans aucune autre (N12).
+- **Les rôles se comportent comme `Program.cs` les définit**, pour les trois comptes essayés : `reader` lit, `writer` écrit sans voir les noms des auteurs, `supervisor` corrige et voit les noms (N10 à N13).
+- **Les quatre blocs d'outils fonctionnent** : authentification, lecture, écriture, corrections (refus 50307 compris), sans jamais afficher le jeton (N10 à N13).
+- **Non prouvé** : tout ce qui figure en 25.3.
+
+### 25.5 Rejouer la vérification
+
+La préparation d'une séance (base, Keycloak, API, fenêtre d'essais) est décrite dans [recette.md](recette.md), section 3 ; les scénarios `R00` et `R99` sont à rejouer dans l'ordre, avec les comptes indiqués. Mêmes règles que partout : les mots de passe se tapent dans la saisie masquée de `Get-Trial`, jamais dans un message ni un fichier, et un jeton n'est jamais collé.

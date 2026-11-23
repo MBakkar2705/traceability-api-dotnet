@@ -12,6 +12,7 @@ Il donne une base, pas de l'expérience. Le README dit ce que le projet ne prouv
   Mohamed répond avec ses propres mots.
 - Mohamed lance les scripts SQL (SSMS) et les tests, relit, valide et commit.
 - Un lot = une branche = une PR. Une seule étape à la fois, commandes PowerShell précises.
+- Le cahier de recette (`docs/recette.md`) suit l'application : toute évolution fonctionnelle (nouvelle règle, règle modifiée, route, rôle) y ajoute ou y change des scénarios dans le même lot, et Claude le rappelle au plan de chaque lot.
 
 ## Commandes
 Depuis la racine du dépôt, dans PowerShell (la solution est `Traceability.slnx`) :
@@ -23,6 +24,7 @@ Depuis la racine du dépôt, dans PowerShell (la solution est `Traceability.slnx
 - Lancer l'API : `dotnet run --project src/Traceability.Api --launch-profile https`, puis ouvrir `https://localhost:7080/swagger` à la main (`dotnet run` n'ouvre pas le navigateur). Elle lit `ConnectionStrings__Default` et, depuis le lot 10b, `Authentication__Authority` et `Authentication__Audience` (voir Keycloak plus bas) : sans jeton valide de Keycloak, elle répond 401 (403 si le rôle ne suffit pas). Arrêt : Ctrl+C.
 - Certificat de développement HTTPS, une fois, lancé par Mohamed : `dotnet dev-certs https --trust`.
 - Variables d'environnement, définies par Mohamed au niveau de son compte Windows : `ConnectionStrings__Default` (base `TraceabilityDev`) et `ConnectionStrings__Test` (base `TraceabilityTest`). Authentification Windows, aucun mot de passe. Avec .NET, `TrustServerCertificate=True` est nécessaire en local (le certificat de SQL Server n'est pas approuvé, observé le 2026-10-20) : jamais pour un serveur distant. Les valeurs ne sont écrites nulle part dans le dépôt. Un programme déjà ouvert ne voit pas une variable créée après son démarrage : rouvrir VS Code.
+- Base de recette (lot 13a) : `TraceabilityAcceptance`, construite avec les mêmes scripts (le `:setvar DbName` est mis sur ce nom à l'écran, sans enregistrer ; `900` en accepte le nom). Variable d'environnement de Mohamed, `ConnectionStrings__Acceptance` (authentification Windows, aucun mot de passe), copiée dans `ConnectionStrings__Default` dans la fenêtre qui lance l'API ; les tests ne s'y connectent pas. Le cahier `docs/recette.md` et les outils `docs/recette-outils.ps1` se rejouent sur cette base ; aucun jeton n'est écrit ni affiché (voir Secrets).
 - Interface web, dans `web/`, lancée par Mohamed (le texte affiché est en français) : `npm install` (une fois), `npm run dev` (serveur Vite sur `http://localhost:5173/`, port fixé ; il demande l'API lancée dans un autre terminal et, depuis le lot 10c, Keycloak pour la connexion), `npm run lint`, `npm run build` (vérifie les types, écrit `dist/`) et `npm test` (Vitest, 339 tests, sans API, sans Keycloak ni base). Aucun fichier `.env` n'est créé par Claude ; l'adresse de l'API est `https://localhost:7080`, ou `VITE_API_URL` ; la connexion lit `VITE_AUTH_AUTHORITY` et `VITE_AUTH_CLIENT_ID` (valeurs par défaut, sans secret).
 - Arrêter l'API (Ctrl+C) avant `dotnet test`, qui doit pouvoir recompiler. Après avoir remis un fichier par copie (casse volontaire), mettre à jour sa date de modification, sinon `dotnet` peut ne pas recompiler (observé au lot 4a, et au lot 12b avec `cp -p`, qui garde l'ancienne date : utiliser une copie simple ou `touch`).
 - CI : `.github/workflows/ci.yml`, lancée à chaque push et à chaque pull request (tâches `backend`, `frontend` et `docker` : `backend` rejoue aussi les scripts `006` et `012`, `docker` construit l'image de l'API sans la lancer). Pour la rejouer : onglet Actions de GitHub, « Re-run all jobs ». Une CI verte ne remplace pas les essais à la main décrits dans `docs/verification.md`.
@@ -40,7 +42,7 @@ Scripts SQL numérotés dans `database/`, exécutés par Mohamed dans SSMS.
 
 ## Vérité
 - Ne jamais dire que ça marche sans l'avoir exécuté et observé.
-- L'avancement (« Prévu », « Prouvé », « Terminé ») vit dans le README et dans `docs/verification.md`. « Prouvé » seulement après tests exécutés et observés.
+- L'avancement (« Prévu », « Prouvé », « Terminé ») vit dans le README et dans `docs/verification.md` ; celui des scénarios de recette, dans `docs/recette.md` (« Observé le … » seulement après exécution). « Prouvé » seulement après tests exécutés et observés.
 - Les docs de conception (`docs/fonctionnel.md`, `docs/modele-de-donnees.md`) décrivent l'intention : elles n'ont pas de statut et ne changent que si une décision de conception change.
 - ADR seulement pour une vraie décision avec alternatives. Le corps d'un ADR est un
   enregistrement : seuls le statut et les notes changent.
