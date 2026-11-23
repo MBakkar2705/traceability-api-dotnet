@@ -42,3 +42,27 @@ function Show-Identity {
   $c = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p)) | ConvertFrom-Json
   [pscustomobject]@{ sub = $c.sub; preferred_username = $c.preferred_username; roles = ($c.realm_access.roles -join ',') } | Format-List
 }
+
+# ================================ Reading ===================================
+
+# Base address of the API (the API window must be running).
+$global:Api = 'https://localhost:7080'
+
+# Read-Api: GET on a path of the API, with the token kept in $global:Token.
+# Prints the HTTP code, a hint for 000, 401 and 403, then the body as indented JSON.
+# Never prints the token. Usage: Read-Api '/farms'    Read-Api '/batches?pageSize=5'
+function Read-Api($Path) {
+  $out = @(curl.exe -s --ssl-no-revoke -w "`n%{http_code}" -H "Authorization: Bearer $global:Token" "$global:Api$Path")
+  $code = $out[-1]
+  $body = ($out[0..($out.Count - 2)] -join "`n").Trim()
+  "HTTP $code"
+  if ($code -eq '000') { '000: the API does not answer. Is it running?' }
+  if ($code -eq '401') { '401: token missing, expired (300 s) or not accepted. Run Get-Trial again.' }
+  if ($code -eq '403') { '403: this account is not allowed to do this.' }
+  if ($body) {
+    try { $body | ConvertFrom-Json | ConvertTo-Json -Depth 10 } catch { $body }
+  }
+}
+
+# Read-Lot: shows the sheet of one batch (GET /batches/{code}). Usage: Read-Lot 'R01-ORDRE-261123'
+function Read-Lot($Code) { Read-Api "/batches/$([uri]::EscapeDataString($Code))" }
