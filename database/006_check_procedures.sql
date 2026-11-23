@@ -30,9 +30,9 @@
     use 4 minutes (accepted) and 6 minutes (refused).
   - 003 cannot be run after this script: it leaves its ZZ- rows and 003 refuses to start (see the
     header of 003).
-  - Tests 32, 33 and 38 (ListBatches) return two result sets, tests 30, 41, 86 and 87 (GetBatch)
-    return four: the script checks their number and shape (WITH RESULT SETS), their content is
-    checked BY EYE.
+  - Tests 32, 33 and 38 (ListBatches) return two result sets, tests 30, 41, 86, 87 and 121
+    (GetBatch) return four: the script checks their number and shape (WITH RESULT SETS),
+    their content is checked BY EYE.
     Tests 32, 33 and 38 show what to expect in the grid, before the results (changed
     when ListBatches got its total).
   - Creates one helper function in TraceabilityTest only: dbo.TestFingerprint().

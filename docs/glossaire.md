@@ -150,9 +150,9 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **OpenAPI et Swagger UI** : OpenAPI est la description d'une API dans un fichier JSON ; Swagger UI est la page web qui l'affiche et laisse essayer les routes. Ici : `https://localhost:7080/swagger`, activée en développement seulement.
 
-**Test unitaire** : un test d'un petit morceau de code, seul, sans base ni réseau. Ici : 75 cas pour la traduction des erreurs, la forme des champs (codes, textes, quantités, heures) et la page par défaut.
+**Test unitaire** : un test d'un petit morceau de code, seul, sans base ni réseau. Ici : 118 cas au lot 12c, pour la traduction des erreurs, la forme des champs (codes, textes, quantités, heures), la page par défaut, la lecture de l'utilisateur dans le jeton (`sub` et `preferred_username`) et celle des rôles de Keycloak.
 
-**Test par HTTP (`WebApplicationFactory`)** : un test qui lance la vraie API dans le programme de test et lui envoie de vraies requêtes. Ici : une partie des 88 tests d'intégration, sur `TraceabilityTest`.
+**Test par HTTP (`WebApplicationFactory`)** : un test qui lance la vraie API dans le programme de test et lui envoie de vraies requêtes. Ici : une partie des 257 tests d'intégration (au lot 12c), sur `TraceabilityTest`.
 
 **xUnit : `[Fact]`, `[Theory]` et `[InlineData]`** : `[Fact]` est un test ; `[Theory]` avec des lignes `[InlineData]` est le même test répété avec plusieurs valeurs, et chaque ligne compte comme un cas. Ici : au lot 3b, les 8 tests unitaires du plan faisaient 49 cas ; avec le lot 3c, les tests unitaires font 74 cas.
 
@@ -200,7 +200,7 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Linter (Oxlint)** : un outil qui lit le code sans l'exécuter et signale des fautes probables. Ici : 0 avertissement ; il a signalé un `setState` appelé de façon synchrone dans un effet de `useApi`, corrigé.
 
-**Vitest et jsdom** : Vitest lance les tests de l'interface ; jsdom simule un navigateur dans Node, ce qui permet de tester des composants React sans ouvrir Edge. Ici : 178 tests, avec un faux `fetch` à la place de l'API.
+**Vitest et jsdom** : Vitest lance les tests de l'interface ; jsdom simule un navigateur dans Node, ce qui permet de tester des composants React sans ouvrir Edge. Ici : 339 tests au lot 12c, avec un faux `fetch` à la place de l'API.
 
 **Annulation d'un appel (`AbortController`)** : un moyen de dire à `fetch` d'abandonner une requête devenue inutile. Ici : `useApi` annule l'appel quand l'écran ou la page change ; l'API peut alors écrire « Opération annulée par l'utilisateur » dans son journal (voir verification.md, section 11.3).
 
