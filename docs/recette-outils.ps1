@@ -116,3 +116,28 @@ function New-Lot($Code, $Farm, $Variety, $Harvest, $Kg, $Station, $At) {
 function Add-Movement($Code, $Station, $Type, $Kg, $At) {
   Send-Api "/batches/$([uri]::EscapeDataString($Code))/movements" ([ordered]@{ stationCode = $Station; movementType = $Type; quantityKg = $Kg; occurredAt = $At })
 }
+
+# =============================== Corrections ================================
+
+# These routes need the supervisor role: run Get-Trial supervisor-test first.
+# The reason is DATA_ENTRY_ERROR, MEASUREMENT_ERROR (movements only) or OTHER (a comment is then
+# required). The comment can be $null. Find the movement id with Read-Lot (field movementId).
+
+# Replace-Movement: POST /batches/{code}/movements/{id}/replace.
+# Usage: Replace-Movement 'R01-ORDRE-261123' 9 'STA-RECEPTION' 95.5 '2026-11-23T06:00:00Z' 'MEASUREMENT_ERROR' $null
+function Replace-Movement($Code, $Id, $Station, $Kg, $At, $Reason, $Comment) {
+  Send-Api "/batches/$([uri]::EscapeDataString($Code))/movements/$([uri]::EscapeDataString("$Id"))/replace" ([ordered]@{ stationCode = $Station; quantityKg = $Kg; occurredAt = $At; reasonCode = $Reason; reasonComment = $Comment })
+}
+
+# Cancel-Movement: POST /batches/{code}/movements/{id}/cancel (only the last valid movement,
+# never the reception). Usage: Cancel-Movement 'R01-ORDRE-261123' 10 'DATA_ENTRY_ERROR' $null
+function Cancel-Movement($Code, $Id, $Reason, $Comment) {
+  Send-Api "/batches/$([uri]::EscapeDataString($Code))/movements/$([uri]::EscapeDataString("$Id"))/cancel" ([ordered]@{ reasonCode = $Reason; reasonComment = $Comment })
+}
+
+# Correct-Lot: POST /batches/{code}/correct (the sheet of the batch). The four values are always
+# given again, the current one when it does not change.
+# Usage: Correct-Lot 'R01-ORDRE-261123' 'R01-ORDRE-261123' 'FERME-NORD' 'Cherry' '2026-11-22' 'DATA_ENTRY_ERROR' $null
+function Correct-Lot($Code, $NewCode, $Farm, $Variety, $Harvest, $Reason, $Comment) {
+  Send-Api "/batches/$([uri]::EscapeDataString($Code))/correct" ([ordered]@{ newBatchCode = $NewCode; farmCode = $Farm; variety = $Variety; harvestDate = $Harvest; reasonCode = $Reason; reasonComment = $Comment })
+}
