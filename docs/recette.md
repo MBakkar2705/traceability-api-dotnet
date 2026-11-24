@@ -214,3 +214,84 @@ Lot `R06-FONCTION-$s`, compte `writer-test`. Les stations viennent de R00.
 | R06-06 | `Add-Capability 'STA-MIXTE' 'SORTING'` (déjà déclarée) | `409`, 50203 | API | Observé le 2026-11-24 |
 
 **Ce que ce groupe ne prouve pas** : la clé étrangère de la base elle-même, que [fonctionnel.md](fonctionnel.md) cite comme garantie. Les scénarios montrent le refus par la procédure et l'API, pas un `INSERT` direct dans la table.
+
+
+## 13. R07-AUTEUR : l'auteur d'un mouvement (règle 7)
+
+Lot `R07-AUTEUR-$s`. L'auteur est pris dans le jeton, jamais dans la demande. Son nom n'est montré qu'à `auditor` et `supervisor` (la visibilité par rôle est dans R09) ; l'identifiant n'est jamais renvoyé par l'API.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R07-01 | `writer-test` : `New-Lot "R07-AUTEUR-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` | `201` ; `RECEIVED` | API | Observé le 2026-11-24 |
+| R07-02 | `writer-test` : `Add-Movement "R07-AUTEUR-$s" 'STA-TRI' 'SORTING' 90 "${v}T07:00:00Z"` | `201` ; `SORTED` | API | Observé le 2026-11-24 |
+| R07-03 | `Get-Trial auditor-test`, `Show-Token` (on relève ses rôles), puis `Read-Lot "R07-AUTEUR-$s"` | `200` ; `authorName` à `writer-test` sur les deux mouvements ; aucun identifiant d'auteur dans la réponse | API | Observé le 2026-11-24 |
+| R07-04 | `Get-Trial writer-test`, `Show-Identity` (relever le `sub`), puis dans SSMS la requête ci-dessous | `AuthorName` à `writer-test` ; `AuthorId` égal au `sub` relevé | SQL | Observé le 2026-11-24 |
+| R07-05 | `writer-test` : `Send-Api "/batches/R07-AUTEUR-$s/movements" ([ordered]@{ stationCode = 'STA-EMBALLAGE'; movementType = 'PACKING'; quantityKg = 90; occurredAt = "${v}T08:00:00Z"; authorName = 'intrus' })`, puis `Get-Trial auditor-test` et `Read-Lot "R07-AUTEUR-$s"` | on relève le code rendu ; si le mouvement est enregistré, son auteur est `writer-test`, jamais `intrus` | API | Observé le 2026-11-24 |
+
+Requête de R07-04 :
+
+```sql
+USE TraceabilityAcceptance;
+GO
+DECLARE @code NVARCHAR(30) = N'R07-AUTEUR-261124';  -- remplacer 261124 par la valeur de $s
+SELECT m.MovementId, m.MovementType, m.AuthorId, m.AuthorName
+FROM trace.Movement AS m
+JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+WHERE b.BatchCode = @code
+ORDER BY m.MovementId;
+```
+
+**Ce que ce groupe ne prouve pas** : les anciens mouvements d'avant le lot 11 (« Données initiales »), un jeton sans nom d'utilisateur, le nom « du moment de la saisie » (il faudrait renommer un compte) et deux comptes `writer` différents (un seul existe). L'auteur d'une correction est dans R08.
+
+## 14. R08-CORRECTION : les corrections des mouvements (règle 8)
+
+Lot `R08-CORRECTION-$s`. R08-01 à R08-03 avec `writer-test`, puis `Read-Lot` pour relever les `movementId` de la réception (`<idR>`), du tri (`<idT>`) et de l'emballage (`<idE>`). R08-04 à R08-15 et R08-18 avec `supervisor-test` ; R08-16 et R08-17 avec `writer-test` ; R08-19 avec `auditor-test`. `<idS>` est le `movementId` de l'expédition, relevé après R08-17. Le message au destinataire d'un lot expédié est dans R10.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R08-01 | `New-Lot "R08-CORRECTION-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` | `201` ; `RECEIVED` | API | Observé le 2026-11-24 |
+| R08-02 | `Add-Movement "R08-CORRECTION-$s" 'STA-TRI' 'SORTING' 90 "${v}T07:00:00Z"` | `201` ; `SORTED` | API | Observé le 2026-11-24 |
+| R08-03 | `Add-Movement "R08-CORRECTION-$s" 'STA-EMBALLAGE' 'PACKING' 85 "${v}T08:00:00Z"`, puis `Read-Lot` (relever `<idR>`, `<idT>`, `<idE>`) | `201` ; `PACKED`, 85.00 kg | API | Observé le 2026-11-24 |
+| R08-04 | `Replace-Movement "R08-CORRECTION-$s" <idT> 'STA-TRI' 92 "${v}T07:00:00Z" 'MEASUREMENT_ERROR' $null`, puis `Read-Lot` | `201` ; tri valable 92.00, original 90.00 ; le lot reste à 85.00 kg | API | Observé le 2026-11-24 |
+| R08-05 | `Replace-Movement "R08-CORRECTION-$s" <idT> 'STA-TRI' 105 "${v}T07:00:00Z" 'MEASUREMENT_ERROR' $null` (plus que la réception, 100.00) | `422`, 50304 | API | Observé le 2026-11-24 |
+| R08-06 | `Replace-Movement "R08-CORRECTION-$s" <idT> 'STA-TRI' 80 "${v}T07:00:00Z" 'MEASUREMENT_ERROR' $null` (moins que l'emballage, 85.00) | `422`, 50304 | API | Observé le 2026-11-24 |
+| R08-07 | `Replace-Movement "R08-CORRECTION-$s" <idR> 'STA-RECEPTION' 110 "${v}T06:00:00Z" 'DATA_ENTRY_ERROR' $null` (la réception peut monter, tant qu'elle reste au moins égale au tri) | `201` | API | Observé le 2026-11-24 |
+| R08-08 | `Replace-Movement "R08-CORRECTION-$s" <idT> 'STA-MIXTE' 92 "${v}T07:00:00Z" 'DATA_ENTRY_ERROR' $null` (`STA-MIXTE` a `SORTING`) | `201` | API | Observé le 2026-11-24 |
+| R08-09 | `Replace-Movement "R08-CORRECTION-$s" <idT> 'STA-EMBALLAGE' 92 "${v}T07:00:00Z" 'DATA_ENTRY_ERROR' $null` (`STA-EMBALLAGE` n'a pas `SORTING`) | `422`, 50303 | API | Observé le 2026-11-24 |
+| R08-10 | `Replace-Movement "R08-CORRECTION-$s" <idT> 'STA-MIXTE' 92 "${v}T07:00:00Z" 'DATA_ENTRY_ERROR' $null` (valeurs identiques aux valeurs valables) | `422`, 50308 | API | Observé le 2026-11-24 |
+| R08-11 | `Replace-Movement "R08-CORRECTION-$s" <idT> 'STA-MIXTE' 91 "${v}T07:00:00Z" 'OTHER' $null` (motif `OTHER` sans commentaire) | `400`, 50408 | API | Observé le 2026-11-24 |
+| R08-12 | `Cancel-Movement "R08-CORRECTION-$s" <idR> 'DATA_ENTRY_ERROR' $null` | `422`, 50307 | API | Observé le 2026-11-24 |
+| R08-13 | `Cancel-Movement "R08-CORRECTION-$s" <idT> 'DATA_ENTRY_ERROR' $null` (ce n'est pas le dernier mouvement valable) | `422`, 50306 | API | Observé le 2026-11-24 |
+| R08-14 | `Cancel-Movement "R08-CORRECTION-$s" <idE> 'OTHER' 'essai de recette'`, puis `Read-Lot` | `201` ; le lot revient à `SORTED`, 92.00 kg | API | Observé le 2026-11-24 |
+| R08-15 | `Replace-Movement "R08-CORRECTION-$s" <idE> 'STA-EMBALLAGE' 85 "${v}T08:00:00Z" 'DATA_ENTRY_ERROR' $null` (mouvement annulé) | `422`, 50305 | API | Observé le 2026-11-24 |
+| R08-16 | `writer-test` : `Add-Movement "R08-CORRECTION-$s" 'STA-EMBALLAGE' 'PACKING' 90 "${v}T08:00:00Z"` | `201` ; `PACKED`, 90.00 kg | API | Observé le 2026-11-24 |
+| R08-17 | `writer-test` : `Add-Movement "R08-CORRECTION-$s" 'STA-EXPEDITION' 'SHIPMENT' 90 "${v}T09:00:00Z"`, puis `Read-Lot` (relever `<idS>`) | `201` ; `SHIPPED` | API | Observé le 2026-11-24 |
+| R08-18 | `Cancel-Movement "R08-CORRECTION-$s" <idS> 'DATA_ENTRY_ERROR' $null`, puis `Read-Lot` | `201` ; le lot revient à `PACKED`, 90.00 kg (le seul cas où un lot expédié bouge) | API | Observé le 2026-11-24 |
+| R08-19 | `auditor-test` : `Read-Lot "R08-CORRECTION-$s"` | l'historique des corrections montre `supervisor-test` comme auteur ; les valeurs d'origine des mouvements sont intactes | API | Observé le 2026-11-24 |
+
+**Ce que ce groupe ne prouve pas** : les corrections par l'interface (R10), l'heure d'une correction (R12) et le motif trop long (50409).
+
+## 15. R09-ROLES : les rôles (règle 9)
+
+Lot `R09-ROLES-$s`. Les trois premiers scénarios préparent un lot avec une correction, pour que les noms des mouvements et ceux des corrections se voient dans les lectures qui suivent. `<idT>` est le `movementId` du tri, relevé avec `Read-Lot`. Pour R09-14, `$global:Token = $null` vide le jeton avant la lecture. R09-15 et R09-16 demandent l'interface (`npm run dev` dans `web/`, connexion à Keycloak dans le navigateur).
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R09-01 | `writer-test` : `New-Lot "R09-ROLES-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` | `201` | API | Observé le 2026-11-24 |
+| R09-02 | `writer-test` : `Add-Movement "R09-ROLES-$s" 'STA-TRI' 'SORTING' 90 "${v}T07:00:00Z"`, puis `Read-Lot` (relever `<idT>`) | `201` | API | Observé le 2026-11-24 |
+| R09-03 | `supervisor-test` : `Replace-Movement "R09-ROLES-$s" <idT> 'STA-TRI' 92 "${v}T07:00:00Z" 'MEASUREMENT_ERROR' $null` | `201` | API | Observé le 2026-11-24 |
+| R09-04 | `reader-test` : `Read-Lot "R09-ROLES-$s"` | `200` ; `authorName` à `null`, y compris dans les corrections | API | Observé le 2026-11-24 |
+| R09-05 | `reader-test` : `Add-Movement "R09-ROLES-$s" 'STA-EMBALLAGE' 'PACKING' 85 "${v}T08:00:00Z"` | `403` | API | Observé le 2026-11-24 |
+| R09-06 | `writer-test` : `Read-Lot "R09-ROLES-$s"` | `200` ; `authorName` à `null` | API | Observé le 2026-11-24 |
+| R09-07 | `writer-test` : `Replace-Movement "R09-ROLES-$s" <idT> 'STA-TRI' 91 "${v}T07:00:00Z" 'MEASUREMENT_ERROR' $null` | `403` | API | Observé le 2026-11-24 |
+| R09-08 | `supervisor-test` : `Read-Lot "R09-ROLES-$s"` | `200` ; noms visibles (`writer-test` sur les mouvements, `supervisor-test` sur la correction) | API | Observé le 2026-11-24 |
+| R09-09 | `supervisor-test` : `Add-Movement "R09-ROLES-$s" 'STA-EMBALLAGE' 'PACKING' 85 "${v}T08:00:00Z"` | `403` | API | Observé le 2026-11-24 |
+| R09-10 | `auditor-test` : `Get-Trial`, `Show-Token` (on relève ses rôles), puis `Read-Lot "R09-ROLES-$s"` | `200` ; noms visibles | API | Observé le 2026-11-24 |
+| R09-11 | `auditor-test` : `Add-Movement "R09-ROLES-$s" 'STA-EMBALLAGE' 'PACKING' 85 "${v}T08:00:00Z"` | `403` | API | Observé le 2026-11-24 |
+| R09-12 | `auditor-test` : `Replace-Movement "R09-ROLES-$s" <idT> 'STA-TRI' 91 "${v}T07:00:00Z" 'MEASUREMENT_ERROR' $null` | `403` | API | Observé le 2026-11-24 |
+| R09-13 | `norole-test` : `Get-Trial`, `Show-Token` (on relève ses rôles), puis `Read-Lot "R09-ROLES-$s"` | `403` | API | Observé le 2026-11-24 |
+| R09-14 | `$global:Token = $null`, puis `Read-Lot "R09-ROLES-$s"` | `401` | API | Observé le 2026-11-24 |
+| R09-15 | `reader-test` : ouvrir `http://localhost:5173/batches/R09-ROLES-aammjj` (le code du lot avec la valeur de `$s`) | pas de colonne d'auteur, pas de formulaire d'écriture | Interface | Observé le 2026-11-24 |
+| R09-16 | `auditor-test` : même page | colonnes d'auteur visibles, pas de formulaire d'écriture | Interface | Observé le 2026-11-24 |
+
+**Ce que ce groupe ne prouve pas** : l'interface pour `writer` et `supervisor` (formulaires de saisie et de correction, vus dans R10 et NOMINAL), les autres routes de lecture (fermes, stations) avec chaque rôle, et un rôle donné par un autre moyen que Keycloak.
