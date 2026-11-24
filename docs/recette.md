@@ -2,15 +2,19 @@
 
 Ce cahier prouve, sur une base à part, que les règles de [fonctionnel.md](fonctionnel.md) sont tenues par l'application. Il se rejoue : chaque scénario a un identifiant, des étapes, un résultat attendu et un statut. Il doit évoluer avec l'application : chaque nouvelle règle ou modification fonctionnelle y ajoute ou y change des scénarios.
 
-État au lot 13a (2026-11-23) : la base de recette, les outils et la préparation sont en place et essayés. Les scénarios des règles (R01 à R12 et NOMINAL) sont écrits et rejoués au lot 13b.
+État au lot 13b (2026-11-24, en cours) : la base de recette, les outils et la préparation sont en place et essayés (lot 13a). Les scénarios des règles (R01 à R12 et NOMINAL) sont écrits par blocs et rejoués au fur et à mesure : un scénario n'est marqué « Observé » qu'après son exécution.
 
 ## 1. Principes
 
 - **Base** : `TraceabilityAcceptance`, créée à part de `TraceabilityDev` et de `TraceabilityTest`. `dotnet test` ne la touche pas, et le script `900` accepte son nom (voir l'[ADR 0002](adr/0002-tests-sur-base-reelle.md), note du lot 13a).
 - **Un groupe par règle** de `fonctionnel.md`, un lot par groupe. Les identifiants de scénario ont la forme `R01-01` (groupe, puis numéro). Deux groupes de service : `R00-PREPARATION` (données de référence) et `R99-OUTILS` (contrôle de l'outillage).
-- **Code du lot** : `Rxx-GROUPE-aammjj`, par exemple `R01-ORDRE-261123`. Un lot rejoué le jour même reçoit un suffixe (`-2`, par exemple). Un code de lot contient 30 caractères au plus : des lettres sans accent, des chiffres, `-` et `_`.
+- **Code du lot** : `Rxx-GROUPE-aammjj`, où `aammjj` est la date du jour où le groupe commence (variable `$s`, voir la section 3), par exemple `R01-ORDRE-261124`. Un groupe rejoué le même jour reçoit un suffixe sur son code (`-2`, par exemple). Un code de lot contient 30 caractères au plus : des lettres sans accent, des chiffres, `-` et `_`.
 - **Canal** : chaque scénario dit s'il est essayé par l'API, par l'interface, ou par les deux.
 - **Statuts** : `Observé le AAAA-MM-JJ` (exécuté et relevé), `Non essayé`, `Échec` (avec ce qui a été vu). Un scénario n'est marqué observé qu'après son exécution.
+- **Un scénario = une action** (un appel, un refus ou une lecture), avec un seul résultat attendu et son propre statut. Quelques scénarios de préparation regroupent plusieurs appels (R00, R10-01, NOM-03).
+- **Un groupe se joue dans l'ordre, sur son lot, en une seule journée** : un succès fait avancer le lot, un refus ne change rien. On ne commence un groupe que si on peut le finir le jour même ; un groupe interrompu se rejoue en entier, avec un nouveau lot (suffixe `-2`). Plusieurs groupes peuvent se jouer le même jour. Un groupe peut avoir un deuxième lot quand une règle l'exige (R11).
+- **Dates** : J est la date du jour où le groupe commence. Les heures des mouvements sont du jour J − 1 (toujours dans le passé), le jour de récolte est J − 2. Les commandes n'ont aucune date écrite en dur : elles lisent les variables `$s`, `$v` et `$r` (section 3).
+- **Réponses attendues** : les codes d'erreur viennent de [procedures.md](procedures.md). L'API répond 404 pour les erreurs 501xx, 409 pour 502xx, 422 pour 503xx et 400 pour 504xx. Le groupe NOMINAL a les identifiants `NOM-01` et le lot `NOM-PARCOURS-aammjj`.
 - **Sécurité** : ni mot de passe ni jeton dans ce fichier ni dans les outils. Les mots de passe se tapent dans la saisie masquée de `Get-Trial`.
 
 ## 2. Comptes de test
@@ -44,6 +48,16 @@ dotnet run --project src/Traceability.Api --launch-profile https
 Relire la quatrième ligne avant de lancer : elle doit contenir `Database=TraceabilityAcceptance`. La variable `ConnectionStrings__Acceptance` se crée une seule fois, dans le compte Windows : `Server=localhost;Database=TraceabilityAcceptance;Integrated Security=True;TrustServerCertificate=True`.
 
 4. **Essais**, dans une autre fenêtre : `. .\docs\recette-outils.ps1`. À refaire dans chaque nouvelle fenêtre et quand le fichier change.
+5. **Dates du groupe**, au début de chaque groupe, dans la même fenêtre (à recoller si la fenêtre est fermée ou si la journée UTC change) :
+
+```powershell
+$d = (Get-Date).ToUniversalTime()
+$s = $d.ToString('yyMMdd')                  # suffixe du code du lot (aammjj)
+$v = $d.AddDays(-1).ToString('yyyy-MM-dd')  # la veille : date des heures des mouvements
+$r = $d.AddDays(-2).ToString('yyyy-MM-dd')  # l'avant-veille : jour de récolte
+```
+
+Les commandes des groupes utilisent ces variables, par exemple `"R01-ORDRE-$s"` et `"${v}T06:00:00Z"`. Pour voir la valeur d'une variable, taper son nom (`$s`). Ces lignes n'ont pas encore été essayées : le premier groupe joué le dira.
 
 ## 4. Les outils
 
@@ -66,8 +80,14 @@ Les scénarios des règles s'appuient sur des fermes et des stations qui existen
 |---|---|---|---|---|
 | R00-01 | `New-Farm 'FERME-NORD' 'Ferme du Nord' 'Nord'` | `HTTP 201` et la ferme en réponse | API | Observé le 2026-11-23 |
 | R00-02 | `New-Station 'STA-RECEPTION' 'Station de reception'`, puis `Add-Capability 'STA-RECEPTION' 'RECEPTION'` | `HTTP 201` pour chacun | API | Observé le 2026-11-23 |
+| R00-03 | `New-Farm 'FERME-SUD' 'Ferme du Sud' 'Sud'` | `HTTP 201` | API | Observé le 2026-11-24 |
+| R00-04 | `New-Station 'STA-TRI' 'Station de tri'`, puis `Add-Capability 'STA-TRI' 'SORTING'` | `HTTP 201` pour chacun | API | Observé le 2026-11-24 |
+| R00-05 | `New-Station 'STA-EMBALLAGE' 'Station emballage'`, puis `Add-Capability 'STA-EMBALLAGE' 'PACKING'` | `HTTP 201` pour chacun | API | Observé le 2026-11-24 |
+| R00-06 | `New-Station 'STA-EXPEDITION' 'Station expedition'`, puis `Add-Capability 'STA-EXPEDITION' 'SHIPMENT'` | `HTTP 201` pour chacun | API | Observé le 2026-11-24 |
+| R00-07 | `New-Station 'STA-MIXTE' 'Station mixte'`, puis `Add-Capability 'STA-MIXTE' 'RECEPTION'` et `Add-Capability 'STA-MIXTE' 'SORTING'` | `HTTP 201` pour chacun | API | Observé le 2026-11-24 |
+| R00-08 | `New-Station 'STA-VIDE' 'Station sans fonction'` (aucune fonction), puis `Read-Api '/stations/STA-VIDE'` | `HTTP 201`, puis `HTTP 200` sans fonction | API | Observé le 2026-11-24 |
 
-Les autres fermes et stations dont les scénarios auront besoin seront ajoutées au lot 13b.
+R00-03 à R00-08 (lot 13b) préparent les données des groupes R01 à R12. Elles se jouent une fois, avec `writer-test`, avant le premier groupe.
 
 ## 6. R99-OUTILS : contrôle de l'outillage
 
@@ -83,3 +103,114 @@ Lot d'essai : `R99-OUTILS-261123`. Vérifié le 2026-11-23, API et base lancées
 **Non essayé au lot 13a** : les accents dans les noms (l'affichage de la console peut les déformer), le succès de `Cancel-Movement` (il faut un deuxième mouvement), les comptes `auditor-test` et `norole-test`, le mauvais mot de passe, et le canal Interface.
 
 **À savoir** : sans commentaire (`$null`), l'API renvoie `"reasonComment": ""` (texte vide). Dans l'affichage de PowerShell, l'apostrophe d'un message peut s'écrire `'` : c'est cosmétique.
+
+
+## 7. R01-ORDRE : l'ordre des statuts (règle 1)
+
+Lot `R01-ORDRE-$s`, compte `writer-test`. Après chaque ligne, `Read-Lot "R01-ORDRE-$s"` relève le statut du lot.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R01-01 | `New-Lot "R01-ORDRE-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` | `201` ; `RECEIVED`, 100.00 kg | API | Observé le 2026-11-24 |
+| R01-02 | `Add-Movement "R01-ORDRE-$s" 'STA-EMBALLAGE' 'PACKING' 90 "${v}T07:00:00Z"` (saute le tri) | `422`, 50301 ; le lot reste `RECEIVED` | API | Observé le 2026-11-24 |
+| R01-03 | `Add-Movement "R01-ORDRE-$s" 'STA-EXPEDITION' 'SHIPMENT' 90 "${v}T07:00:00Z"` (saute deux étapes) | `422`, 50301 ; le lot reste `RECEIVED` | API | Observé le 2026-11-24 |
+| R01-04 | `Add-Movement "R01-ORDRE-$s" 'STA-TRI' 'SORTING' 90 "${v}T07:00:00Z"` | `201` ; `SORTED` | API | Observé le 2026-11-24 |
+| R01-05 | `Add-Movement "R01-ORDRE-$s" 'STA-EXPEDITION' 'SHIPMENT' 90 "${v}T08:00:00Z"` (saute l'emballage) | `422`, 50301 ; le lot reste `SORTED` | API | Observé le 2026-11-24 |
+| R01-06 | `Add-Movement "R01-ORDRE-$s" 'STA-EMBALLAGE' 'PACKING' 90 "${v}T08:00:00Z"` | `201` ; `PACKED` | API | Observé le 2026-11-24 |
+| R01-07 | `Add-Movement "R01-ORDRE-$s" 'STA-TRI' 'SORTING' 90 "${v}T09:00:00Z"` (retour en arrière) | `422`, 50301 ; le lot reste `PACKED` | API | Observé le 2026-11-24 |
+| R01-08 | `Add-Movement "R01-ORDRE-$s" 'STA-EXPEDITION' 'SHIPMENT' 90 "${v}T09:00:00Z"` | `201` ; `SHIPPED` | API | Observé le 2026-11-24 |
+
+Les stations de ce groupe ont toutes la bonne fonction : les refus viennent uniquement de l'ordre (la fonction de la station est le groupe R06).
+
+## 8. R02-QUANTITE : la quantité (règle 2)
+
+Lot `R02-QUANTITE-$s`, compte `writer-test`. Ce groupe couvre la saisie ; les bornes d'une quantité corrigée (50304) sont dans R08.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R02-01 | `New-Lot "R02-QUANTITE-$s" 'FERME-NORD' 'Roma' $r 0 'STA-RECEPTION' "${v}T06:00:00Z"`, puis `Read-Lot "R02-QUANTITE-$s"` | `400`, 50401 ; `Read-Lot` donne `404` (rien n'est créé) | API | Observé le 2026-11-24 |
+| R02-02 | le même `New-Lot` avec `(-5)` à la place de `0` | `400`, 50401 | API | Observé le 2026-11-24 |
+| R02-03 | le même `New-Lot` avec `100` | `201` ; `RECEIVED`, 100.00 kg | API | Observé le 2026-11-24 |
+| R02-04 | `Add-Movement "R02-QUANTITE-$s" 'STA-TRI' 'SORTING' 0 "${v}T07:00:00Z"` | `400`, 50401 ; le lot reste `RECEIVED`, 100.00 kg | API | Observé le 2026-11-24 |
+| R02-05 | `Add-Movement "R02-QUANTITE-$s" 'STA-TRI' 'SORTING' 120 "${v}T07:00:00Z"` (la quantité monte) | `422`, 50302 ; le lot reste `RECEIVED`, 100.00 kg | API | Observé le 2026-11-24 |
+| R02-06 | `Add-Movement "R02-QUANTITE-$s" 'STA-TRI' 'SORTING' 100 "${v}T07:00:00Z"` (quantité égale) | `201` ; `SORTED`, 100.00 kg | API | Observé le 2026-11-24 |
+| R02-07 | `Add-Movement "R02-QUANTITE-$s" 'STA-EMBALLAGE' 'PACKING' 90 "${v}T08:00:00Z"` (la quantité baisse) | `201` ; `PACKED`, 90.00 kg | API | Observé le 2026-11-24 |
+| R02-08 | `Add-Movement "R02-QUANTITE-$s" 'STA-EXPEDITION' 'SHIPMENT' 95 "${v}T09:00:00Z"` (la quantité monte) | `422`, 50302 ; le lot reste `PACKED`, 90.00 kg | API | Observé le 2026-11-24 |
+| R02-09 | `Add-Movement "R02-QUANTITE-$s" 'STA-EXPEDITION' 'SHIPMENT' 90 "${v}T09:00:00Z"` | `201` ; `SHIPPED`, 90.00 kg | API | Observé le 2026-11-24 |
+
+## 9. R03-JOURNAL : le journal ne se modifie jamais (règle 3)
+
+Lot `R03-JOURNAL-$s` (variété `Roma`). Écriture avec `writer-test`, corrections avec `supervisor-test`, lecture SQL dans SSMS, en lecture seule, sur `TraceabilityAcceptance`.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R03-01 | `New-Lot "R03-JOURNAL-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` | `201` ; `RECEIVED` | API | Observé le 2026-11-24 |
+| R03-02 | `Add-Movement "R03-JOURNAL-$s" 'STA-TRI' 'SORTING' 90 "${v}T07:00:00Z"` | `201` ; `SORTED` | API | Observé le 2026-11-24 |
+| R03-03 | avec `supervisor-test` : `Read-Lot "R03-JOURNAL-$s"` pour lire le `movementId` du tri, puis `Replace-Movement "R03-JOURNAL-$s" <movementId> 'STA-TRI' 95 "${v}T07:00:00Z" 'MEASUREMENT_ERROR' $null`, puis `Read-Lot` | `201` ; le tri montre 95.00 (valable) et 90.00 (original), `correctionCount` à 1 | API | Observé le 2026-11-24 |
+| R03-04 | dans SSMS, les deux requêtes ci-dessous (remplacer le suffixe du code par la valeur de `$s`) | `Movement` a 2 lignes pour le lot, le tri à 90.00 ; `MovementCorrection` a 1 ligne, pour le tri | SQL | Observé le 2026-11-24 |
+| R03-05 | avec `supervisor-test` : `Correct-Lot "R03-JOURNAL-$s" "R03-JOURNAL-$s" 'FERME-NORD' 'Cherry' $r 'DATA_ENTRY_ERROR' $null`, puis `Read-Lot` | `201` ; la fiche montre `Cherry` ; la correction de la fiche garde `Roma` (ancienne valeur) et `Cherry` (nouvelle) | API | Observé le 2026-11-24 |
+
+Requêtes de R03-04 :
+
+```sql
+DECLARE @code NVARCHAR(30) = N'R03-JOURNAL-261124';  -- remplacer 261124 par la valeur de $s
+SELECT m.MovementId, m.MovementType, m.QuantityKg, m.OccurredAt, m.AuthorName
+FROM trace.Movement AS m
+JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+WHERE b.BatchCode = @code
+ORDER BY m.MovementId;
+
+SELECT c.CorrectionId, c.MovementId, c.Kind, c.QuantityKg, c.ReasonCode, c.AuthorName
+FROM trace.MovementCorrection AS c
+JOIN trace.Movement AS m ON m.MovementId = c.MovementId
+JOIN trace.Batch AS b ON b.BatchId = m.BatchId
+WHERE b.BatchCode = @code
+ORDER BY c.CorrectionId;
+```
+
+**Ce que ce groupe ne prouve pas** : qu'une personne qui a les droits sur la base ne pourrait pas modifier la table par un accès direct. Rien dans le journal ne se modifie par l'API (aucune route `PUT`, `DELETE` ni `PATCH`) ni par les procédures, mais les droits d'accès à la table seront restreints plus tard (voir [modele-de-donnees.md](modele-de-donnees.md)). La colonne d'auteur ne signalerait pas un tel accès.
+
+## 10. R04-FIN : la fin de parcours (règle 4)
+
+Lot `R04-FIN-$s`, compte `writer-test`, puis `reader-test` pour la dernière lecture.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R04-01 | `New-Lot "R04-FIN-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` | `201` ; `RECEIVED` | API | Observé le 2026-11-24 |
+| R04-02 | `Add-Movement "R04-FIN-$s" 'STA-TRI' 'SORTING' 90 "${v}T07:00:00Z"` | `201` ; `SORTED` | API | Observé le 2026-11-24 |
+| R04-03 | `Add-Movement "R04-FIN-$s" 'STA-EMBALLAGE' 'PACKING' 90 "${v}T08:00:00Z"` | `201` ; `PACKED` | API | Observé le 2026-11-24 |
+| R04-04 | `Add-Movement "R04-FIN-$s" 'STA-EXPEDITION' 'SHIPMENT' 90 "${v}T09:00:00Z"` | `201` ; `SHIPPED` | API | Observé le 2026-11-24 |
+| R04-05 | `Add-Movement "R04-FIN-$s" 'STA-EXPEDITION' 'SHIPMENT' 90 "${v}T10:00:00Z"`, puis `Read-Lot "R04-FIN-$s"` | `422`, 50300 ; le lot reste `SHIPPED`, 4 mouvements | API | Observé le 2026-11-24 |
+| R04-06 | avec `reader-test` : `Read-Lot "R04-FIN-$s"` | `200` ; `SHIPPED`, les 4 mouvements dans l'ordre, 90.00 kg | API | Observé le 2026-11-24 |
+
+**Ce que ce groupe ne prouve pas** : « aucun lot n'est supprimé ». Cela repose sur l'absence de route de suppression dans l'API, lue dans le code, sans scénario.
+
+## 11. R05-UNICITE : l'unicité des codes (règle 5)
+
+Lot `R05-UNICITE-$s`. R05-01 et R05-02 réutilisent la ferme et la station de R00. R05-05 se fait avec `supervisor-test`, les autres avec `writer-test`.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R05-01 | `New-Farm 'FERME-NORD' 'Ferme du Nord' 'Nord'` (code qui existe déjà) | `409`, 50200 | API | Observé le 2026-11-24 |
+| R05-02 | `New-Station 'STA-RECEPTION' 'Station de reception'` (code qui existe déjà) | `409`, 50201 | API | Observé le 2026-11-24 |
+| R05-03 | `New-Lot "R05-UNICITE-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` | `201` ; `RECEIVED` | API | Observé le 2026-11-24 |
+| R05-04 | le même `New-Lot`, avec le même code | `409`, 50202 | API | Observé le 2026-11-24 |
+| R05-05 | `Correct-Lot "R05-UNICITE-$s" "R05-UNICITE-$s-B" 'FERME-NORD' 'Roma' $r 'DATA_ENTRY_ERROR' $null`, puis `Read-Lot "R05-UNICITE-$s-B"` | `201` ; le lot s'appelle maintenant `R05-UNICITE-$s-B` | API | Observé le 2026-11-24 |
+| R05-06 | `New-Lot "R05-UNICITE-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` (ancien code du lot corrigé) | `409`, 50203 | API | Observé le 2026-11-24 |
+
+Ce que fait un ancien code (le lire, écrire avec, le reprendre) est dans R11. R05 ne garde que « le code reste réservé ».
+
+## 12. R06-FONCTION : la fonction de la station (règle 6)
+
+Lot `R06-FONCTION-$s`, compte `writer-test`. Les stations viennent de R00.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R06-01 | `New-Lot "R06-FONCTION-$s" 'FERME-NORD' 'Roma' $r 100 'STA-VIDE' "${v}T06:00:00Z"`, puis `Read-Lot "R06-FONCTION-$s"` | `422`, 50303 ; `Read-Lot` donne `404` | API | Observé le 2026-11-24 |
+| R06-02 | le même `New-Lot`, avec la station `'STA-TRI'` (a `SORTING`, pas `RECEPTION`) | `422`, 50303 | API | Observé le 2026-11-24 |
+| R06-03 | le même `New-Lot`, avec la station `'STA-MIXTE'` | `201` ; `RECEIVED`, 100.00 kg | API | Observé le 2026-11-24 |
+| R06-04 | `Add-Movement "R06-FONCTION-$s" 'STA-EMBALLAGE' 'SORTING' 90 "${v}T07:00:00Z"` (`STA-EMBALLAGE` n'a que `PACKING`) | `422`, 50303 ; le lot reste `RECEIVED` | API | Observé le 2026-11-24 |
+| R06-05 | `Add-Movement "R06-FONCTION-$s" 'STA-MIXTE' 'SORTING' 90 "${v}T07:00:00Z"` | `201` ; `SORTED` (une station à deux fonctions accepte l'une et l'autre) | API | Observé le 2026-11-24 |
+| R06-06 | `Add-Capability 'STA-MIXTE' 'SORTING'` (déjà déclarée) | `409`, 50203 | API | Observé le 2026-11-24 |
+
+**Ce que ce groupe ne prouve pas** : la clé étrangère de la base elle-même, que [fonctionnel.md](fonctionnel.md) cite comme garantie. Les scénarios montrent le refus par la procédure et l'API, pas un `INSERT` direct dans la table.
