@@ -2086,3 +2086,67 @@ Dans PowerShell et SSMS. Les mots de passe sont tapés dans une saisie masquée,
 ### 25.5 Rejouer la vérification
 
 La préparation d'une séance (base, Keycloak, API, fenêtre d'essais) est décrite dans [recette.md](recette.md), section 3 ; les scénarios `R00` et `R99` sont à rejouer dans l'ordre, avec les comptes indiqués. Mêmes règles que partout : les mots de passe se tapent dans la saisie masquée de `Get-Trial`, jamais dans un message ni un fichier, et un jeton n'est jamais collé.
+
+## 26. Lot 13b : les scénarios de la recette
+
+Écrit le 2026-11-25, **après** l'essai : les lignes de 26.2 sont les résultats relevés pendant les séances du 2026-11-23 (lot 13a), du 2026-11-24 et du 2026-11-25. Les heures sont en UTC. Les 138 scénarios de [recette.md](recette.md) (R00, R99, R01 à R12 et NOMINAL) sont joués : aucun n'est en échec et aucun n'est resté « Non essayé ».
+
+### 26.1 Ce qui est essayé
+
+- **Le cahier, joué à la main** sur `TraceabilityAcceptance`, avec l'API lancée sur cette base, de vrais jetons de Keycloak et les cinq comptes de test. Un scénario est une action (un appel, un refus ou une lecture) avec son propre statut, noté d'après ce qui s'est affiché.
+- **Trois canaux** : l'API par les outils PowerShell, la base lue dans SSMS en lecture seule (R03-04), et l'interface web (R09-15 et R09-16, R10, NOMINAL), dans Edge en navigation privée, une fenêtre par compte.
+- **Un lot par groupe**, nommé `Rxx-GROUPE-aammjj`, avec des heures de la veille et une récolte de l'avant-veille : tout reste dans le passé et dans l'ordre, quelle que soit l'heure de la séance.
+- **Deux écarts avec le cahier écrit.** Le groupe NOMINAL a été joué sur le lot `NOM-PARCOURS2-261125` : le code `NOM-PARCOURS-261125` avait servi à un premier essai, créé par erreur de saisie avec l'heure du formulaire (25/11/2026 10:01) au lieu de 24/11/2026 06:00 ; ce lot est resté `RECEIVED` dans la base de recette (écart noté dans [recette.md](recette.md)). Pour R11-16, la ligne du cahier a été corrigée avant l'essai : l'argument de date a reçu des parenthèses.
+
+### 26.2 Liste de contrôle
+
+| N° | À observer | Résultat |
+|---|---|---|
+| N1 | R00 et R99 (12 scénarios) : données de référence et outillage. | Observé le 2026-11-23 (R00-01, R00-02, R99) et le 2026-11-24 (R00-03 à R00-08). Fermes et stations créées (201) ; `STA-VIDE` lue sans fonction (200). |
+| N2 | R01-ORDRE (8) : l'ordre des statuts. | Observé le 2026-11-24. Les quatre étapes dans l'ordre donnent 201 (`RECEIVED`, `SORTED`, `PACKED`, `SHIPPED`) ; une étape sautée ou mauvaise donne 422, 50301, quatre fois, et le lot ne bouge pas. |
+| N3 | R02-QUANTITE (9) : la quantité. | Observé le 2026-11-24. Une quantité à 0 ou négative donne 400, 50401 (trois fois ; à la création, `Read-Lot` donne 404 : rien n'est créé) ; une quantité qui monte donne 422, 50302 (deux fois) ; les autres lignes donnent 201. |
+| N4 | R03-JOURNAL (5) : le journal ne se modifie jamais. | Observé le 2026-11-24. Le tri corrigé à 95 kg montre 95.00 (valable) et 90.00 (original). Dans SSMS : `Movement` garde 2 lignes dont le tri à 90.00, `MovementCorrection` 1 ligne. La correction de la fiche (`Roma` vers `Cherry`) garde les deux valeurs. |
+| N5 | R04-FIN (6) : la fin de parcours. | Observé le 2026-11-24. Après l'expédition, un cinquième mouvement donne 422, 50300 ; le lot reste `SHIPPED` avec 4 mouvements ; `reader-test` le lit (200, 90.00 kg). |
+| N6 | R05-UNICITE (6) : l'unicité des codes. | Observé le 2026-11-24. Une ferme, une station ou un lot qui existe déjà donne 409 (50200, 50201, 50202) ; le lot corrigé vers `-B` (201) garde son ancien code réservé : un nouveau lot qui le prend donne 409, 50203. |
+| N7 | R06-FONCTION (6) : la fonction de la station. | Observé le 2026-11-24. Une station sans fonction, ou avec une autre fonction, donne 422, 50303 (à la création et à l'ajout) ; `STA-MIXTE` accepte la réception et le tri (201) ; déclarer deux fois la même fonction donne 409, 50203. |
+| N8 | R07-AUTEUR (5) : l'auteur d'un mouvement. | Observé le 2026-11-24. `auditor-test` voit `writer-test` et aucun identifiant d'auteur dans la réponse ; l'identifiant enregistré en base est le `sub` de `writer-test` ; un champ `authorName` ajouté au corps de la demande est ignoré (201, auteur `writer-test`). Rôles du jeton de `auditor-test` : `default-roles-traceability`, `offline_access`, `auditor`, `uma_authorization`. |
+| N9 | R08-CORRECTION (19) : les corrections des mouvements. | Observé le 2026-11-24. Refus : 50304 (deux fois), 50303, 50308, 50408, 50307, 50306, 50305. Annuler le dernier mouvement ramène le lot à `SORTED` (92.00 kg) et le mouvement annulé reste visible (`isCancelled`). Annuler l'expédition fait passer le lot de `SHIPPED` à `PACKED` (90.00 kg), le seul cas où un lot expédié bouge. `auditor-test` voit `writer-test` sur les mouvements et `supervisor-test` sur les corrections ; les valeurs d'origine sont intactes. |
+| N10 | R09-ROLES (16) : les rôles. | Observé le 2026-11-24. `reader` lit (200, `authorName` à `null`) et ne peut pas écrire (403, « this account is not allowed to do this. ») ; `writer` lit et ne peut pas corriger (403) ; `supervisor` voit les noms et ne peut pas ajouter (403) ; `auditor` voit les mêmes noms, sans ajout ni correction (403) ; `norole-test` (aucun rôle métier dans le jeton) : 403 ; sans jeton : 401. Dans l'interface : `reader` sans colonne « Auteur » ni « Corrigé par » ; `auditor` avec les deux ; ni l'un ni l'autre n'a de formulaire d'écriture (jugé sur capture). |
+| N11 | R10-DESTINATAIRE (6) : le message au destinataire d'un lot expédié. | Observé le 2026-11-25, `supervisor-test`. Remplacement 90 à 88 kg : « Correction enregistrée. », encadré « Ce lot avait été expédié : prévenez le destinataire. » avec un message (lot, étape, 90,00 kg vers 88,00 kg, motif), « Copier le message » donne « Message copié. » (Edge, sur localhost) et le texte collé est identique. Correction de la fiche : message propre à la fiche (« Variété : Roma → Cherry »). Remplacement de la quantité par l'API : 201, aucun message dans la réponse. Annulation de l'expédition : encadré « l'étape « expédition » est annulée, elle n'a pas eu lieu », lot repassé à `PACKED`. Correction de la fiche sur ce lot `PACKED` : « Fiche corrigée. », aucun encadré. |
+| N12 | R11-FICHE (17) : la correction de la fiche. | Observé le 2026-11-25. Variété, ferme et code corrigés (201, `RECEIVED` et 100.00 kg inchangés) ; lecture par l'ancien code : 200, lot rendu sous le nouveau code ; écriture ou correction avec l'ancien code : 404, 50104 ; code actuel d'un autre lot : 409, 50202 ; ancien code d'un autre lot : 409, 50203 ; reprise de son premier code : 201 ; valeurs identiques : 422, 50308 ; changement de casse seule : 201 ; `MEASUREMENT_ERROR` : 400, 50407 ; `OTHER` sans commentaire : 400, 50408 ; récolte après la réception : 422, 50309 ; récolte le jour de la réception : 201. Lecture finale : 6 corrections de la fiche, auteur `supervisor-test`. |
+| N13 | R12-HEURE (14) : l'heure des mouvements. | Observé le 2026-11-25. À +10 minutes : 422, 50310, à la création (lot introuvable ensuite, 404), à l'ajout et au remplacement ; heure égale ou avant la précédente : 422, 50311 ; remplacement du tri à 08:30 (après l'emballage) : 422, 50311, à 07:30 : 201 ; le futur est refusé avant l'ordre (50310) ; une heure sans `Z` : 400 sans `errorCode` ; sur un lot expédié, un nouvel envoi dans le futur donne 422, 50300, pas 50310. |
+| N14 | NOMINAL (9) : le parcours complet, dans l'interface avec `writer-test`. | Observé le 2026-11-25, sur `NOM-PARCOURS2-261125`. Ferme et station créées, quatre fonctions ajoutées ; lot de 500 kg, puis tri 470, emballage 465 et expédition 465 : « Reçu », « Trié », « Emballé », « Expédié » ; après l'expédition, le formulaire est remplacé par « Ce lot est expédié : aucun mouvement n'est plus possible. ». `reader-test` lit les 4 mouvements dans l'ordre (identifiants 48 à 51, 465.00 kg), comme dans l'interface. Le filtre « Expédié » et la ferme `NOM-FERME` ne montrent que ce lot. |
+| N15 | Aucun jeton ni mot de passe dans les fichiers modifiés : recherche de `eyJ`, de `password` et de `secret`. | Observé le 2026-11-25, avant le commit des documents. Dans les lignes ajoutées par rapport à `origin/main` (README.md, docs/recette.md, docs/verification.md), une seule ligne contient l'un de ces mots : cette ligne N15, qui nomme la recherche. Aucun texte de la forme `eyJ` suivi de dix caractères ou plus dans ces trois fichiers. Aucune commande `DROP`, `TRUNCATE` ni `DELETE` dans les lignes ajoutées. |
+| N16 | CI : `backend`, `frontend` et `docker` sur la branche, sur la pull request puis sur `main`. | Non observé. |
+
+### 26.3 Ce qui n'est pas essayé
+
+Écrit après l'essai.
+
+- **Les droits d'accès à la base** : une personne qui a les droits sur la base pourrait modifier le journal par un accès direct, et la colonne d'auteur ne le signalerait pas. Rien ne se modifie par l'API ni par les procédures (R03) ; les droits seront restreints plus tard.
+- **La clé étrangère de la fonction d'une station** : R06 montre le refus par la procédure et l'API, pas un `INSERT` direct dans la table.
+- **« Aucun lot n'est supprimé »** : cela repose sur l'absence de route de suppression dans l'API, lue dans le code, sans scénario (R04).
+- **L'auteur** : les anciens mouvements d'avant le lot 11 (« Données initiales »), un jeton sans nom d'utilisateur, le nom « du moment de la saisie » (il faudrait renommer un compte) et deux comptes `writer` différents (un seul existe).
+- **Les corrections** : le motif de plus de 500 caractères (50409), et une ferme inconnue dans la correction de la fiche (50101).
+- **Les rôles** : les routes de lecture des fermes et des stations avec chaque rôle, un rôle donné par un autre moyen que Keycloak, et l'absence de formulaires dans l'interface pour `reader` et `auditor`, jugée sur capture d'écran.
+- **Le message au destinataire** : que rien n'est enregistré ni envoyé. On ne constate qu'une absence de trace.
+- **L'heure** : la limite exacte de 5 minutes (le cahier prend +10 minutes pour être sûr du refus ; le lot 12c a vu +4 accepté et +6 refusé), deux appels simultanés sur le même lot, et une horloge d'ordinateur en avance.
+- **Restés ouverts depuis 25.3** : les accents dans les noms, un mauvais mot de passe dans `Get-Trial`, l'origine des numéros d'identité, la version de PowerShell. Réglés par ce lot : le succès de l'annulation d'un mouvement (R08), les rôles des jetons de `auditor-test` et de `norole-test` (R07, R09) et le canal Interface (R09, R10, NOMINAL).
+- **La base de recette garde les lots des essais**, dont `NOM-PARCOURS-261125` (premier essai du groupe NOMINAL, resté `RECEIVED`) ; le cahier ne les supprime pas.
+- **Le nom et la région de la ferme `NOM-FERME`** ne sont pas imposés par le cahier : ils ont été choisis pendant l'essai.
+- **L'automatisation** : les scénarios se jouent à la main ; rien n'est rejoué par la CI.
+
+### 26.4 Ce qui est prouvé
+
+Écrit le 2026-11-25, après l'essai.
+
+- **Les douze règles de [fonctionnel.md](fonctionnel.md) ont chacune un groupe de scénarios joué et conforme** (R01 à R12), avec de vrais jetons de Keycloak, et le parcours complet fonctionne de bout en bout dans l'interface (NOMINAL).
+- **Les refus n'écrivent rien** là où on l'a relevé : après un refus à la création, `Read-Lot` donne 404 (R02-01, R06-01, R12-01).
+- **Le journal garde les valeurs d'origine**, lues dans la base (R03-04) et par l'API (R08-19, R09).
+- **Les noms des auteurs ne sont montrés qu'à `auditor` et `supervisor`**, par l'API et par l'interface (R07, R08-19, R09, NOM-08) ; `reader`, `writer`, un compte sans rôle (403) et l'absence de jeton (401) sont refusés ou masqués comme prévu (R09).
+- **Le message au destinataire** apparaît pour un lot expédié, après un remplacement, une correction de la fiche et une annulation (R10-02, R10-03, R10-05), et n'apparaît pas pour une correction de la fiche faite sur un lot `PACKED` (R10-06).
+- **Non prouvé** : tout ce qui figure en 26.3.
+
+### 26.5 Rejouer la vérification
+
+La préparation d'une séance (base, Keycloak, API, fenêtre d'essais, variables de dates) est décrite dans [recette.md](recette.md), section 3. Les groupes se jouent dans l'ordre, un groupe commencé se termine le même jour, avec les comptes indiqués ; seul le suffixe `$s` des lots change d'un jour à l'autre. Mêmes règles que partout : les mots de passe se tapent dans la saisie masquée de `Get-Trial`, jamais dans un message ni un fichier, et un jeton n'est jamais collé.

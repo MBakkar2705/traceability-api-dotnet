@@ -2,7 +2,7 @@
 
 Ce cahier prouve, sur une base à part, que les règles de [fonctionnel.md](fonctionnel.md) sont tenues par l'application. Il se rejoue : chaque scénario a un identifiant, des étapes, un résultat attendu et un statut. Il doit évoluer avec l'application : chaque nouvelle règle ou modification fonctionnelle y ajoute ou y change des scénarios.
 
-État au lot 13b (2026-11-24, en cours) : la base de recette, les outils et la préparation sont en place et essayés (lot 13a). Les scénarios des règles (R01 à R12 et NOMINAL) sont écrits par blocs et rejoués au fur et à mesure : un scénario n'est marqué « Observé » qu'après son exécution.
+État au lot 13b (2026-11-25, terminé) : la base de recette, les outils et les 138 scénarios (R00 à R12, NOMINAL et R99) sont écrits et joués ; aucun n'est en échec, les points non prouvés sont dans la section 26.3 de [verification.md](verification.md).
 
 ## 1. Principes
 
