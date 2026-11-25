@@ -295,3 +295,81 @@ Lot `R09-ROLES-$s`. Les trois premiers scénarios préparent un lot avec une cor
 | R09-16 | `auditor-test` : même page | colonnes d'auteur visibles, pas de formulaire d'écriture | Interface | Observé le 2026-11-24 |
 
 **Ce que ce groupe ne prouve pas** : l'interface pour `writer` et `supervisor` (formulaires de saisie et de correction, vus dans R10 et NOMINAL), les autres routes de lecture (fermes, stations) avec chaque rôle, et un rôle donné par un autre moyen que Keycloak.
+
+## 16. R10-DESTINATAIRE : le message au destinataire d'un lot expédié (règle 10)
+
+Lot `R10-DESTINATAIRE-$s`. R10-01, R10-04 : API. Les autres : interface (`npm run dev`, connexion Keycloak dans le navigateur) avec `supervisor-test`. R10-01 regroupe plusieurs appels (préparation, comme R00-02).
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R10-01 | `writer-test` : `New-Lot "R10-DESTINATAIRE-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"`, puis `Add-Movement` : tri 95 kg à 07:00, emballage 90 kg à 08:00, expédition 90 kg à 09:00 (même format d'heure), puis `Read-Lot` (relever `<idS>`, le numéro de l'expédition) | quatre `201` ; lot `SHIPPED` | API | Observé le 2026-11-25 |
+| R10-02 | `supervisor-test` : « Corriger un mouvement », l'expédition, « Remplacer les valeurs », quantité 90 → 88, motif « Erreur de mesure » | correction acceptée ; encadré « Ce lot avait été expédié : prévenez le destinataire. » avec son message ; « Copier le message » affiche « Message copié. » ou « Copie impossible… » (on relève lequel) | Interface | Observé le 2026-11-25 |
+| R10-03 | « Corriger la fiche » : variété `Roma` → `Cherry`, motif « Erreur de saisie » | correction acceptée ; encadré avec le message de la fiche | Interface | Observé le 2026-11-25 |
+| R10-04 | `supervisor-test` : `Replace-Movement "R10-DESTINATAIRE-$s" <idS> 'STA-EXPEDITION' 87 "${v}T09:00:00Z" 'MEASUREMENT_ERROR' $null` | `201`, sans aucun message pour le destinataire (un appel direct à l'API n'en donne pas) | API | Observé le 2026-11-25 |
+| R10-05 | « Corriger un mouvement » : annuler l'expédition, motif « Erreur de saisie » | encadré destinataire ; le lot revient à `PACKED` | Interface | Observé le 2026-11-25 |
+| R10-06 | « Corriger la fiche » : variété `Cherry` → `Roma`, sur le lot maintenant `PACKED`, motif « Erreur de saisie » | correction acceptée, sans encadré (le lot n'était plus expédié) | Interface | Observé le 2026-11-25 |
+
+Ce que R10 ne prouve pas : que rien n'est enregistré ni envoyé. On ne peut constater qu'une absence de trace, ce qu'un scénario ne montre pas.
+
+## 17. R11-FICHE : la correction de la fiche d'un lot (règle 11)
+
+Lots `R11-FICHE-$s` (ferme `FERME-NORD`, variété `Roma`, récolte `$r`, réception le jour `$v`) et `R11-AUTRE-$s`, pour essayer de prendre le code d'un autre lot. R11-01, R11-02 et R11-07 avec `writer-test` ; les autres avec `supervisor-test`. `Correct-Lot` prend : code actuel, nouveau code, ferme, variété, jour de récolte, motif, commentaire. Le cas « un lot expédié peut être corrigé » est couvert par R10-03.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R11-01 | `New-Lot "R11-FICHE-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` | `201` | API | Observé le 2026-11-25 |
+| R11-02 | `New-Lot "R11-AUTRE-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` | `201` | API | Observé le 2026-11-25 |
+| R11-03 | `Correct-Lot "R11-FICHE-$s" "R11-FICHE-$s" 'FERME-NORD' 'Cherry' $r 'DATA_ENTRY_ERROR' $null`, puis `Read-Lot` | `201` ; statut et quantité du lot inchangés ; la correction garde l'ancienne et la nouvelle valeur | API | Observé le 2026-11-25 |
+| R11-04 | `Correct-Lot "R11-FICHE-$s" "R11-FICHE-$s" 'FERME-SUD' 'Cherry' $r 'DATA_ENTRY_ERROR' $null` | `201` | API | Observé le 2026-11-25 |
+| R11-05 | `Correct-Lot "R11-FICHE-$s" "R11-FICHE-$s-B" 'FERME-SUD' 'Cherry' $r 'DATA_ENTRY_ERROR' $null` | `201` | API | Observé le 2026-11-25 |
+| R11-06 | `Read-Lot "R11-FICHE-$s"` (l'ancien code) | `200` ; le lot, sous son code actuel `R11-FICHE-$s-B` | API | Observé le 2026-11-25 |
+| R11-07 | `writer-test` : `Add-Movement "R11-FICHE-$s" 'STA-TRI' 'SORTING' 90 "${v}T07:00:00Z"` (ancien code) | `404`, 50104 ; le message donne le code actuel | API | Observé le 2026-11-25 |
+| R11-08 | `supervisor-test` : `Correct-Lot "R11-FICHE-$s" "R11-FICHE-$s-C" 'FERME-SUD' 'Cherry' $r 'DATA_ENTRY_ERROR' $null` (ancien code) | `404`, 50104 | API | Observé le 2026-11-25 |
+| R11-09 | `Correct-Lot "R11-FICHE-$s-B" "R11-AUTRE-$s" 'FERME-SUD' 'Cherry' $r 'DATA_ENTRY_ERROR' $null` (code actuel d'un autre lot) | `409`, 50202 | API | Observé le 2026-11-25 |
+| R11-10 | `Correct-Lot "R11-AUTRE-$s" "R11-FICHE-$s" 'FERME-NORD' 'Roma' $r 'DATA_ENTRY_ERROR' $null` (ancien code de l'autre lot) | `409`, 50203 | API | Observé le 2026-11-25 |
+| R11-11 | `Correct-Lot "R11-FICHE-$s-B" "R11-FICHE-$s" 'FERME-SUD' 'Cherry' $r 'DATA_ENTRY_ERROR' $null` (le lot reprend son ancien code) | `201` (un lot peut reprendre un code qu'il a eu) | API | Observé le 2026-11-25 |
+| R11-12 | `Correct-Lot "R11-FICHE-$s" "R11-FICHE-$s" 'FERME-SUD' 'Cherry' $r 'DATA_ENTRY_ERROR' $null` (valeurs identiques) | `422`, 50308 | API | Observé le 2026-11-25 |
+| R11-13 | `Correct-Lot "R11-FICHE-$s" "R11-FICHE-$s" 'FERME-SUD' 'cherry' $r 'DATA_ENTRY_ERROR' $null` (casse seule) | `201` | API | Observé le 2026-11-25 |
+| R11-14 | `Correct-Lot "R11-FICHE-$s" "R11-FICHE-$s" 'FERME-SUD' 'Roma' $r 'MEASUREMENT_ERROR' $null` | `400`, 50407 | API | Observé le 2026-11-25 |
+| R11-15 | `Correct-Lot "R11-FICHE-$s" "R11-FICHE-$s" 'FERME-SUD' 'Roma' $r 'OTHER' $null` | `400`, 50408 | API | Observé le 2026-11-25 |
+| R11-16 | `Correct-Lot "R11-FICHE-$s" "R11-FICHE-$s" 'FERME-SUD' 'cherry' ($d.ToString('yyyy-MM-dd')) 'DATA_ENTRY_ERROR' $null` (récolte le jour J, après la réception du jour `$v`) | `422`, 50309 | API | Observé le 2026-11-25 |
+| R11-17 | `Correct-Lot "R11-FICHE-$s" "R11-FICHE-$s" 'FERME-SUD' 'cherry' $v 'DATA_ENTRY_ERROR' $null` (récolte le jour de la réception) | `201` | API | Observé le 2026-11-25 |
+
+## 18. R12-HEURE : l'heure des mouvements (règle 12)
+
+Lot `R12-HEURE-$s` (récolte `$r`). « Futur » veut dire maintenant + 10 minutes en UTC, recalculé juste avant chaque scénario concerné : `$f = (Get-Date).ToUniversalTime().AddMinutes(10).ToString('yyyy-MM-ddTHH:mm:ssZ')`. R12-01 à R12-07 et R12-12 à R12-14 avec `writer-test` ; R12-08 à R12-11 avec `supervisor-test`.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| R12-01 | `$f` recalculé, puis `New-Lot "R12-HEURE-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' $f`, puis `Read-Lot "R12-HEURE-$s"` | `422`, 50310 ; `Read-Lot` donne `404` | API | Observé le 2026-11-25 |
+| R12-02 | `New-Lot "R12-HEURE-$s" 'FERME-NORD' 'Roma' $r 100 'STA-RECEPTION' "${v}T06:00:00Z"` | `201` (une heure passée est acceptée) | API | Observé le 2026-11-25 |
+| R12-03 | `Add-Movement "R12-HEURE-$s" 'STA-TRI' 'SORTING' 90 "${v}T06:00:00Z"` (égale à la réception) | `422`, 50311 | API | Observé le 2026-11-25 |
+| R12-04 | `Add-Movement "R12-HEURE-$s" 'STA-TRI' 'SORTING' 90 "${v}T05:00:00Z"` (avant la réception) | `422`, 50311 | API | Observé le 2026-11-25 |
+| R12-05 | `$f` recalculé, puis `Add-Movement "R12-HEURE-$s" 'STA-TRI' 'SORTING' 90 $f` | `422`, 50310 | API | Observé le 2026-11-25 |
+| R12-06 | `Add-Movement "R12-HEURE-$s" 'STA-TRI' 'SORTING' 90 "${v}T07:00:00Z"`, puis `Read-Lot` (relever `<idT>`, le numéro du tri) | `201` ; `SORTED` | API | Observé le 2026-11-25 |
+| R12-07 | `Add-Movement "R12-HEURE-$s" 'STA-EMBALLAGE' 'PACKING' 85 "${v}T08:00:00Z"` | `201` ; `PACKED` | API | Observé le 2026-11-25 |
+| R12-08 | `supervisor-test` : `Replace-Movement "R12-HEURE-$s" <idT> 'STA-TRI' 90 "${v}T08:30:00Z" 'DATA_ENTRY_ERROR' $null` (après l'emballage) | `422`, 50311 | API | Observé le 2026-11-25 |
+| R12-09 | `Replace-Movement "R12-HEURE-$s" <idT> 'STA-TRI' 90 "${v}T06:00:00Z" 'DATA_ENTRY_ERROR' $null` (égale à la réception) | `422`, 50311 | API | Observé le 2026-11-25 |
+| R12-10 | `Replace-Movement "R12-HEURE-$s" <idT> 'STA-TRI' 90 "${v}T07:30:00Z" 'DATA_ENTRY_ERROR' $null` | `201` | API | Observé le 2026-11-25 |
+| R12-11 | `$f` recalculé, puis `Replace-Movement "R12-HEURE-$s" <idT> 'STA-TRI' 90 $f 'DATA_ENTRY_ERROR' $null` | `422`, 50310 (le futur passe avant l'ordre) | API | Observé le 2026-11-25 |
+| R12-12 | `writer-test` : `Add-Movement "R12-HEURE-$s" 'STA-EXPEDITION' 'SHIPMENT' 85 "${v}T09:00:00"` (sans `Z`) | `400`, sans `errorCode` (les heures doivent être en UTC) | API | Observé le 2026-11-25 |
+| R12-13 | `Add-Movement "R12-HEURE-$s" 'STA-EXPEDITION' 'SHIPMENT' 85 "${v}T09:00:00Z"` | `201` ; `SHIPPED` | API | Observé le 2026-11-25 |
+| R12-14 | `$f` recalculé, puis `Add-Movement "R12-HEURE-$s" 'STA-EXPEDITION' 'SHIPMENT' 85 $f` | `422`, 50300 (le lot expédié refuse d'abord, avant le contrôle de l'heure) | API | Observé le 2026-11-25 |
+
+Ce que R12 ne prouve pas : la limite exacte de 5 minutes (le cahier prend +10 minutes pour être sûr du refus), deux appels simultanés sur le même lot, une horloge d'ordinateur en avance. Ce sont des points restés ouverts.
+
+## 19. NOMINAL : le parcours complet de bout en bout
+
+Lot `NOM-PARCOURS-$s`. Il reprend l'exemple de la section 6 de [fonctionnel.md](fonctionnel.md) : 500, 470, 465 et 465 kg. Tout se fait dans l'interface avec `writer-test`, sauf NOM-08 (API). Les heures sont celles du jour `$v` (06:00, 07:00, 08:00, 09:00) et la récolte celle de `$r`. Le groupe crée sa propre ferme et sa propre station : il ne dépend pas de R00. NOM-03 regroupe quatre ajouts de fonction, comme R00-02 pour sa station. Observé le 2026-11-25 sur le lot `NOM-PARCOURS2-261125` : le code `NOM-PARCOURS-261125` avait servi à un premier essai, créé par erreur de saisie avec l'heure du formulaire (25/11/2026 10:01) au lieu de `${v}T06:00` ; ce lot est resté `RECEIVED`.
+
+| ID | Étapes | Attendu | Canal | Statut |
+|---|---|---|---|---|
+| NOM-01 | `/new-farm` : créer la ferme `NOM-FERME` | message de succès | Interface | Observé le 2026-11-25 |
+| NOM-02 | `/new-station` : créer la station `NOM-STATION` | la page de la station s'ouvre | Interface | Observé le 2026-11-25 |
+| NOM-03 | page de la station : ajouter les quatre fonctions (réception, tri, emballage, expédition) | les quatre fonctions apparaissent sur la page | Interface | Observé le 2026-11-25 |
+| NOM-04 | `/new-batch` : créer le lot `NOM-PARCOURS-$s`, ferme `NOM-FERME`, station `NOM-STATION`, 500 kg | la page du lot s'ouvre ; statut `RECEIVED` | Interface | Observé le 2026-11-25 |
+| NOM-05 | ajouter le tri à 470 kg (le formulaire propose l'étape suivante et la quantité actuelle) | `SORTED` | Interface | Observé le 2026-11-25 |
+| NOM-06 | ajouter l'emballage à 465 kg | `PACKED` | Interface | Observé le 2026-11-25 |
+| NOM-07 | ajouter l'expédition à 465 kg | `SHIPPED` ; plus de formulaire d'ajout | Interface | Observé le 2026-11-25 |
+| NOM-08 | `reader-test` : `Read-Lot "NOM-PARCOURS-$s"` | les quatre mouvements dans l'ordre ; `SHIPPED` ; 465.00 kg ; comme dans l'interface | API | Observé le 2026-11-25 |
+| NOM-09 | `/batches` : filtrer par statut `SHIPPED` et par la ferme `NOM-FERME` | le lot est dans la liste | Interface | Observé le 2026-11-25 |
