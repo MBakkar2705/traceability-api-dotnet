@@ -1,0 +1,35 @@
+# Lot 14 : pile de démonstration, lancée par "docker compose up".
+# Bloc 1 : SQL Server et construction de la base de démonstration.
+# Aucun secret ici : copier .env.example en .env et le remplir.
+name: traceability
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Copier .env.example en .env et renseigner MSSQL_SA_PASSWORD}
+      # sqlcmd lit son mot de passe dans cette variable : il n'apparait jamais dans une commande.
+      SQLCMDPASSWORD: ${MSSQL_SA_PASSWORD}
+    ports:
+      - "127.0.0.1:14330:1433"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -b -Q 'SELECT 1' > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  db-init:
+    # Meme image que sql (deja telechargee), utilisee seulement pour son sqlcmd.
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    depends_on:
+      sql:
+        condition: service_healthy
+    environment:
+      SQLCMDPASSWORD: ${MSSQL_SA_PASSWORD}
+    volumes:
+      - ./database:/database:ro
+      - ./docker/db-init.sh:/docker/db-init.sh:ro
+    entrypoint: ["/bin/bash", "/docker/db-init.sh"]
+    restart: "no"
