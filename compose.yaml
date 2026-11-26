@@ -1,0 +1,93 @@
+# Lot 14 : pile de démonstration, lancée par "docker compose up".
+# Blocs 1 à 3 : SQL Server, la base de démonstration, Keycloak et ses comptes, l'API et l'interface web.
+# Pile de démonstration locale : ne pas déployer telle quelle en production (API en Development,
+# serveur de développement de Vite, Keycloak en start-dev, base sans volume, HTTP sans certificat).
+# Aucun secret ici : copier .env.example en .env et le remplir.
+name: traceability
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Copier .env.example en .env et renseigner MSSQL_SA_PASSWORD}
+      # sqlcmd lit son mot de passe dans cette variable : il n'apparait jamais dans une commande.
+      SQLCMDPASSWORD: ${MSSQL_SA_PASSWORD}
+    ports:
+      - "127.0.0.1:14330:1433"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -b -Q 'SELECT 1' > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  db-init:
+    # Meme image que sql (deja telechargee), utilisee seulement pour son sqlcmd.
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    depends_on:
+      sql:
+        condition: service_healthy
+    environment:
+      SQLCMDPASSWORD: ${MSSQL_SA_PASSWORD}
+    volumes:
+      - ./database:/database:ro
+      - ./docker/db-init.sh:/docker/db-init.sh:ro
+    entrypoint: ["/bin/bash", "/docker/db-init.sh"]
+    restart: "no"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.2
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Renseigner KC_BOOTSTRAP_ADMIN_PASSWORD dans .env}
+      # Adresse publique de Keycloak : c'est elle qui est écrite comme émetteur dans les jetons,
+      # que le jeton soit demandé par le navigateur ou lu par l'API depuis son conteneur.
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    ports:
+      - "127.0.0.1:8180:8080"
+    volumes:
+      - ./identity/traceability-realm.json:/opt/keycloak/data/import/traceability-realm.json:ro
+
+  keycloak-init:
+    image: quay.io/keycloak/keycloak:26.6.2
+    depends_on:
+      - keycloak
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Renseigner KC_BOOTSTRAP_ADMIN_PASSWORD dans .env}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?Renseigner DEMO_USER_PASSWORD dans .env}
+    volumes:
+      - ./docker/keycloak-init.sh:/docker/keycloak-init.sh:ro
+    entrypoint: ["/bin/bash", "/docker/keycloak-init.sh"]
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      keycloak-init:
+        condition: service_completed_successfully
+    environment:
+      # Development : Swagger, CORS pour l'interface, Keycloak lu en HTTP.
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: Server=sql,1433;Database=TraceabilityDev;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True
+      Authentication__Authority: http://keycloak:8080/realms/traceability
+      Authentication__Audience: traceability-api
+    ports:
+      - "127.0.0.1:8081:8080"
+
+  web:
+    build:
+      context: ./web
+    depends_on:
+      - api
+    environment:
+      VITE_API_URL: http://localhost:8081
+    ports:
+      - "127.0.0.1:5173:5173"

@@ -2151,3 +2151,91 @@ La préparation d'une séance (base, Keycloak, API, fenêtre d'essais) est décr
 ### 26.5 Rejouer la vérification
 
 La préparation d'une séance (base, Keycloak, API, fenêtre d'essais, variables de dates) est décrite dans [recette.md](recette.md), section 3. Les groupes se jouent dans l'ordre, un groupe commencé se termine le même jour, avec les comptes indiqués ; seul le suffixe `$s` des lots change d'un jour à l'autre. Mêmes règles que partout : les mots de passe se tapent dans la saisie masquée de `Get-Trial`, jamais dans un message ni un fichier, et un jeton n'est jamais collé.
+
+## 27. Lot 14 : la pile de démonstration Docker Compose
+
+Écrit le 2026-11-26, **après** l'essai : les lignes de 27.2 sont les résultats relevés pendant les essais du 2026-11-26, bloc par bloc, sur les trois commits de la branche `feature/lot-14-compose` (`9eaf066`, `aa81405`, `0cc71fe`). Les heures sont en UTC. Une seule machine : le PC Windows de l'auteur, avec Docker Desktop et Chrome. Rien n'a été essayé ailleurs (voir 27.3).
+
+### 27.1 Ce qui est essayé
+
+- **La pile en six services**, lancée par `docker compose up -d` depuis la racine du dépôt : `sql` (SQL Server 2025), `db-init` (construit `TraceabilityDev` avec les scripts et y ajoute 20 lots de démonstration, `database/022_demo_data.sql`), `keycloak` (26.6.2, `start-dev --import-realm`), `keycloak-init` (crée les quatre comptes et leurs rôles), `api` et `web`.
+- **Un essai par bloc** : la base (bloc 1), Keycloak et les comptes (bloc 2), l'API et l'interface (bloc 3), puis un parcours dans Chrome avec deux comptes.
+- **Deux comptes dans le navigateur** : `reader-test` (lecture) et `writer-test` (une ferme créée), avec de vrais jetons de Keycloak. Les mots de passe se tapent dans `.env` et dans la fenêtre de connexion, jamais dans un message.
+- **Un écart avec le plan** : l'API est publiée sur le port 8081 et non 8080 (P5).
+- **Un faux départ** : la première demande de jeton a été lancée avant la fin du démarrage de Keycloak (réponse « HTTP 000 », journal de `keycloak-init` vide) ; il a suffi d'attendre, sans changer les scripts.
+
+### 27.2 Liste de contrôle
+
+| N° | À observer | Résultat |
+|---|---|---|
+| P1 | `db-init`, premier lancement : la base et les données de démonstration. | Observé le 2026-11-26. La base `TraceabilityDev` est construite, avec 20 lots : `RECEIVED` 5, `SORTED` 5, `PACKED` 6, `SHIPPED` 4 ; 50 mouvements, 3 lignes dans `MovementCorrection` et 2 dans `BatchCorrection`. |
+| P2 | `db-init` rejoué : il n'écrase rien. | Observé le 2026-11-26. Au deuxième `up -d` : « TraceabilityDev existe deja et contient des donnees : rien a faire. ». Après `docker compose down`, le `up -d` suivant reconstruit la base (les comptes n'existaient plus après le `down`). |
+| P3 | `keycloak-init` : les quatre comptes et leurs rôles. | Observé le 2026-11-26. Quatre lignes « Compte … pret ». Un jeton de `reader-test` : HTTP 200, `expires_in` 300, rôles `reader`, `default-roles-traceability`, `offline_access` et `uma_authorization`. Deuxième passage : quatre fois « existe deja », conteneur `Exited (0)`. |
+| P4 | Les durées. | Observé le 2026-11-26. Construction des images : 348,6 s. Keycloak prêt après 83,7 s à un lancement, 164,5 s à un autre (machine occupée par la construction). |
+| P5 | Le port 8080. | Observé le 2026-11-26. Docker refuse le port 8080 : il est pris par `httpd.exe` (service `PEMHTTPD-x64`, EDB Postgres, sans rapport avec le projet, laissé en place). Les ports 8081 et 8082 sont libres ; l'API est publiée sur 8081 (deux lignes de `compose.yaml`). |
+| P6 | Chrome : connexion et lecture. | Observé le 2026-11-26. L'écran « Connexion » renvoie à la page de Keycloak, `reader-test` se connecte ; la liste montre les 20 lots sur 2 pages, avec les corrections visibles. |
+| P7 | Chrome : écriture et lecture par un autre compte. | Observé le 2026-11-26. `writer-test` crée la ferme `FERME-TEST` (2 fermes avant, 3 après). Déconnecté puis reconnecté en `reader-test` : la liste montre 3 fermes, dont `FERME-TEST` ; `reader-test` n'a pas de bouton « Nouvelle ferme ». |
+| P8 | Aucun jeton ni mot de passe dans les fichiers modifiés : recherche de `eyJ`, de `password` et de `secret`. | Observé le 2026-11-26, avant le commit des documents. Dans les lignes ajoutées par rapport à `origin/main` (12 fichiers), 21 lignes contiennent `password` ou `secret`, plus cette ligne P8 qui nomme la recherche : ce sont des noms de variables (`MSSQL_SA_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `DEMO_USER_PASSWORD`, `SQLCMDPASSWORD`), des références `${...}`, des commentaires et des textes de documentation. `.env.example` contient les trois noms sans valeur, et `git ls-files` ne montre que lui : `.env` n'est pas suivi par git. Aucun texte de la forme `eyJ` suivi de dix caractères ou plus ; la seule ligne qui contient `eyJ` est cette ligne P8. Aucune commande `DROP`, `TRUNCATE` ni `DELETE` dans les lignes ajoutées : hors cette ligne P8, la seule ligne qui contient ces mots est le commentaire « Contains no DROP, TRUNCATE or DELETE. » de `database/022_demo_data.sql`. |
+
+### 27.3 Ce qui n'est pas essayé
+
+Écrit après l'essai.
+
+- **Linux et macOS**, y compris un Mac à puce Apple : l'image de SQL Server 2025 n'existe qu'en AMD64, l'émulation n'est pas essayée. L'essai de la pile par la CI (Linux, AMD64) est décidé et rattaché au lot 17 ; il ne dira rien du Mac à puce Apple. Un changement de `ci.yml` ne se fait que sur demande explicite et nommée de l'auteur.
+- **La CI sur ce lot** : elle n'a pas encore tourné sur la branche.
+- **Les droits d'accès à la base** : l'API se connecte à SQL Server avec `sa`, le compte administrateur, qui contourne tout garde-fou. Un compte dédié à l'API et l'interdiction de modifier le journal sont au lot 16 ; `db-init` créera ce compte.
+- **Le mode de production** : l'API en `Development`, le serveur de développement de Vite, Keycloak en `start-dev`, une base sans volume et du HTTP sans certificat.
+- **Une remise à zéro complète** (`docker compose down` puis `up -d`) relevée de bout en bout avec les six services jusqu'à l'interface.
+- **Les écritures autres qu'une ferme** : stations, lots, mouvements, corrections.
+- **Le refus d'écriture d'un `reader` par l'API dans cette pile** : on a seulement vu le bouton caché dans l'interface.
+- **Swagger et la console de Keycloak** : jamais ouverts.
+- **Un autre navigateur que Chrome**.
+- **Le message d'erreur d'une variable manquante** dans `.env` (`${VAR:?message}`) et **la longueur minimale** de `DEMO_USER_PASSWORD`.
+- **La limite de 5 minutes de `keycloak-init`** (60 essais espacés de 5 s) : elle n'a jamais été atteinte, et on ne sait pas si elle suffit sur une machine plus lente.
+- **La durée de `keycloak-init`** : environ 160 s à chaque `up -d`, parce que chaque appel de `kcadm` démarre une machine virtuelle Java. Ce n'est pas réduit.
+
+### 27.4 Ce qui est prouvé
+
+Écrit le 2026-11-26, après l'essai.
+
+- **`docker compose up -d` construit et lance la pile** sous Windows avec Docker Desktop : base de démonstration, Keycloak avec ses comptes, API et interface (P1, P3, P4, P6).
+- **La connexion dans Chrome lit les 20 lots**, corrections comprises (P6).
+- **Le jeton demandé par le navigateur à `localhost:8180` est accepté par l'API**, qui joint Keycloak à `keycloak:8080` (réglages `KC_HOSTNAME` et `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`), sans changer le code de l'API (P6, P7).
+- **Une ferme écrite par `writer-test` est lue par `reader-test`** (P7).
+- **`db-init` et `keycloak-init` se rejouent sans rien écraser** (P2, P3).
+- **Non prouvé** : tout ce qui figure en 27.3.
+
+### 27.5 Rejouer la vérification
+
+Depuis la racine du dépôt, dans PowerShell, Docker Desktop lancé. Les mots de passe se saisissent dans `.env`, jamais dans un message ni dans un fichier versionné, et un jeton n'est jamais collé.
+
+```
+Copy-Item .env.example .env
+docker compose up -d
+docker compose ps -a
+docker compose logs keycloak-init
+. .\docs\recette-outils.ps1
+Get-Trial reader-test
+Show-Identity
+docker compose down
+```
+
+Remplir les trois variables de `.env` avant `up -d`. Attendre `api` et `web` à `Up` et `db-init` et `keycloak-init` à `Exited (0)`, puis se connecter dans le navigateur à `http://localhost:5173`. `docker compose down` efface tout.
+
+### 27.6 Point de départ du lot 15 : les réglages de sécurité de GitHub
+
+Relevé le 2026-11-26 vers 09:52 sur des captures d'écran des réglages du dépôt, avant le lot 15. Ces réglages sont dans GitHub, pas dans les fichiers du dépôt : ils se relisent dans les réglages de sécurité du dépôt et ont pu changer depuis. Le lot 14 n'en modifie aucun.
+
+- **Activés par l'auteur ce jour-là** : le signalement privé des failles (bandeau « Repository settings saved ») et la surveillance du dépôt (« Unwatch » affiché ; l'option cochée dans le menu n'est pas relevée).
+- **Actifs** : les avis de sécurité, le graphe des dépendances, les alertes Dependabot, les alertes de malware, l'analyse des secrets (Secret scanning) avec la protection à l'envoi (push protection), et Copilot Autofix, sans effet tant que CodeQL n'est pas configuré.
+- **Désactivés** : la soumission automatique des dépendances, les mises à jour de sécurité de Dependabot, les mises à jour groupées, les trois « AI Scan » (dépôt, pull requests, applications d'IA) et la correction agentique (« Agentic autofix »).
+- **Non configurés** : les mises à jour de version de Dependabot (pas de `.github/dependabot.yml`), CodeQL (« Set up ») et la politique de sécurité (pas de `SECURITY.md`).
+- **Seuils d'échec des contrôles** : « High or higher » pour la sécurité, « Only errors » pour les autres.
+- **Tri automatique de Dependabot** : « 1 rule enabled », contenu non lu.
+- **Une divergence** : une capture de 09:45 donnait les alertes Dependabot « Disabled », celles de 09:52 « On » ; c'est 09:52 qui est retenu.
+
+À prendre en compte au lot 15 :
+
+- **Le secret côté Dependabot.** GitHub ne transmet pas les secrets de Actions aux exécutions déclenchées par Dependabot : `MSSQL_SA_PASSWORD` devra aussi être créé dans les secrets de Dependabot, sinon `backend` sera rouge sur ses pull requests (c'est l'auteur qui le crée).
+- **Les fichiers à faire suivre.** Dependabot devra couvrir `compose.yaml` et `web/Dockerfile`, en plus du `Dockerfile` de l'API (à la racine), de `npm` dans `web/`, de NuGet et des actions GitHub. Le suivi d'un fichier compose reste à vérifier au lot 15.
+- **Les tags flottants.** `mssql/server:2025-latest` et `node:22-slim` (ajouté par ce lot) ne sont pas fixés ; Keycloak l'est (26.6.2).

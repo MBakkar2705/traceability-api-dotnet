@@ -1,0 +1,4 @@
+# Lot 14 : les fichiers lus par un conteneur Linux gardent des fins de ligne Unix,
+# meme apres un clonage sous Windows (un script avec CRLF echoue dans bash).
+*.sh text eol=lf
+.env.example text eol=lf
