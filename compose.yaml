@@ -1,5 +1,5 @@
 # Lot 14 : pile de démonstration, lancée par "docker compose up".
-# Bloc 1 : SQL Server et construction de la base de démonstration.
+# Blocs 1 et 2 : SQL Server, la base de démonstration, Keycloak et ses comptes.
 # Aucun secret ici : copier .env.example en .env et le remplir.
 name: traceability
 
@@ -32,4 +32,28 @@ services:
       - ./database:/database:ro
       - ./docker/db-init.sh:/docker/db-init.sh:ro
     entrypoint: ["/bin/bash", "/docker/db-init.sh"]
+    restart: "no"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.2
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Renseigner KC_BOOTSTRAP_ADMIN_PASSWORD dans .env}
+    ports:
+      - "127.0.0.1:8180:8080"
+    volumes:
+      - ./identity/traceability-realm.json:/opt/keycloak/data/import/traceability-realm.json:ro
+
+  keycloak-init:
+    image: quay.io/keycloak/keycloak:26.6.2
+    depends_on:
+      - keycloak
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Renseigner KC_BOOTSTRAP_ADMIN_PASSWORD dans .env}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?Renseigner DEMO_USER_PASSWORD dans .env}
+    volumes:
+      - ./docker/keycloak-init.sh:/docker/keycloak-init.sh:ro
+    entrypoint: ["/bin/bash", "/docker/keycloak-init.sh"]
     restart: "no"
