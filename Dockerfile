@@ -4,8 +4,10 @@
 # and the published API, which makes the image smaller.
 # No secret is written here: the connection string is given when the container starts
 # (environment variable ConnectionStrings__Default).
+# Lot 15: the base images are pinned by version tag and by digest (sha256), so the build
+# always uses the same images. Dependabot proposes the updates.
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.404@sha256:8c6edfb26c85153f236d26efebd9ad349aec403583f343f201ee67838b23658d AS build
 WORKDIR /src
 
 # Copy the project files first and restore the packages: Docker keeps this step in its
@@ -18,7 +20,7 @@ RUN dotnet restore src/Traceability.Api/Traceability.Api.csproj
 COPY src/ src/
 RUN dotnet publish src/Traceability.Api/Traceability.Api.csproj -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.15@sha256:aac50ceef10391e78a899e3d2ccd00bbafa2dcb56ccf4586cbccf00edb84fc21 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 

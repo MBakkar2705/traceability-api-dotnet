@@ -230,7 +230,23 @@ Les termes techniques du projet, expliqués simplement, avec l'exemple de ce pro
 
 **Vérification requise (required status check)** : une tâche de la CI dont la réussite est obligatoire pour fusionner. Ici : `backend` et `frontend`. Avec un test en échec, GitHub affiche « Merging is blocked due to failing merge requirements » (voir verification.md, section 14.12).
 
-**Étiquette et digest d'une image** : une étiquette (tag) est un nom pratique donné à une version d'une image, mais son contenu peut changer avec le temps ; le digest est l'empreinte (SHA-256) qui identifie une version précise. Ici : `2025-latest` est une étiquette qui se déplace ; le digest de l'image de la CI est noté dans verification.md, section 14.5.
+**Étiquette et digest d'une image** : une étiquette (tag) est un nom pratique donné à une version d'une image, mais son contenu peut changer avec le temps ; le digest est l'empreinte (SHA-256) qui identifie une version précise. Ici : `2025-latest` est une étiquette qui se déplace ; le digest de l'image de la CI est noté dans verification.md, section 14.5. Depuis le lot 15, les images sont fixées par étiquette précise et digest (`étiquette@sha256:…`) : l'étiquette dit à une personne de quelle version il s'agit, le digest garantit que le contenu ne change pas.
+
+**Chaîne d'approvisionnement logicielle (supply chain)** : tout ce qui entre dans l'application sans qu'on l'ait écrit : bibliothèques NuGet et npm, images Docker, actions GitHub. Une faille ou un paquet piégé dans l'un d'eux arrive dans le projet avec lui. Ici : les versions sont fixées (étiquette et digest pour les images, empreinte de commit pour les actions) et Dependabot signale les mises à jour (lot 15).
+
+**Dependabot** : un service de GitHub qui surveille les dépendances. Il fait deux choses distinctes : les *mises à jour de version* (une pull request par dépendance en retard, selon `.github/dependabot.yml`) et les *mises à jour de sécurité* (une pull request seulement quand une faille connue a un correctif). Un *délai* (cooldown) lui fait attendre quelques jours après la sortie d'une version avant de la proposer. Ici : mises à jour de version chaque semaine, délai de 7 jours, 3 pull requests au plus par entrée, mises à jour de sécurité activées (lot 15).
+
+**CodeQL (analyse de code)** : l'outil de GitHub qui lit le code source à la recherche de défauts de sécurité connus, par exemple une requête SQL construite avec une saisie. Il ne regarde pas les bibliothèques : c'est le travail de Dependabot. « Aucune alerte » veut dire que ses requêtes n'ont rien trouvé, pas que le code est sans faille. Ici : réglage par défaut, pour C#, JavaScript/TypeScript et les fichiers de la CI (lot 15).
+
+**Moindre privilège (utilisateur non administrateur dans un conteneur)** : un programme n'a que les droits dont il a besoin. Dans un conteneur, il tourne en administrateur par défaut : si une faille permet de le détourner, la personne qui s'en sert a ces droits. Ici : le conteneur de l'interface web tourne sous l'utilisateur `node` (lot 15), celui de l'API sous `app`.
+
+**Double authentification (2FA) et codes de récupération** : en plus du mot de passe, un second élément : un code qui change toutes les 30 secondes dans une application sur le téléphone. Les codes de récupération sont des codes à usage unique, à garder à part du téléphone, qui servent si le téléphone est perdu. Ici : activée sur le compte GitHub (lot 15) ; c'est un réglage du compte, pas du dépôt.
+
+**Analyse des secrets et protection à l'envoi (secret scanning, push protection)** : GitHub cherche dans le dépôt des textes qui ressemblent à des clés ou à des mots de passe connus, et la protection à l'envoi bloque un `git push` qui en contient. Elle reconnaît surtout des formats de clés connus : elle ne remplace pas la règle de ne jamais écrire de secret dans un fichier. Ici : active depuis avant le lot 15 (voir verification.md, section 27.6).
+
+**Licence MIT** : elle permet à tout le monde d'utiliser, copier, modifier et redistribuer le code, à condition de garder la mention de copyright et le texte de la licence ; le code est fourni sans garantie, et ses auteurs ne sont pas responsables de son usage. Ici : fichier `LICENSE`, `Copyright (c) 2026 Mohamed Bakkar` (lot 15).
+
+**`.dockerignore`** : la liste des fichiers qu'on n'envoie pas à Docker quand il construit une image. Elle évite qu'un fichier secret comme `.env` finisse dans une image, où quiconque la reçoit pourrait le lire. Ici : `.env*` est exclu (lot 15) ; l'exclusion n'est pas testée.
 
 ## Identification
 

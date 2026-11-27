@@ -8,3 +8,5 @@ database
 docs
 tests
 web
+# Lot 15: never send the local secrets files to the Docker build.
+.env*
