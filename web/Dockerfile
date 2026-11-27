@@ -2,7 +2,7 @@
 # Le contexte de construction est le dossier web/.
 # Lot 15 : image fixée par tag de version et empreinte (sha256) ; l'interface ne tourne
 # plus en administrateur dans son conteneur (comme l'API).
-FROM node:22.23.5-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
+FROM node:26.13.0-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072
 WORKDIR /app
 RUN chown node:node /app
 USER node
