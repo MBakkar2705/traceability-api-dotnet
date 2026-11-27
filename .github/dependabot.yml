@@ -1,0 +1,46 @@
+# Lot 15: Dependabot version updates. One pull request per outdated dependency, once a week,
+# at most 3 open at a time per block. A new release waits 7 days before being proposed.
+# Nothing is merged automatically: the author reads each pull request and merges it.
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directories:
+      - "/src/*"
+      - "/tests/*"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/"
+      - "/web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
