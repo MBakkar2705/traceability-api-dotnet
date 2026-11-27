@@ -7,7 +7,7 @@
 # Lot 15: the base images are pinned by version tag and by digest (sha256), so the build
 # always uses the same images. Dependabot proposes the updates.
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0.404@sha256:8c6edfb26c85153f236d26efebd9ad349aec403583f343f201ee67838b23658d AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0.100@sha256:2794448a07118a6eaf00f29ab5d2bf44928517ce5ff86505a63a69230374f599 AS build
 WORKDIR /src
 
 # Copy the project files first and restore the packages: Docker keeps this step in its
