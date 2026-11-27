@@ -44,3 +44,4 @@ Négatives :
 ## Notes
 
 - 2026-11-27 (lot 15) : décisions prises pendant le lot, sur les commits `9c41140`, `d5b6198` et `fa0aee7`. Constat et points non prouvés : [verification.md](../verification.md), section 28.
+- 2026-11-27 (lot 15, après la fusion) : constats de la pull request n° 39 et du premier passage de Dependabot ([verification.md](../verification.md), section 28, Q11 à Q15). Les trois premiers points de « Non prouvé » le sont désormais : GitHub accepte l'empreinte dans `services:`, Dependabot trouve `compose.yaml` et met à jour le tag et l'empreinte ensemble. Le volume au premier passage est de 10 pull requests. Le délai de 7 jours de la décision ne vaut pas pour les images de `mcr.microsoft.com` et de `quay.io` (avertissement de Dependabot) ; il est vu sur npm, non vérifié ailleurs ; il n'est pas réglé pour les actions GitHub, dont le journal de Dependabot indique un délai de 3 jours.
