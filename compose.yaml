@@ -3,11 +3,12 @@
 # Pile de démonstration locale : ne pas déployer telle quelle en production (API en Development,
 # serveur de développement de Vite, Keycloak en start-dev, base sans volume, HTTP sans certificat).
 # Aucun secret ici : copier .env.example en .env et le remplir.
+# Lot 15 : images fixées par tag précis et empreinte (sha256). Dependabot propose les mises à jour.
 name: traceability
 
 services:
   sql:
-    image: mcr.microsoft.com/mssql/server:2025-latest
+    image: mcr.microsoft.com/mssql/server:2025-CU10-ubuntu-24.04@sha256:245f6b1c8903edae52cb20fa31419cefcde1a49938bb8c3447099011fc871ca3
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Copier .env.example en .env et renseigner MSSQL_SA_PASSWORD}
@@ -24,7 +25,7 @@ services:
 
   db-init:
     # Meme image que sql (deja telechargee), utilisee seulement pour son sqlcmd.
-    image: mcr.microsoft.com/mssql/server:2025-latest
+    image: mcr.microsoft.com/mssql/server:2025-CU10-ubuntu-24.04@sha256:245f6b1c8903edae52cb20fa31419cefcde1a49938bb8c3447099011fc871ca3
     depends_on:
       sql:
         condition: service_healthy
@@ -37,7 +38,7 @@ services:
     restart: "no"
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.6.2
+    image: quay.io/keycloak/keycloak:26.6.2@sha256:f9ba7b2af90db8dc749a57ca9aedca51e840cb9224441ab546a968da941da900
     command: ["start-dev", "--import-realm"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -52,7 +53,7 @@ services:
       - ./identity/traceability-realm.json:/opt/keycloak/data/import/traceability-realm.json:ro
 
   keycloak-init:
-    image: quay.io/keycloak/keycloak:26.6.2
+    image: quay.io/keycloak/keycloak:26.6.2@sha256:f9ba7b2af90db8dc749a57ca9aedca51e840cb9224441ab546a968da941da900
     depends_on:
       - keycloak
     environment:

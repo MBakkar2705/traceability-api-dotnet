@@ -1,2 +1,4 @@
 node_modules
 dist
+# Lot 15 : ne jamais envoyer les fichiers .env au build.
+.env*

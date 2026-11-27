@@ -8,6 +8,7 @@ name: CI
 #   docker   - builds the API image with the Dockerfile (lot 9). Nothing is published, no secret is used.
 # The runner is pinned to ubuntu-24.04 instead of ubuntu-latest (see docs/verification.md, section 14).
 # The actions are pinned by commit hash (lot 9); the comment after each hash gives the version.
+# Lot 15: the SQL Server image is pinned by tag and digest, like in compose.yaml.
 
 on:
   pull_request:
@@ -23,7 +24,7 @@ jobs:
 
     services:
       mssql:
-        image: mcr.microsoft.com/mssql/server:2025-latest
+        image: mcr.microsoft.com/mssql/server:2025-CU10-ubuntu-24.04@sha256:245f6b1c8903edae52cb20fa31419cefcde1a49938bb8c3447099011fc871ca3
         env:
           ACCEPT_EULA: "Y"
           MSSQL_SA_PASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
@@ -50,7 +51,7 @@ jobs:
         run: |
           dotnet --version
           sqlcmd -? 2>&1 | head -n 3 || true
-          docker image inspect mcr.microsoft.com/mssql/server:2025-latest --format '{{index .RepoDigests 0}}' || true
+          docker image inspect mcr.microsoft.com/mssql/server:2025-CU10-ubuntu-24.04@sha256:245f6b1c8903edae52cb20fa31419cefcde1a49938bb8c3447099011fc871ca3 --format '{{index .RepoDigests 0}}' || true
 
       - name: Wait for SQL Server (60 s at most)
         env:
