@@ -1,6 +1,8 @@
 # Lot 15: Dependabot version updates. One pull request per outdated dependency, once a week,
-# at most 3 open at a time per block. A new release waits 7 days before being proposed.
-# Nothing is merged automatically: the author reads each pull request and merges it.
+# at most 3 open at a time per block. NuGet, npm, Docker and Compose use a 7-day cooldown
+# before a new release is proposed; Dependabot warns it cannot apply it to images from
+# mcr.microsoft.com and quay.io. The github-actions block sets no cooldown.
+# Nothing is merged automatically: each pull request is read and merged by hand.
 version: 2
 updates:
   - package-ecosystem: "nuget"

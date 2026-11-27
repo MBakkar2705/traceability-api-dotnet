@@ -2244,7 +2244,7 @@ Relevé le 2026-11-26 vers 09:52 sur des captures d'écran des réglages du dép
 
 ## 28. Lot 15 : hygiène du dépôt et de la chaîne d'approvisionnement
 
-Écrit le 2026-11-27, après les essais, sur les trois commits de la branche `feature/lot-15-hygiene` (`9c41140`, `d5b6198`, `fa0aee7`). Les essais datent du 2026-11-26 (licence, `SECURITY.md`, double authentification) et du 2026-11-27 (images, Dependabot, CodeQL, formatage), sur un PC Windows avec Docker Desktop. Tout ce qui figure en 28.2 a été vu pendant ces essais ; ce qui ne l'a pas été est en 28.3. La CI de ce lot est dans la pull request de suivi `docs/lot-15-ci`.
+Écrit le 2026-11-27, après les essais, sur les quatre commits de la branche `feature/lot-15-hygiene` (`9c41140`, `d5b6198`, `fa0aee7`, `12a53b8`), fusionnée par la pull request n° 39 (commit de fusion `d65493d`). Les essais datent du 2026-11-26 (licence, `SECURITY.md`, double authentification) et du 2026-11-27 (images, Dependabot, CodeQL, formatage), sur un PC Windows avec Docker Desktop. Les exécutions de la CI, le premier passage de Dependabot et les réglages de GitHub relevés après la fusion sont en Q11 à Q15, ajoutés par la pull request de suivi `docs/lot-15-ci`. Tout ce qui figure en 28.2 a été vu ; ce qui ne l'a pas été est en 28.3.
 
 ### 28.1 Ce qui est fait
 
@@ -2252,14 +2252,14 @@ Relevé le 2026-11-26 vers 09:52 sur des captures d'écran des réglages du dép
 - **Les images de base fixées par tag précis et par empreinte (sha256)** : `Dockerfile` (SDK 10.0.404, ASP.NET 10.0.15), `web/Dockerfile` (`node:22.23.5-slim`), `compose.yaml` (SQL Server `2025-CU10-ubuntu-24.04`, Keycloak 26.6.2) et le conteneur SQL Server de `ci.yml` (changement de `ci.yml` autorisé nommément pour ce lot). Les tags précis ont été trouvés en comparant les empreintes avec celles des images déjà utilisées (`docker buildx imagetools inspect`).
 - **Le conteneur `web` ne tourne plus en administrateur** : `USER node` dans `web/Dockerfile`.
 - **Les fichiers `.env*` sont exclus des constructions d'images** : ajoutés aux deux `.dockerignore`.
-- **Dependabot** : `.github/dependabot.yml` suit NuGet, npm (`/web`), les actions GitHub, les `Dockerfile` et `compose.yaml`, chaque semaine, 3 pull requests ouvertes au plus par entrée, un délai de 7 jours avant de proposer une nouvelle version (sauf pour les actions GitHub), sans regroupement.
+- **Dependabot** : `.github/dependabot.yml` suit NuGet, npm (`/web`), les actions GitHub, les `Dockerfile` et `compose.yaml`, chaque semaine, 3 pull requests ouvertes au plus par entrée, sans regroupement. Un délai de 7 jours avant de proposer une nouvelle version est réglé pour NuGet, npm, Docker et Compose, pas pour les actions GitHub. Dependabot signale qu'il ne peut pas l'appliquer aux images de `mcr.microsoft.com` et de `quay.io` (Q12).
 - **Dans GitHub** (hors dépôt) : double authentification du compte, secret `MSSQL_SA_PASSWORD` côté Actions et côté Dependabot, mises à jour de sécurité de Dependabot, CodeQL.
 
 ### 28.2 Liste de contrôle
 
 | N° | Point | Résultat |
 |---|---|---|
-| Q1 | Licence et politique de sécurité | `LICENSE` et `SECURITY.md` sont dans le commit `9c41140`. Comment GitHub les affiche n'est pas relevé. |
+| Q1 | Licence et politique de sécurité | `LICENSE` et `SECURITY.md` sont dans le commit `9c41140`. L'affichage par GitHub est relevé en Q15. |
 | Q2 | Les images fixées : la pile se construit et se lance | Oui, sous Windows : l'interface montre les 20 lots sur 2 pages. Au premier lancement, `traceability-sql-1` s'est arrêté (code 1, « SQLPAL fatal error ») ; lancé seul, `sql` démarre, et un nouveau lancement complet a abouti. Cause inconnue. `keycloak-init` a duré 466 s, contre environ 160 s au lot 14 : cause inconnue aussi. |
 | Q3 | Le conteneur `web` n'est pas administrateur | `whoami` dans le conteneur répond `node`. |
 | Q4 | Le tag précis de SQL Server | La version 17.0.5035.5, celle de l'image essayée, est la mise à jour cumulative CU10 (KB5125471, du 2026-10-22), d'après les notes de version de Microsoft. |
@@ -2269,16 +2269,22 @@ Relevé le 2026-11-26 vers 09:52 sur des captures d'écran des réglages du dép
 | Q8 | Double authentification | Activée sur le compte avec une application d'authentification. C'est un réglage du compte, pas du dépôt. |
 | Q9 | Formatage C# | `dotnet format Traceability.slnx --verify-no-changes` accepte le fichier `.slnx`, lit les quatre projets et rend le code 0 sans rien modifier. Le dépôt n'a pas de `.editorconfig` : seules les règles par défaut sont vérifiées. |
 | Q10 | Aucun jeton ni mot de passe dans les fichiers modifiés : recherche de `eyJ`, de `password` et de `secret` | Dans les lignes ajoutées par rapport à `origin/main` (15 fichiers, dont l'ADR 0019, pas encore suivi par git), 13 lignes contiennent `password` ou `secret`, dont cette ligne Q10 : ce sont des noms de variables (`MSSQL_SA_PASSWORD`), des commentaires et des textes de documentation, sans aucune valeur. Aucun texte de la forme `eyJ` suivi de dix caractères ou plus ; la seule ligne qui contient `eyJ` est cette ligne Q10. Aucune commande `DROP`, `TRUNCATE` ni `DELETE`, hors cette ligne Q10. `.env` n'est pas suivi par git : seul `.env.example` l'est. |
+| Q11 | La CI du lot | Quatre exécutions vertes le 2026-11-27 : CI n° 112 (push du commit `12a53b8`, 1 min 17 s), CI n° 113 (pull request n° 39, 1 min 15 s), CI n° 114 (push du commit de fusion `d65493d` sur `main`, 1 min 20 s) et CodeQL n° 3 (sur `main`, 1 min 27 s). La pull request n° 39 a eu 10 contrôles verts : `backend` (1 min), `docker` (28 s), `frontend` (34 à 38 s) et les contrôles CodeQL, qui indiquent « No new alerts ». Les contrôles requis par le ruleset `protect-main` (`backend`, `frontend`, `docker`) sont verts ; les contrôles CodeQL n'en font pas partie. `backend` est vert avec le conteneur SQL Server fixé par empreinte : GitHub accepte `tag@sha256:…` dans `services:`. |
+| Q12 | Premier passage de Dependabot | Dix pull requests ouvertes (n° 40 à 49) : 3 NuGet, 3 npm, 3 Docker et 1 Docker Compose, après la fusion, par les exécutions « Dependabot Updates » n° 1 à 5 sur `main`. Dependabot trouve `compose.yaml` et met à jour le tag et l'empreinte ensemble (n° 43, Keycloak). Le contrôle `backend` de ses pull requests passe avec le secret propre à Dependabot : chaque valeur de `MSSQL_SA_PASSWORD` fonctionne dans son contexte, leur égalité n'a pas à être prouvée. Un avertissement sur le délai de 7 jours est affiché sur les pull requests des images `mcr.microsoft.com` (n° 40 et 41) et `quay.io` (n° 43). Pour npm, `oxlint` 1.94.0 (publiée le 2026-11-16) est proposée alors que la 1.95.0 existe depuis le 2026-11-23, et `vitest` 5.1.1 (2026-11-18) alors que la 5.1.2 date du 2026-11-25 : cohérent avec un délai de 7 jours appliqué ; `jsdom` 31.0.1 est la dernière version, ce cas ne prouve rien. Dates lues dans le registre npm le 2026-11-27. |
+| Q13 | Dependabot et les actions GitHub | Aucune pull request pour `github_actions`. L'exécution « github_actions in /. - Update n° 1734490215 » (n° 4, 31 s, verte, sur le commit `d65493d`) a lu `ci.yml` : `actions/checkout` 7.0.1, `actions/setup-dotnet` 6.1.0 et `actions/setup-node` 7.1.0 sont déjà aux dernières versions (« No update needed »). Le journal indique un délai de 3 jours pour ces actions, alors que `dependabot.yml` n'en règle aucun : l'origine de cette valeur n'est pas établie. Il contient aussi le message « Failed to parse GITHUB_REGISTRIES_PROXY environment variable » : la variable est vide, le job est vert, la cause n'est pas établie. |
+| Q14 | Secrets dans le dépôt et son historique | Secret scanning de GitHub : 0 alerte ouverte, 0 fermée (« No secrets found »). Il repère les secrets de formats connus. Recherche dans les 198 commits de l'historique local (lignes ajoutées seulement, valeurs non affichées) : aucun texte de la forme `eyJ` suivi de dix caractères ou plus, aucune affectation de `password`, `pwd` ou `secret` avec une valeur littérale, sauf la phrase H16 de ce fichier, qui est du texte. `.env` n'a jamais été ajouté à l'historique et `.gitignore` l'exclut (règle `*.env`). `identity/traceability-realm.json` et `src/Traceability.Api/appsettings.Development.json` sont suivis par git ; la recherche n'a rien trouvé dans le second, le contenu du premier n'a pas été relu pour ce lot (constat H16). |
+| Q15 | Affichage de la licence et de la politique de sécurité, signalement privé | La page Security policy de GitHub affiche `SECURITY.md` ; la colonne About de la page d'accueil affiche « MIT license » et « Security policy ». Le signalement privé de vulnérabilités est activé (Settings, Advanced Security : le bouton proposé est « Disable »). Pour un visiteur non connecté, la page Advisories affiche le bouton « Report a vulnerability » ; le propriétaire y voit « New draft security advisory ». Aucun avis n'existe (0 en Triage, Draft, Published et Closed). |
 
 ### 28.3 Ce qui n'est pas essayé
 
-- **La CI avec l'empreinte** : GitHub accepte-t-il `tag@sha256:…` pour le conteneur de service de `backend` ? La CI de la pull request le dira.
-- **Dependabot en action** : aucune pull request vue. On ne sait pas s'il trouve `compose.yaml`, s'il met à jour le tag et l'empreinte ensemble, si la limite de 3 est par entrée ou par dossier, ni combien de pull requests il ouvre au premier passage. Le délai de 7 jours n'est pas posé pour les actions GitHub (sa prise en charge pour ce type n'est pas confirmée). Aucune alerte de sécurité avec correctif n'a encore donné de pull request.
-- **CodeQL sur une pull request** : seul le scan de `main` est vu. « 0 alerte » veut dire que les requêtes par défaut n'ont rien trouvé, pas que le code est sans faille. Copilot Autofix n'a aucun effet tant qu'il n'y a pas d'alerte.
-- **Les secrets** : rien ne prouve que les deux valeurs de `MSSQL_SA_PASSWORD` sont identiques.
+- **Dependabot, limite de pull requests** : la limite de 3 est-elle par entrée ou par dossier ? Les 10 pull requests vues (3 NuGet, 3 npm, 3 Docker, 1 Compose) sont compatibles avec les deux lectures, rien ne tranche.
+- **Dependabot, délai de 7 jours** : l'effet est vu sur npm (Q12). Il n'est pas vérifié pour NuGet (dates de publication non obtenues), ni pour l'image `node` de Docker Hub. L'origine du délai de 3 jours des actions n'est pas établie (Q13).
+- **Dependabot, page d'Insights** : l'onglet Dependabot affiche un triangle d'avertissement rouge pour `global.json` et `web/package.json`, orange pour `Dockerfile` et `compose.yaml`, aucun pour `ci.yml`. Le sens et le contenu de ces avertissements ne sont pas relevés. `web/Dockerfile` et les fichiers `.csproj` n'y figurent pas, alors que des pull requests existent pour NuGet et Docker : non expliqué.
+- **Alertes de sécurité avec correctif** : aucune alerte n'existe, la création d'une pull request de sécurité n'est pas testable.
+- **CodeQL** : « 0 alerte » veut dire que les requêtes par défaut n'ont rien trouvé, pas que le code est sans faille. Copilot Autofix n'a aucun effet tant qu'il n'y a pas d'alerte.
 - **Les `.dockerignore`** : l'exclusion de `.env*` n'est pas testée.
-- **L'historique de git** n'a pas été cherché pour des secrets déjà poussés (l'analyse des secrets de GitHub est active, voir 27.6).
-- **Le signalement privé d'une faille** : jamais utilisé de bout en bout.
+- **Le realm Keycloak** : son contenu n'a pas été relu pour ce lot (constat H16, Q14).
+- **Le signalement privé d'une faille** : le bouton est vu (Q15), aucun signalement n'a été envoyé de bout en bout.
 - **Reporté au lot 17** : une vérification du format C# par la CI (le résultat de `dotnet format` sous Linux n'est pas comparé à celui de Windows), un `.editorconfig`, des analyseurs, un rapport de couverture, `persist-credentials: false` sur les trois `checkout` de `ci.yml`, des fichiers de verrouillage NuGet.
 - **Hors de ce lot** : la pile sous Linux (lot 17), les droits d'accès à la base et le compte `sa` (lot 16), le mode de production.
 
@@ -2289,6 +2295,10 @@ Relevé le 2026-11-26 vers 09:52 sur des captures d'écran des réglages du dép
 - CodeQL analyse les trois langages sur `main` et ne signale aucune alerte (Q6).
 - `dotnet format` accepte `Traceability.slnx` et ne trouve rien à reformater avec les règles par défaut (Q9).
 - Les réglages de Dependabot et ses règles de tri sont ceux de Q5 ; les secrets existent des deux côtés (Q7).
+- La CI passe sur la branche, la pull request et `main` avec les images fixées par empreinte, conteneur de service compris (Q11).
+- Dependabot trouve `compose.yaml`, met à jour le tag et l'empreinte ensemble, et son secret fonctionne (Q12) ; aucune pull request pour les actions GitHub, qui sont à jour (Q13).
+- Secret scanning ne signale rien et l'historique ne contient ni jeton de la forme `eyJ` ni mot de passe littéral (Q14).
+- GitHub affiche `SECURITY.md` et la licence, et le signalement privé est ouvert aux visiteurs (Q15).
 - Non prouvé : tout ce qui figure en 28.3.
 
 ### 28.5 Rejouer la vérification
@@ -2305,3 +2315,5 @@ docker compose ps -a
 ```
 
 `dotnet format` doit rendre le code 0 et `git status` rester vide. `docker buildx imagetools inspect` donne l'empreinte à comparer avec celle de `compose.yaml` (même commande pour chaque image). Pour l'utilisateur du conteneur `web`, lancer `whoami` dans ce conteneur. Dans GitHub : Settings, Advanced Security (Q5), Actions (le workflow « CodeQL ») et Security and quality, Code scanning (les alertes).
+
+Pour retrouver les exécutions de la CI : Actions, champ de recherche (`branch:main` ou le nom d'une branche). Pour le passage de Dependabot : Insights, Dependency graph, onglet Dependabot, « Recent update jobs » de chaque fichier.
